@@ -6,12 +6,12 @@ Build the application around `NSDocumentController`, one `ScadrettoDocument` sub
 
 | Surface | Required behavior |
 |---|---|
-| Source editor | Plain monospaced text, line numbers, syntax colors, find, diagnostics, jump-to-range, and selection synchronized on explicit navigation. Disable smart quotes, substitutions and rich text. Keep normal typing focus when the preview refreshes. |
+| Source editor | Plain monospaced text, line numbers, syntax colors, find and replace through the standard find bar, with Replace All's per-match replacements batched into one document transaction with disjoint edits and one undo entry, diagnostics, jump-to-range, and selection synchronized on explicit navigation. Disable smart quotes, substitutions and rich text. Keep normal typing focus when the preview refreshes. |
 | Viewport | Shaded solid, orbit, pan, zoom, frame model and frame selection. Display local or world axes as applicable, selected outline, cutter overlay and editable handles. Preserve camera across reevaluations. |
 | Inspector | Selection breadcrumb, source location, authored expression, evaluated value, available edit scopes, affected occurrence count and reason for any disabled edit. Support numeric entry with Enter to commit and Escape to cancel. |
 | Instance outline | Display expanded module calls, loops, primitives and boolean operands. Distinguish the selected occurrence from the shared definition. Virtualize large subtrees and let users select enclosed operands. |
 | Status area | Report evaluating, ready, valid empty model, preview out of date, cancelled, source diagnostics and worker failures. Make the current failure and source location reachable with the keyboard. |
-| File and Edit menus | New, Open, Save, Save As or Duplicate as appropriate for native document mode, Revert, Undo, Redo and Find. Register `.scad` as an editable document type. Keep Finder and drag-to-open working. |
+| File and Edit menus | New, Open, Save, Save As or Duplicate as appropriate for native document mode, Revert, Undo, Redo, Find, and Find and Replace. Register `.scad` as an editable document type. Keep Finder and drag-to-open working. |
 | View and Model menus | Toggle editor/inspector/outline, frame selection, reevaluate, cancel evaluation, reveal source and choose an edit target. Provide accessible alternatives to viewport gestures. |
 
 A second document gets separate selections, worker requests, camera, diagnostics and undo history. Windows belonging to the same `NSDocument` share the one source buffer. Store window presentation preferences separately from the `.scad` bytes.
