@@ -1,6 +1,6 @@
 # macOS document editor and interaction
 
-Build the application around `NSDocumentController`, one `ScadrettoDocument` subclass, a document window controller and native menus. Use an AppKit split view for the editor, viewport and inspector. Small SwiftUI inspector controls may be hosted in AppKit if they preserve first-responder behavior and the document undo stack. Use an `MTKView` for geometry. [Apple document architecture](https://developer.apple.com/documentation/appkit/nsdocument) · [MetalKit view](https://developer.apple.com/documentation/metalkit/mtkview)
+Build the application around `NSDocumentController`, one `ScadrettoDocument` subclass, a document window controller and native menus. Use an AppKit split view for the editor, viewport and inspector. Small SwiftUI inspector controls may be hosted in AppKit if they preserve first-responder behavior and the document undo stack. Use an `MTKView` for geometry. Compile shaders into a `.metallib` at build time and ship that; runtime source compilation is a development convenience, not the shipped path — it would spend launch time on the Metal compiler and distribute source the release doesn't need. [Apple document architecture](https://developer.apple.com/documentation/appkit/nsdocument) · [MetalKit view](https://developer.apple.com/documentation/metalkit/mtkview)
 
 ## Window and commands
 
