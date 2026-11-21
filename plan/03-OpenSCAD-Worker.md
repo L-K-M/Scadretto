@@ -9,6 +9,7 @@ In M0, look for the actual parser location record, expression evaluation, module
 ### Spike pass conditions
 
 - Evaluate in-memory main-file contents at a real logical path. A sibling include and nested relative asset resolve from the same locations as in the reference build.
+- Determine whether the pinned engine accepts a leading UTF-8 BOM on the main file. File 02 requires preserving one on open and save; if the engine's lexer rejects it or counts columns from a different origin, strip the BOM at the worker's input boundary and offset-adjust every reported source span — the same adapter rule the editor applies to its own parser. Record the observed behavior in `Docs/Decisions/engine-spike.md`.
 - Evaluate the plate once and return one base plus four cutter occurrences with their four iteration values, the call site, the cylinder's source span, the numeric `d` value and the chain back to `hole_d`.
 - Export a final mesh with the same bounds and volume as the reference. Select the cylindrical wall of the third hole and resolve it to the correct cutter. Capture the candidate list for a click exactly on a rim.
 - If face ancestry does not survive the pinned boolean backend, implement the surface-hit comparison below and prove it on the fixture. If a trace hook cannot expose resolved argument bindings, instrument the binding step. Do not infer shared parameters from equal values or manufacture source IDs from mesh order.
