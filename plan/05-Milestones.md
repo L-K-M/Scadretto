@@ -76,6 +76,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 **Depends on M5.** Package an arm64 app containing its own helper, required resources, dylibs, attribution and corresponding engine source material.
 
 - [ ] Implement `Scripts/verify` and `Scripts/package-macos` with distinct local and distribution modes. Test a locally signed build on a machine without Homebrew or a system OpenSCAD installation. Connect `Scripts/package-macos --distribution` to `Scripts/release.sh` and the release workflow as described in [the build and release guide](../CICD.md).
+- [ ] Bundle `Tests/Fixtures/mounting-plate.scad` as a read-only application sample and offer it from the first-launch document picker and Help → Open Example. Copy it from the canonical fixture at build time rather than retyping it, and verify the bundled bytes in the distribution gate.
 - [ ] Validate architecture, minimum OS, dependency paths and library/font resolution. Review redistribution licenses for the pinned dependency set and prepare the matching source/build instructions.
 - [ ] When the release owner supplies credentials, sign nested code and app, notarize and staple, then run Gatekeeper and quarantine install checks on the final package. Record artifact checksums.
 
