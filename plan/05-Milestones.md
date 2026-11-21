@@ -7,7 +7,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 **Inputs:** [Architecture](01-Architecture.md), [worker contract](03-OpenSCAD-Worker.md) and the [mounting-plate fixture](06-Verification-and-Release.md#canonical-fixture).
 
 - [ ] Create `Tests/Fixtures/mounting-plate.scad` exactly as supplied. Choose a buildable OpenSCAD commit with a working macOS arm64 headless backend. Pin that commit, dependencies, backend options, resource paths and the parser/runtime pair. Record the Xcode, SDK and CMake versions used.
-- [ ] Implement `Scripts/bootstrap-macos`, `Scripts/build-engine` and `Scripts/verify-engine`. Bootstrap checks prerequisites with actionable errors, obtains pinned sources and verifies checksums/revisions. Build both reference and patched executables into separate product roots. Cache against pins, architecture, deployment target and patch digest.
+- [ ] Implement `Scripts/bootstrap-macos`, `Scripts/build-engine` and `Scripts/verify-engine`. Bootstrap checks prerequisites with actionable errors, obtains pinned sources and verifies checksums/revisions. Build both reference and patched executables into separate product roots. Cache against pins, architecture, deployment target and patch digest. Wire `Scripts/verify-engine` and the reference comparison into the CI workflow so a PR that changes the pinned engine or a fixture fails before merge.
 - [ ] Verify the pinned engine's behavior on a main file that starts with a UTF-8 BOM; if normalization is needed, offset-adjust all reported source spans and prove it on a BOM fixture.
 - [ ] Write a tiny worker client that sends unsaved source with a logical path, reads the model and trace, and exercises a ray into the third inner wall. Inventory the pinned engine hooks and implement the minimum instrumentation needed. Capture the corresponding source substring, instance bindings, local/world transforms and actual final mesh evidence. Test with two instances sharing a cached primitive.
 - [ ] Compare the fixture with the reference. If face ownership is unavailable, implement the matched-surface fallback in file 03. If a compatible backend cannot build on macOS 14, try another supported revision or backend and record the result before changing the platform baseline.
@@ -71,7 +71,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 **Depends on M5.** Package an arm64 app containing its own helper, required resources, dylibs, attribution and corresponding engine source material.
 
-- [ ] Implement `Scripts/verify` and `Scripts/package-macos` with distinct local and distribution modes. Test a locally signed build on a machine without Homebrew or a system OpenSCAD installation.
+- [ ] Implement `Scripts/verify` and `Scripts/package-macos` with distinct local and distribution modes. Test a locally signed build on a machine without Homebrew or a system OpenSCAD installation. Connect `Scripts/package-macos --distribution` to `Scripts/release.sh` and the release workflow as described in [the build and release guide](../CICD.md).
 - [ ] Validate architecture, minimum OS, dependency paths and library/font resolution. Review redistribution licenses for the pinned dependency set and prepare the matching source/build instructions.
 - [ ] When the release owner supplies credentials, sign nested code and app, notarize and staple, then run Gatekeeper and quarantine install checks on the final package. Record artifact checksums.
 
