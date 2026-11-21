@@ -70,7 +70,7 @@ In a fixture with two ordered library roots, place `part.scad` only in the fallb
 |---|---|
 | `FileRecord` | Logical path, canonical resolved URL if on disk, content digest and byte length of the consumed bytes, source/asset kind and writability in this document |
 | `InstanceRecord` | Request-local ID, parent ID, operator or module name, call span and definition span when known, evaluation path with iteration bindings, local/world transform, local bounds, nearest editable authoring call, operand mesh reference when available |
-| `PropertyRecord` | Display semantic such as diameter, evaluated numeric value and unit, originally supplied arguments, resolved formal, token/expression span, definition and binding chain when observed |
+| `PropertyRecord` | Display semantic such as diameter, evaluated numeric value and unit, originally supplied arguments, the supplied argument span that bound each formal or `default`, superseded and unbound arguments with their warnings, resolved formal, token/expression span, definition and binding chain when observed |
 | `OperationRecord` | Ordered child IDs for union, difference and intersection. Store operand role relative to its parent; a single “negative” flag does not encode nested differences. |
 | `DependencyEdge` | From a resolved declaration or call-site argument to a currently executed property/instance. Track consumers conservatively; unknown impact must be displayed as unknown. |
 | `Diagnostic` | Severity, message, file and optional byte span, optional call path, evaluation key |
