@@ -20,6 +20,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 **Depends on M0.** Implement `ScadrettoCore`, `ScadrettoSyntax`, the `Scadretto` scheme, initial document window and package tests.
 
 - [ ] Implement raw bytes, source spans, a UTF-16 line index, revisioning, immutable snapshots and atomic checked transactions. Add golden input/output tests for the coordinate and undo cases in file 02.
+- [ ] Keep `ScadrettoCore` value types `Sendable` and route every mutation through the main-actor serial path; test that off-main parsing, decoding and file I/O never touch document state.
 - [ ] Bring in the pinned Tree-sitter grammar and runtime. Run its parser off the main thread and discard stale syntax responses. Verify call locations against the worker on the initial corpus. Syntax errors must still yield useful highlighting outside the invalid region.
 - [ ] Declare one SwiftPM test target per subdirectory under `Packages/ScadrettoKit/Tests/` in `Package.swift`, plus the Xcode UI-test target for `Tests/UITests/`. Confirm `swift test --package-path Packages/ScadrettoKit` discovers and runs the package targets rather than reporting no tests.
 - [ ] Implement a plain `NSTextView` adapter, an `NSDocument` subclass and ordinary New/Open/Save/Revert. Add native Undo/Redo, unmodified round-trip saving and edited-state tracking. Add external-change baseline tracking before enabling autosave-in-place.
