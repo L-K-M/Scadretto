@@ -46,6 +46,18 @@ See the [build and release guide](../CICD.md) for repository checks and the macO
 
 Use Swift and AppKit for the document application, MetalKit for the viewport, and an out-of-process C++ worker based on a pinned OpenSCAD revision for evaluation. Use the OpenSCAD Tree-sitter grammar for fast editing feedback. Geometry, runtime bindings and execution paths come from the worker. These are implementation choices for this plan. Record deviations with their effect on a fixture, compatibility or release requirement. Build and publication credentials are independent; local development and tests work with ad hoc signing.
 
+## Risks and open questions
+
+| Risk | Why it matters | Mitigation / decision |
+|---|---|---|
+| Engine patch maintenance | The worker carries a trace patch against a pinned OpenSCAD revision; upstream changes can break the observation hooks and the source-span mapping. | Keep the patch series small, replayable and CI-verified; re-baseline at planned engine updates and record the cost. |
+| Trace bridge feasibility | M0 depends on exposing argument bindings and primitive ancestry from the pinned engine; if a hook cannot be added cleanly, the editing and picking scope shrinks. | M0 is a hard gate with the matched-surface fallback; if face ancestry is unavailable, ship surface matching and record the reduced picking scope. |
+| Per-evaluation process cost | One child per evaluation may not meet the 1 s commit-to-frame budget on the canonical plate. | Measure cold start at M0; promote a keep-alive worker on the same job-directory contract if needed. |
+| Licensing | The worker is a patched OpenSCAD derivative; its obligations and the app's distribution model must be settled before public release. | M6 inventories licenses and prepares source/build material; make the application licensing decision explicitly. |
+| Single-maintainer bottlenecks | Engine pinning, signing credentials and the Mac test matrix concentrate on one owner. | Keep local development and CI credential-free; document the release handoff and mark distribution pending until credentials exist. |
+
+Settle these open questions at M0 and record the answers in `Docs/Decisions/`: the exact OpenSCAD revision and backend; whether face ancestry survives every boolean the fixtures use; the minimum macOS version to advertise; and the application licensing model.
+
 ## Definition of done
 
 A fresh checkout builds on the declared Mac toolchain. A fresh install opens the example with no separately installed OpenSCAD or Homebrew libraries. The sequence in [the acceptance walkthrough](06-Verification-and-Release.md#mounting-plate-walkthrough) passes, including exact source diffs, scope, malformed code, undo, save, reopen and an upstream geometry comparison. The release report identifies the tested hardware, engine SHA and any unverified distribution step. A green renderer test by itself does not complete the editor.
