@@ -30,6 +30,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 - [ ] Replace the spike client with a versioned job encoder, validated decoder and cancellable scheduler. Package the helper and runtime resources in the developer app. Inject the executable location in tests.
 - [ ] Load and shade the final mesh in Metal. Add camera framing, orbit, pan and zoom, resize/Retina handling and diagnostics that jump to the correct file/range.
 - [ ] Render from the live buffer, honor include/use/import paths, accept only the current key, clear valid empty scenes, and label stale last-good scenes. Simulate process crash, out-of-order completion and deleted include recovery.
+- [ ] Build the instance outline from the accepted scene's executed instances: module calls, loops, primitives and boolean operands, with occurrence selection.
 
 **Exit:** Open the handwritten fixture from Finder, change `count` in text, and see the new hole in the shaded mesh and outline. Break and fix a statement without losing work. Running from a path with spaces succeeds.
 
@@ -38,7 +39,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 **Depends on M2.** Build the narrowest complete interaction through normal application entry points.
 
 - [ ] Emit the cylinder diameter property, call chain and authoring spans. Connect final-surface hit testing to source highlighting and a scope-aware inspector.
-- [ ] Implement a diameter field, a radial drag handle, affected-instance highlights and one undoable write to a shared literal. Preview with an overlay. On release, verify the patch, update the text view and reevaluate. Implement Escape, zero movement and stale-gesture rejection.
+- [ ] Implement a diameter field, a diameter handle, affected-instance highlights and one undoable write to a shared literal. Preview with an overlay. On release, verify the patch, update the text view and reevaluate. Implement Escape, zero movement and stale-gesture rejection.
 - [ ] Add separate integration tests for keyboard entry, real viewport drag, and reopen in the reference CLI. Replay the same interaction with an identical local literal in an unrelated call to prove the correct declaration is chosen.
 
 **Exit:** The exact diameter/count walkthrough in file 06 passes. Dragging the third hole changes one literal and four bores. Typing changes the count. Source, inspector and geometry agree after undo and reopen. This is the first demonstrable product milestone.
@@ -52,7 +53,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 - [ ] Implement impact tracking and selection reconciliation for shared calls, modules, shadowed names and repeated instances. Add the restricted pitch handle and numeric fallback for iteration zero.
 - [ ] Support nested booleans, ghost selection, rim ambiguity and outline fallback. Keep expressions inspectable when they have no approved rewrite.
 
-**Exit:** The full editing and picking matrix in file 06 passes. Repeated edits preserve user formatting and formulas. No single-instance action rewrites a shared generator by accident.
+**Exit:** The Scope, Expressions, Primitive properties, Transforms and Procedural picking rows of the regression matrix in file 06 pass. Repeated edits preserve user formatting and formulas. No single-instance action rewrites a shared generator by accident.
 
 ## M5 | Harden real macOS workflows
 
