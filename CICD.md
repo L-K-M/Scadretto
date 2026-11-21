@@ -1,0 +1,68 @@
+# CI/CD
+
+Scadretto starts with the [macOS engine spike](plan/05-Milestones.md#m0--prove-the-engine-on-a-mac).
+The supported target is macOS 14 or later on Apple silicon. Record the exact
+Xcode, SDK, CMake and engine revisions in M0.
+
+## Development
+
+Install the [shared release tool](https://github.com/L-K-M/release-tool) for
+`lkm-build` and `lkm-release`. Once M1 has added the shared `Scadretto` scheme
+in `Scadretto.xcodeproj`, use these commands from the repository:
+
+```sh
+Scripts/build.sh --debug
+swift test --package-path Packages/ScadrettoKit
+```
+
+The build wrapper uses the standard Xcode build engine and leaves the app in
+the build directory. The engine and worker have separate milestone scripts.
+Use the [verification guide](plan/06-Verification-and-Release.md#build-and-verification-entry-points)
+for their entry points and the native test plan.
+
+GitHub Actions runs repository script checks on PRs and pushes to `main`.
+Add the pinned engine checks to CI in M0 and the package tests and app build
+in M1. Native UI and minimum-OS checks follow the verification guide.
+
+## Pull requests
+
+The pinned GLM workflow reviews ready PRs from branches in this repository and
+cancels obsolete runs when new commits arrive. It reads `ZAI_API_KEY` from
+repository secrets. `MIMO_API_KEY` and `STEPFUN_API_KEY` enable optional review
+providers. The workflow runs from the base branch. Follow the review rules in
+[AGENTS.md](AGENTS.md).
+
+## Distribution
+
+Once the M6 verification and packaging entry points exist, cut a version tag
+from a clean `main` checkout at `origin/main`:
+
+```sh
+Scripts/release.sh 1.0.0        # create local tag v1.0.0
+Scripts/release.sh 1.0.0 --push # create and push the tag to stage a draft
+```
+
+The workflow verifies the app and engine before importing a Developer ID
+Application identity into a temporary keychain. Put signing and notarization
+inputs in the GitHub Actions `distribution` environment:
+
+| Secret | Value |
+| --- | --- |
+| `DEVELOPER_ID_CERTIFICATE_BASE64` | Base64-encoded PKCS#12 with the Developer ID Application certificate and private key |
+| `DEVELOPER_ID_CERTIFICATE_PASSWORD` | Password for that PKCS#12 |
+| `NOTARY_APPLE_ID` | Apple Account for notarization |
+| `NOTARY_PASSWORD` | App-specific password for notarization |
+| `NOTARY_TEAM_ID` | Apple developer team ID |
+
+The workflow hands off to the M6 packaging script through
+`Scripts/package-macos --distribution --version X.Y.Z --build N --output /path/to/Scadretto.dmg`.
+That mode builds for arm64, signs nested code and the DMG with Developer ID,
+includes the required notices and corresponding worker source, and notarizes
+and staples the DMG. The script accepts the notarization inputs as environment
+variables. Its `--local` mode uses ad hoc signing.
+
+The workflow verifies the image signature, staple and Gatekeeper assessment
+and puts the DMG and its SHA-256 checksum in a draft GitHub release. Publish
+the draft after the [distribution gate](plan/06-Verification-and-Release.md#distribution-gate)
+passes on the exact downloaded image, including the clean-Mac offline fixture
+test and the minimum OS verification.
