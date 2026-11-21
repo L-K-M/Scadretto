@@ -33,19 +33,20 @@ Start with a checked-in `.xcodeproj`, a shared `Scadretto` scheme, Swift Package
 | `SourceDocument` | One `NSDocument` per open model | Canonical source bytes, acknowledged disk baseline, original encoding metadata, current revision and one undo manager |
 | `SyntaxSnapshot` | Editor parser | Incremental concrete syntax tree and line index for a single source revision. Supplies syntax ranges and errors while typing. |
 | `EvaluationKey` | Document controller | Document UUID, monotonically increasing source revision, dependency generation, evaluation options digest and build identity. A new document UUID is issued even for another window opening a separate copy. |
-| `SceneSnapshot` | Engine client | Immutable result for one key. Mesh, bounds, executed instances, source map, editable binding candidates, file digests, diagnostics and dependencies travel together. |
+| `EvaluationOutcome` | Engine client | Immutable result for one key, including status, diagnostics, observed dependencies and file digests even when evaluation fails. A successful outcome also carries the scene. |
+| `SceneSnapshot` | Document controller | Last accepted successful scene: mesh, bounds, executed instances, source map and editable binding candidates. A failed outcome does not replace it. |
 | `Selection` | Per document window | Snapshot-scoped instance and source anchor. Camera and selection survive only when their targets can be re-established. |
 | `EditIntent` | Inspector or viewport | Requested operation, explicitly selected target and scope, units, original value, and the key at gesture start |
 | `SourcePatch` | Pure edit planner | Expected document key and source slices, replacements and an undo label. Applied only on the document's serial mutation path. |
 
-Save serializes the current source buffer. The outline and inspector always read the current accepted scene. Presentation state such as camera and panel visibility can live in window restoration or preferences. It must be possible to discard every cache and reconstruct a model by opening the source again.
+Save serializes the current source buffer. The outline and inspector read the current successful scene only while its key matches the document; otherwise they show its geometry as stale and disable write-back. Diagnostics and evaluation status come from the latest accepted outcome, not from the last-good scene. Presentation state such as camera and panel visibility can live in window restoration or preferences. It must be possible to discard every cache and reconstruct a model by opening the source again.
 
 ## End-to-end event flow
 
 1. An AppKit text edit, a numeric inspector entry, undo, redo or an accepted viewport gesture enters the same document transaction API. Accepting a transaction increments revision even when undo returns to bytes seen before. An unchanged transaction produces no undo item.
 2. Update text storage and the byte/UTF-16 index in one mutation. Refresh highlighting asynchronously. Schedule a worker request after about 150 ms of idle typing. Enter in an inspector or releasing a handle evaluates immediately.
 3. Capture immutable UTF-8 bytes and the current dependency generation. The worker returns the same key plus digests of all files read. A filesystem notification changes the generation even when the main source has identical bytes.
-4. Accept results on the main actor only if the complete key matches, source digests still agree and the document is open. Swap all scene-derived state in one operation. Keep the previous good mesh on parse/evaluation failure. Empty valid geometry is a successful result with no mesh.
+4. Accept an outcome on the main actor only if the complete key matches, source digests still agree and the document is open. Update status, diagnostics and dependency observations together for that outcome. On success, swap all scene-derived state in one operation. On parse/evaluation failure, retain the previous good mesh as a visibly stale preview but do not expose its old bindings or handles as current. Empty valid geometry is a successful result with no mesh and clears the old preview.
 5. While dragging, calculate a tentative value and draw a local overlay. Commit a single patch on release. Escape, a concurrent source change, an incoming file conflict or a lost selection cancels the tentative edit. A cancelled gesture leaves no bytes or undo entry behind.
 
 Keep disk I/O, parsing large files, tessellation, worker waits and mesh decoding off the main actor. Mutate document state, AppKit views and undo registrations on the main actor. Upload buffers ahead of presentation and release old GPU buffers only after their in-flight command buffers finish.
