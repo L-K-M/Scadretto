@@ -41,7 +41,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 - [ ] Implement a diameter field, a radial drag handle, affected-instance highlights and one undoable write to a shared literal. Preview with an overlay. On release, verify the patch, update the text view and reevaluate. Implement Escape, zero movement and stale-gesture rejection.
 - [ ] Add separate integration tests for keyboard entry, real viewport drag, and reopen in the reference CLI. Replay the same interaction with an identical local literal in an unrelated call to prove the correct declaration is chosen.
 
-**Exit:** The exact diameter/count walkthrough in file 06 passes. Dragging the third hole changes one literal and four bores. Typing changes the count. Source, inspector and geometry agree after undo and reopen. This is the first demonstrable product milestone.
+**Exit:** Steps 1–5 of the mounting-plate walkthrough in file 06 pass. Also run step 7 from a fresh baseline with the M3 diameter handle. Dragging the third hole changes one literal and four bores. Typing changes the count. Source, inspector and geometry agree after undo and reopen. This is the first demonstrable product milestone.
 
 ## M4 | Extend properties, transforms and procedural scope
 
@@ -52,7 +52,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 - [ ] Implement impact tracking and selection reconciliation for shared calls, modules, shadowed names and repeated instances. Add the restricted pitch handle and numeric fallback for iteration zero.
 - [ ] Support nested booleans, ghost selection, rim ambiguity and outline fallback. Keep expressions inspectable when they have no approved rewrite.
 
-**Exit:** The full editing and picking matrix in file 06 passes. Repeated edits preserve user formatting and formulas. No single-instance action rewrites a shared generator by accident.
+**Exit:** All seven walkthrough steps in file 06 pass in order, including the pitch drag in step 6 and its cancellation in step 7. The full editing and picking matrix passes. Repeated edits preserve user formatting and formulas. No single-instance action rewrites a shared generator by accident.
 
 ## M5 | Harden real macOS workflows
 
