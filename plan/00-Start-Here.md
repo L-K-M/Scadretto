@@ -44,7 +44,7 @@ See the [build and release guide](../CICD.md) for repository checks and the macO
 
 ## Decisions to carry forward
 
-Use Swift and AppKit for the document application, MetalKit for the viewport, and an out-of-process C++ worker based on a pinned OpenSCAD revision for evaluation. Use the OpenSCAD Tree-sitter grammar for fast editing feedback. Geometry, runtime bindings and execution paths come from the worker. These are implementation choices for this plan. Record deviations with their effect on a fixture, compatibility or release requirement. Build and publication credentials are independent; local development and tests work with ad hoc signing.
+Use Swift and AppKit for the document application, MetalKit for the viewport, and an out-of-process C++ worker based on a pinned OpenSCAD revision for evaluation. Use the OpenSCAD Tree-sitter grammar for fast editing feedback. Geometry, runtime bindings and execution paths come from the worker. These are implementation choices for this plan. Record deviations with their effect on a fixture, compatibility or release requirement. Build and publication credentials are independent; local development and tests work with ad hoc signing. Licensing is part of the same decision record: OpenSCAD's `COPYING` grants GPL-2.0-or-later with a special exception permitting CGAL linking, the repository's own `LICENSE` is a public-domain dedication, and the shipped worker is a derivative work of the pinned tree. Record the application's chosen license, the distribution model (combined work or aggregate) and the corresponding-source offer before public release.
 
 ## Definition of done
 

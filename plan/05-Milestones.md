@@ -7,6 +7,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 **Inputs:** [Architecture](01-Architecture.md), [worker contract](03-OpenSCAD-Worker.md) and the [mounting-plate fixture](06-Verification-and-Release.md#canonical-fixture).
 
 - [ ] Create `Tests/Fixtures/mounting-plate.scad` exactly as supplied. Choose a buildable OpenSCAD commit with a working macOS arm64 headless backend. Pin that commit, dependencies, backend options, resource paths and the parser/runtime pair. Record the Xcode, SDK and CMake versions used.
+- [ ] Record the pinned tree's license grant and every bundled dependency's license in `Docs/Decisions/`, including OpenSCAD's GPL-2.0-or-later grant and its CGAL linking exception; collect the notices and license texts redistribution will require.
 - [ ] Implement `Scripts/bootstrap-macos`, `Scripts/build-engine` and `Scripts/verify-engine`. Bootstrap checks prerequisites with actionable errors, obtains pinned sources and verifies checksums/revisions. Build both reference and patched executables into separate product roots. Cache against pins, architecture, deployment target and patch digest.
 - [ ] Write a tiny worker client that sends unsaved source with a logical path, reads the model and trace, and exercises a ray into the third inner wall. Inventory the pinned engine hooks and implement the minimum instrumentation needed. Capture the corresponding source substring, instance bindings, local/world transforms and actual final mesh evidence. Test with two instances sharing a cached primitive.
 - [ ] Compare the fixture with the reference. If face ownership is unavailable, implement the matched-surface fallback in file 03. If a compatible backend cannot build on macOS 14, try another supported revision or backend and record the result before changing the platform baseline.
@@ -70,6 +71,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 - [ ] Implement `Scripts/verify` and `Scripts/package-macos` with distinct local and distribution modes. Test a locally signed build on a machine without Homebrew or a system OpenSCAD installation.
 - [ ] Validate architecture, minimum OS, dependency paths and library/font resolution. Review redistribution licenses for the pinned dependency set and prepare the matching source/build instructions.
+- [ ] Complete the licensing gate before public release: ship required notices and license texts, publish corresponding worker source, patches and reproducible build instructions for the exact distributed binaries, and record the application license and combined-work or aggregate decision with its legal review.
 - [ ] When the release owner supplies credentials, sign nested code and app, notarize and staple, then run Gatekeeper and quarantine install checks on the final package. Record artifact checksums.
 
 **Exit:** The release checklist in file 06 records both functional verification and distribution state. An ad hoc developer package is a valid local deliverable; mark public distribution pending until those gates pass.
