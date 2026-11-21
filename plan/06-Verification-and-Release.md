@@ -77,6 +77,7 @@ The plan's fixture and its three edits were rendered with stock OpenSCAD 2021.01
 | Failure recovery | Invalid code, valid empty `difference`, missing asset later created, child exits mid-write, corrupt mesh or protocol mismatch | Source stays editable and saveable. Valid empty clears prior geometry; errors preserve last-good geometry visibly stale, show the current reason and disable old bindings. Creating the missing asset triggers reevaluation without touching the main file. |
 | Resource bounds | Huge loop count, extreme `$fn`, oversized asset, diagnostic flood, truncated or oversized payload | Job fails within its configured limits; the child is reaped, job files are reclaimed, no partial scene commits and the document stays editable. |
 | Files | External replacement while clean and dirty, autosave conflict, read-only dependency, sibling library in two documents | Dirty bytes survive. No silent overwrite. Dependency changes invalidate previews even when source is unchanged. |
+| Document registration | Finder double-click, drag-to-open, `open -a`, Open File for a `.scad` and for plain text | The app receives the file and opens it as an editable document; a read-only file opens for inspection and Save As creates a writable copy. |
 | Native UX | IME composition, Retina pick, document windows, dark mode, keyboard-only inspector, VoiceOver | Selection and ranges survive refresh, controls are discoverable and the active window owns Undo. |
 
 ## Build and verification entry points
