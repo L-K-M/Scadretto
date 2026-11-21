@@ -20,7 +20,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 **Depends on M0.** Implement `ScadrettoCore`, `ScadrettoSyntax`, the `Scadretto` scheme, initial document window and package tests.
 
-- [ ] Implement raw bytes, source spans, a UTF-16 line index, revisioning, immutable snapshots and atomic checked transactions. Add golden input/output tests for the coordinate and undo cases in file 02.
+- [ ] Enable the Swift 6 language mode before writing core types: `// swift-tools-version: 6.0` in `Package.swift`, which makes Swift 6 its targets' default language mode, and `SWIFT_VERSION = 6.0` in the app target. This requires the Swift 6 toolchain, Xcode 16 or later, for all contributors and CI. Do not opt any target back into Swift 5 mode, including test targets. Implement raw bytes, source spans, a UTF-16 line index, revisioning, immutable snapshots and atomic checked transactions. Add golden input/output tests for the coordinate and undo cases in file 02.
 - [ ] Keep `ScadrettoCore` value types `Sendable` and route every mutation through the main-actor serial path; test that off-main parsing, decoding and file I/O never touch document state.
 - [ ] Add invalid-UTF-8, truncated-multi-byte and non-UTF-8 fixtures; opening one fails with the first bad byte offset, creates no editable buffer and never substitutes replacement characters.
 - [ ] Bring in the pinned Tree-sitter grammar and runtime. Run its parser off the main thread and discard stale syntax responses. Verify call locations against the worker on the initial corpus. Syntax errors must still yield useful highlighting outside the invalid region.
