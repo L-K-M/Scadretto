@@ -74,6 +74,7 @@ The plan's fixture and its three edits were rendered with stock OpenSCAD 2021.01
 | Source entry points | Typing, inspector, actual mouse drag, undo/redo, Save As and open from Finder | All paths converge on the same buffer, model and file. One visual gesture produces one undo item. |
 | Scheduling | Render A finishes after B, dependency changes during drag, cancel, close while rendering | Stale results do not replace scene or accept edits; child processes and job files are reclaimed. |
 | Failure recovery | Invalid code, valid empty `difference`, missing asset later created, child exits mid-write, corrupt mesh or protocol mismatch | Source stays editable and saveable. Valid empty clears prior geometry; errors preserve last-good geometry and show the reason. |
+| Data dependencies | `surface(file = "terrain.png")` and a `.dat` heightmap, `text()` with a bundled font, the heightmap replaced on disk, a font that `text()` resolves from `~/.fonts` replaced on disk | Each file appears in the file table with its kind. Replacing it invalidates the scene and reevaluates without a source edit. |
 | Files | External replacement while clean and dirty, autosave conflict, read-only dependency, sibling library in two documents | Dirty bytes survive. No silent overwrite. Dependency changes invalidate previews even when source is unchanged. |
 | Native UX | IME composition, Retina pick, document windows, dark mode, keyboard-only inspector, VoiceOver | Selection and ranges survive refresh, controls are discoverable and the active window owns Undo. |
 
