@@ -24,15 +24,16 @@ See the [build and release guide](../CICD.md) for repository checks and the macO
 | Capability | First release |
 |---|---|
 | Documents | Open, edit, save and reopen UTF-8 `.scad` files. Use ordinary files with relative imports. Preserve comments, identifiers, line endings and untouched bytes. |
-| Code → UI | An accepted evaluation replaces the model, instance outline, values and diagnostics together. Syntax errors leave a visibly stale last-good preview. |
+| First run | Bundle the canonical plate as a read-only resource. Help → Open Example opens its bytes in a new untitled document that can be edited and saved offline. |
+| Code → UI | A successful evaluation replaces the model, instance outline, values and diagnostics together. A console shows the evaluation's `echo()` output, warnings and `assert` failures in order. Syntax errors leave a visibly stale last-good preview. |
 | UI → code | Edit literal dimensions on cubes, spheres and cylinders, direct numeric arguments to user modules, named numeric parameters and supported translations. Offer formula offsets or a shared parameter edit under the rules in file 02. |
 | Booleans and repetition | Inspect positive operands and cutters. Select one occurrence inside a module or loop and show the full impact of editing its source. Offer a pitch handle for the documented simple pattern. |
-| Arbitrary OpenSCAD | Let the pinned engine evaluate valid 3D programs within its supported features and file inputs. Code navigation and inspection remain available for constructs without an editable handle. Report diagnostics for unsupported inputs. |
+| Arbitrary OpenSCAD | Let the pinned engine evaluate valid 3D programs within its supported features and file inputs. Code navigation and inspection remain available for constructs without an editable handle. Report unsupported inputs explicitly, including a valid top-level 2D result. Keep its source editable. |
 | macOS delivery | Native Apple silicon application, working offline after installation. Deliver a Developer ID distribution build when release credentials are available. |
 
 **Platform assumption.** “Mac OS X” means modern macOS. Use macOS 14 or later on arm64 for the first release. Record the exact Xcode, SDK, deployment target and engine revision at M0. Intel support can follow once the dependency stack and helper pass the same fixture on an Intel Mac. The document format is independent of the CPU.
 
-**Editing boundary.** The first release operates on authored values and operations. Explicitly breaking one instance out of a procedural pattern, editing imported mesh topology, arbitrary face push/pull, simultaneous multi-file rewrites, and an interactive 2D sketcher are follow-on work. An included module remains useful in v1 because an explicit argument in the current file can still be edited. The proposed later milestones describe where the first two procedural extensions fit.
+**Editing boundary.** The first release operates on authored values and operations. Explicitly breaking one instance out of a procedural pattern, editing imported mesh topology, arbitrary face push/pull, simultaneous multi-file rewrites, and an interactive 2D sketcher are follow-on work. An included module remains useful in v1 because an explicit argument in the current file can still be edited. File 05 lists prerequisites and acceptance examples for follow-on work.
 
 ## User-visible contract
 
@@ -48,4 +49,4 @@ Use Swift and AppKit for the document application, MetalKit for the viewport, an
 
 ## Definition of done
 
-A fresh checkout builds on the declared Mac toolchain. A fresh install opens the example with no separately installed OpenSCAD or Homebrew libraries. The sequence in [the acceptance walkthrough](06-Verification-and-Release.md#mounting-plate-walkthrough) passes, including exact source diffs, scope, malformed code, undo, save, reopen and an upstream geometry comparison. The release report identifies the tested hardware, engine SHA and any unverified distribution step. A green renderer test by itself does not complete the editor.
+A fresh checkout builds on the declared Mac toolchain. A fresh install opens the bundled example with no separately installed OpenSCAD or Homebrew libraries. The sequence in [the acceptance walkthrough](06-Verification-and-Release.md#mounting-plate-walkthrough) passes, including exact source diffs, scope, malformed code, undo, save, reopen and an upstream geometry comparison. The release report identifies the tested hardware, engine SHA and any unverified distribution step. A green renderer test by itself does not complete the editor.
