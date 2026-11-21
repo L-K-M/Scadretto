@@ -26,11 +26,13 @@ scadretto-engine --scadretto-job /absolute/job/request.json
 
 | Item | Required contents |
 |---|---|
-| `request.json` | `protocolVersion`, `requestID`, `EvaluationKey`, logical main URL, untitled base directory when applicable, relative path to main UTF-8 snapshot, ordered permitted library and resource roots, preview mode, selected geometry backend/options and expected worker build. The worker verifies that the resolution inputs match the key's digest. |
+| `request.json` | `protocolVersion`, `requestID`, `EvaluationKey`, logical main URL, untitled base directory when applicable, relative path to main UTF-8 snapshot, ordered permitted library and resource roots, the `$preview` evaluation mode to run, selected geometry backend/options and expected worker build. The worker verifies that the resolution inputs match the key's digest. |
 | `main.scad` | Exact unsaved source bytes for this job. Resolve paths and report diagnostics against the logical URL in the request. |
 | `result.json` | Echoed protocol, request ID, key, build SHA, status (`ok`, `error`), file table with digests, diagnostics, observed dependencies, scene tables and payload descriptors |
 | `mesh.bin` | Versioned final vertex and index buffers. Optional triangle-to-instance table has an explicit unknown value. |
 | `operands.bin` | Pickable or highlightable operand meshes and transforms, with per-range descriptors. Identical local meshes may share storage across instances. |
+
+The request names the `$preview` evaluation mode explicitly rather than an ambiguous "preview" flag: it is the boolean the engine evaluates the program under, and the reference CLI comparison in file 06 must run the same mode — a program branching on `$preview` produces different geometry under each. In v1 the authoritative scene uses final-render semantics, so requests send `$preview = false`.
 
 The parent creates the job directory with private permissions. The child writes payloads first, closes them, writes a temporary manifest and atomically renames it to `result.json` last. On success exit 0, including for valid empty geometry. On a model error, write an error manifest then exit 1. The error manifest includes every dependency observed before failure, the attempted unresolved paths where known, and diagnostic source spans when available; the parent keeps watching them so fixing a missing file can trigger reevaluation without a source edit. Distinguish signal, timeout, protocol mismatch and internal exit separately. Parent accepts only a matching, fully validated result after child exit. A nonzero status with an `ok` manifest is a worker failure. Make protocol mismatch a visible development or packaging error.
 
