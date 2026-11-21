@@ -1,0 +1,94 @@
+name: Draft macOS release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Verify and stage notarized DMG
+    runs-on: macos-26
+    timeout-minutes: 90
+    environment: distribution
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate release tag and milestone inputs
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor HEAD origin/main || {
+            echo '::error::The release tag must point to a commit on main.'
+            exit 1
+          }
+          Scripts/release.sh --preflight "${GITHUB_REF_NAME#v}"
+          [[ "$(uname -m)" == arm64 ]] || {
+            echo '::error::The release requires an arm64 runner.'
+            exit 1
+          }
+
+      - name: Verify app and engine
+        run: Scripts/verify
+
+      - name: Check distribution credentials
+        env:
+          DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          for name in DEVELOPER_ID_CERTIFICATE_BASE64 DEVELOPER_ID_CERTIFICATE_PASSWORD NOTARY_APPLE_ID NOTARY_PASSWORD NOTARY_TEAM_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing distribution environment secret $name."
+              exit 1
+            fi
+          done
+
+      - name: Import Developer ID certificate
+        uses: Apple-Actions/import-codesign-certs@288b8ec97b82c66b6f2a6baaf7acc8dfbcbe331c # v7.2.0
+        with:
+          p12-file-base64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          p12-password: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+
+      - name: Package and validate final DMG
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          assets_dir="$(mktemp -d "$RUNNER_TEMP/scadretto-release.XXXXXX")"
+          dmg="Scadretto-$GITHUB_REF_NAME-macos-arm64.dmg"
+          Scripts/package-macos --distribution --version "${GITHUB_REF_NAME#v}" \
+            --build "$GITHUB_RUN_NUMBER" --output "$assets_dir/$dmg"
+          (
+            cd "$assets_dir"
+            codesign --verify --strict --verbose=2 "$dmg"
+            xcrun stapler validate "$dmg"
+            spctl --assess --type open --context context:primary-signature --verbose "$dmg"
+            shasum -a 256 "$dmg" > SHA256SUMS.txt
+          )
+          echo "SCADRETTO_RELEASE_ASSETS=$assets_dir" >> "$GITHUB_ENV"
+
+      - name: Create draft with verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes \
+            --notes 'Complete the clean-Mac offline install and fixture checks in the distribution gate before publishing.' \
+            "$SCADRETTO_RELEASE_ASSETS/Scadretto-$GITHUB_REF_NAME-macos-arm64.dmg" \
+            "$SCADRETTO_RELEASE_ASSETS/SHA256SUMS.txt"
