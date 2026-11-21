@@ -29,6 +29,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 - [ ] Replace the spike client with a versioned job encoder, validated decoder and cancellable scheduler. Package the helper and runtime resources in the developer app. Inject the executable location in tests.
 - [ ] Load and shade the final mesh in Metal. Add camera framing, orbit, pan and zoom, resize/Retina handling and diagnostics that jump to the correct file/range.
+- [ ] Add a warning-only fixture and assert that warnings reach the status area and jump to their source without clearing the accepted scene or disabling write-back.
 - [ ] Render from the live buffer, honor include/use/import paths, accept only the current key, clear valid empty scenes, and label stale last-good scenes. Simulate process crash, out-of-order completion and deleted include recovery.
 
 **Exit:** Open the handwritten fixture from Finder, change `count` in text, and see the new hole in the shaded mesh and outline. Break and fix a statement without losing work. Running from a path with spaces succeeds.
