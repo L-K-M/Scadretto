@@ -1,0 +1,84 @@
+# Implementation work packages
+
+Complete milestones in order. Each ends with executable evidence and a usable slice of the application. Record the exact command, fixture, environment and any failing gate in the implementation repository. Keep the unmodified reference executable available throughout. Prefix script paths below with the repository root when running from another directory.
+
+## M0 | Prove the engine on a Mac
+
+**Inputs:** [Architecture](01-Architecture.md), [worker contract](03-OpenSCAD-Worker.md) and the [mounting-plate fixture](06-Verification-and-Release.md#canonical-fixture).
+
+- [ ] Create `Tests/Fixtures/mounting-plate.scad` exactly as supplied. Choose a buildable OpenSCAD commit with a working macOS arm64 headless backend. Pin that commit, dependencies, backend options, resource paths and the parser/runtime pair. Record the Xcode, SDK and CMake versions used.
+- [ ] Implement `Scripts/bootstrap-macos`, `Scripts/build-engine` and `Scripts/verify-engine`. Bootstrap checks prerequisites with actionable errors, obtains pinned sources and verifies checksums/revisions. Build both reference and patched executables into separate product roots. Cache against pins, architecture, deployment target and patch digest.
+- [ ] Write a tiny worker client that sends unsaved source with a logical path, reads the model and trace, and exercises a ray into the third inner wall. Inventory the pinned engine hooks and implement the minimum instrumentation needed. Capture the corresponding source substring, instance bindings, local/world transforms and actual final mesh evidence. Test with two instances sharing a cached primitive.
+- [ ] Compare the fixture with the reference. If face ownership is unavailable, implement the matched-surface fallback in file 03. If a compatible backend cannot build on macOS 14, try another supported revision or backend and record the result before changing the platform baseline.
+
+**Exit:** A clean Mac can reproduce both builds. The inner wall maps to iteration 2 with an unbroken link to `hole_d`. The source SHA and reference geometry comparison are in `Docs/Decisions/engine-spike.md`. Do not start a bespoke OpenSCAD interpreter to get past this gate.
+
+## M1 | Ship the source editing core and document shell
+
+**Depends on M0.** Implement `ScadrettoCore`, `ScadrettoSyntax`, the `Scadretto` scheme, initial document window and package tests.
+
+- [ ] Implement raw bytes, source spans, a UTF-16 line index, revisioning, immutable snapshots and atomic checked transactions. Add golden input/output tests for the coordinate and undo cases in file 02.
+- [ ] Bring in the pinned Tree-sitter grammar and runtime. Run its parser off the main thread and discard stale syntax responses. Verify call locations against the worker on the initial corpus. Syntax errors must still yield useful highlighting outside the invalid region.
+- [ ] Implement a plain `NSTextView` adapter, an `NSDocument` subclass and ordinary New/Open/Save/Revert. Add native Undo/Redo, unmodified round-trip saving and edited-state tracking. Add external-change baseline tracking before enabling autosave-in-place.
+
+**Exit:** Open a CRLF fixture with a BOM and emoji, edit one number by keyboard, save and compare expected bytes. Undo/redo through the Edit menu; open two separate documents and verify independent undo history. `swift test --package-path Packages/ScadrettoKit` passes.
+
+## M2 | Compile real documents and display the result
+
+**Depends on M1.** Implement the job protocol, `ScadrettoEngineClient`, initial `ScadrettoViewport`, diagnostics and resource resolver.
+
+- [ ] Replace the spike client with a versioned job encoder, validated decoder and cancellable scheduler. Package the helper and runtime resources in the developer app. Inject the executable location in tests.
+- [ ] Load and shade the final mesh in Metal. Add camera framing, orbit, pan and zoom, resize/Retina handling and diagnostics that jump to the correct file/range.
+- [ ] Render from the live buffer, honor include/use/import paths, accept only the current key, clear valid empty scenes, and label stale last-good scenes. Simulate process crash, out-of-order completion and deleted include recovery.
+
+**Exit:** Open the handwritten fixture from Finder, change `count` in text, and see the new hole in the shaded mesh and outline. Break and fix a statement without losing work. Running from a path with spaces succeeds.
+
+## M3 | Complete the first bidirectional edit
+
+**Depends on M2.** Build the narrowest complete interaction through normal application entry points.
+
+- [ ] Emit the cylinder diameter property, call chain and authoring spans. Connect final-surface hit testing to source highlighting and a scope-aware inspector.
+- [ ] Implement a diameter field, a radial drag handle, affected-instance highlights and one undoable write to a shared literal. Preview with an overlay. On release, verify the patch, update the text view and reevaluate. Implement Escape, zero movement and stale-gesture rejection.
+- [ ] Add separate integration tests for keyboard entry, real viewport drag, and reopen in the reference CLI. Replay the same interaction with an identical local literal in an unrelated call to prove the correct declaration is chosen.
+
+**Exit:** The exact diameter/count walkthrough in file 06 passes. Dragging the third hole changes one literal and four bores. Typing changes the count. Source, inspector and geometry agree after undo and reopen. This is the first demonstrable product milestone.
+
+## M4 | Extend properties, transforms and procedural scope
+
+**Depends on M3.** Keep an explicit support table beside the planner tests.
+
+- [ ] Add the remaining cube/sphere/cylinder bindings, explicit module arguments, transform vector edits, active-file named numeric parameters and the eligibility checks from file 02.
+- [ ] Implement explicit local offsets and prefix insertion at verified syntax boundaries. Exercise combined transforms, center semantics, negative scales and singular transforms. Disable ambiguous implicit signatures and computed lists.
+- [ ] Implement impact tracking and selection reconciliation for shared calls, modules, shadowed names and repeated instances. Add the restricted pitch handle and numeric fallback for iteration zero.
+- [ ] Support nested booleans, ghost selection, rim ambiguity and outline fallback. Keep expressions inspectable when they have no approved rewrite.
+
+**Exit:** The full editing and picking matrix in file 06 passes. Repeated edits preserve user formatting and formulas. No single-instance action rewrites a shared generator by accident.
+
+## M5 | Harden real macOS workflows
+
+**Depends on M4.** Complete save conflicts, worker resilience, input handling, accessibility and performance measurement.
+
+- [ ] Finish autosave/revert, separate dependency documents, reload/keep/compare flows, file replacement notifications and invalidation across windows. Exercise renamed/missing libraries and relative binary imports.
+- [ ] Exercise cancellation, crash recovery, empty results, ambiguous selections, multi-window isolation, rapid typing and text input composition. Make diagnostics accessible and ensure the keyboard can perform every required property edit.
+- [ ] Benchmark the fixture and the generated stress pattern under file 06's workload. Implement caching or instancing for measured bottlenecks. Confirm a slow evaluation never blocks typing or camera control.
+
+**Exit:** App, unit and integration suites pass on arm64. A real-Mac manual report covers trackpad, Retina picking, VoiceOver and external editing. Record measured timing percentiles and any unverified targets.
+
+## M6 | Deliver a reproducible distributable build
+
+**Depends on M5.** Package an arm64 app containing its own helper, required resources, dylibs, attribution and corresponding engine source material.
+
+- [ ] Implement `Scripts/verify` and `Scripts/package-macos` with distinct local and distribution modes. Test a locally signed build on a machine without Homebrew or a system OpenSCAD installation.
+- [ ] Validate architecture, minimum OS, dependency paths and library/font resolution. Review redistribution licenses for the pinned dependency set and prepare the matching source/build instructions.
+- [ ] When the release owner supplies credentials, sign nested code and app, notarize and staple, then run Gatekeeper and quarantine install checks on the final package. Record artifact checksums.
+
+**Exit:** The release checklist in file 06 records both functional verification and distribution state. An ad hoc developer package is a valid local deliverable; mark public distribution pending until those gates pass.
+
+## Later extensions
+
+| Extension | Prerequisite | First acceptance example |
+|---|---|---|
+| Explicit “only this occurrence” | Binding trace, loop-identity proof, previewable structural diffs | On a recognized integer-range pattern, preview and accept a conditional offset for one occurrence. Other instances, comments and ordinary parameter behavior remain intact; cancel produces no diff. |
+| Rotate and scale handles | Robust frame, pivot and handedness tests | Rotate about the displayed pivot under a transformed parent. Re-evaluation produces the previewed pose. |
+| Editing dependency files in place | Multi-document coordinated transactions and undo | Changing a library parameter previews all affected open documents and can be undone coherently. |
+| Intel or universal distribution | Reproducible x86_64 engine and dependency builds | Verify the native app/helper pairing and the same fixture suite on an actual Intel Mac. |
