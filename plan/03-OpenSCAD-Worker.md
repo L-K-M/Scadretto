@@ -60,6 +60,8 @@ Collect provenance per occurrence, even when geometry evaluation uses a cached l
 
 Keep a scoped binding stack while evaluating module calls, loops, `let` and assignments. Capture the evaluated argument → formal parameter → resolved declaration chain for supported scalar slots. Mark opaque arithmetic as an expression boundary unless a specific edit rule handles it. Track control dependencies when provable or mark the impact set partial. Keep the stock evaluator in charge of scoping, defaults, special variables and evaluation order. Never re-run random or time-dependent expressions merely to collect trace information.
 
+Cover the remaining OpenSCAD binding constructs. A list comprehension (`[for (...)]`) is a scoped binding context like a loop: capture its iteration variable and evaluated list so an edit to a value used inside the comprehension has the correct impact set. A function literal is an expression boundary: record the call and its argument bindings, but do not offer a write target through it unless the literal resolves to a supported scalar slot. Mark either as opaque when the hook cannot observe it; never drop the occurrence or infer its bindings from equal values.
+
 ## Picking a boolean result
 
 1. Raycast the final visible surface, using a CPU BVH for v1. Return a world hit, triangle and normal. If the backend has a proven unique primitive ancestry for the triangle, use it and follow the instance chain to candidate authoring scopes.
