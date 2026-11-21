@@ -19,6 +19,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 - [ ] Implement raw bytes, source spans, a UTF-16 line index, revisioning, immutable snapshots and atomic checked transactions. Add golden input/output tests for the coordinate and undo cases in file 02.
 - [ ] Bring in the pinned Tree-sitter grammar and runtime. Run its parser off the main thread and discard stale syntax responses. Verify call locations against the worker on the initial corpus. Syntax errors must still yield useful highlighting outside the invalid region.
+- [ ] Declare one SwiftPM test target per subdirectory under `Packages/ScadrettoKit/Tests/` in `Package.swift`, plus the Xcode UI-test target for `Tests/UITests/`. Confirm `swift test --package-path Packages/ScadrettoKit` discovers and runs the package targets rather than reporting no tests.
 - [ ] Implement a plain `NSTextView` adapter, an `NSDocument` subclass and ordinary New/Open/Save/Revert. Add native Undo/Redo, unmodified round-trip saving and edited-state tracking. Add external-change baseline tracking before enabling autosave-in-place.
 
 **Exit:** Open a CRLF fixture with a BOM and emoji, edit one number by keyboard, save and compare expected bytes. Undo/redo through the Edit menu; open two separate documents and verify independent undo history. `swift test --package-path Packages/ScadrettoKit` passes.
