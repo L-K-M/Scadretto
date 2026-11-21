@@ -12,7 +12,8 @@ Build the application around `NSDocumentController`, one `ScadrettoDocument` sub
 | Instance outline | Display expanded module calls, loops, primitives and boolean operands. Distinguish the selected occurrence from the shared definition. Virtualize large subtrees and let users select enclosed operands. |
 | Status area | Report evaluating, ready, valid empty model, preview out of date, cancelled, source diagnostics and worker failures. Make the current failure and source location reachable with the keyboard. |
 | File and Edit menus | New, Open, Save, Save As or Duplicate as appropriate for native document mode, Revert, Undo, Redo and Find. Register `.scad` as an editable document type. Keep Finder and drag-to-open working. |
-| View and Model menus | Toggle editor/inspector/outline, frame selection, reevaluate, cancel evaluation, reveal source and choose an edit target. Provide accessible alternatives to viewport gestures. |
+| View and Model menus | Toggle editor/inspector/outline, model statistics, frame selection, reevaluate, cancel evaluation, reveal source and choose an edit target. Provide accessible alternatives to viewport gestures. |
+| Model statistics | Report the accepted scene's evaluated bounds, signed volume, triangle count, instance count and evaluation time; mark them stale with the scene. |
 
 A second document gets separate selections, worker requests, camera, diagnostics and undo history. Windows belonging to the same `NSDocument` share the one source buffer. Store window presentation preferences separately from the `.scad` bytes.
 
