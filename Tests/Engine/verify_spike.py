@@ -162,7 +162,9 @@ def symmetric_difference(oracle, working, mesh, reference):
     worker_off, ref_off = working / "worker.off", working / "reference.off"
     write_off(worker_off, mesh)
     write_off(ref_off, reference)
-    result = subprocess.run([oracle, worker_off, ref_off], check=True, capture_output=True, timeout=30)
+    result = subprocess.run([oracle, worker_off, ref_off], capture_output=True, timeout=30)
+    check(result.returncode == 0,
+          f"Solid comparison failed in {working}: {result.stderr.decode(errors='replace').strip()}")
     return float(result.stdout)
 
 
@@ -192,7 +194,10 @@ def transform_point(matrix, point):
 
 def covers_point(triangle, point, normal, tolerance):
     a, b, c = triangle
-    surface_normal = normalize(cross(subtract(b, a), subtract(c, a)))
+    area_normal = cross(subtract(b, a), subtract(c, a))
+    if math.hypot(*area_normal) == 0:
+        return False
+    surface_normal = normalize(area_normal)
     # A subtracting surface faces the opposite way from the operand.
     if abs(dot(surface_normal, normal)) < 0.99999:
         return False
@@ -412,6 +417,10 @@ def verify(args):
     preview = b"if ($preview) cube(3); else cube(2);\n"
     result, _ = worker_job(args.worker, base / "preview", preview, logical, environment)
     check(volume(result["mesh"]) == 8, "Worker did not use final-render semantics")
+    echoed, _ = worker_job(args.worker, base / "console", b'echo("Scadretto probe"); cube(2);\n',
+                           logical, environment)
+    check(any('ECHO: "Scadretto probe"' in message for message in echoed["console"]),
+          "Missing worker echo output")
     worker_job(args.worker, base / "parse-error", b"cube(2;\n", logical, environment,
                expected_error="Could not parse")
     worker_job(args.worker, base / "unsupported-2d", b"square(2);\n", logical, environment,

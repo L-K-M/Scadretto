@@ -18,6 +18,9 @@ worker_source="$(cd "$worker" && cd -P .. && pwd -P)/source"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 
+engine_validate_source "$ENGINE_UPSTREAM"
+[[ -z $(git -C "$ENGINE_UPSTREAM" status --porcelain) ]] ||
+    engine_fail "The reference source has local edits."
 engine_validate_submodules "$worker_source"
 git -C "$worker_source" diff HEAD --exit-code
 [[ -z $(git -C "$worker_source" ls-files --others --exclude-standard) ]] ||
@@ -41,8 +44,10 @@ printf 'Evidence: %s\n' "$evidence"
     xcrun clang++ --version
     cmake --version
     printf 'OpenSCAD %s\nManifold %s\n' "$OPENSCAD_REVISION" "$MANIFOLD_REVISION"
-    shasum -a 256 "$reference/bin/openscad" "$worker/bin/scadretto-engine"
+    shasum -a 256 "$reference/bin/openscad" "$worker/bin/scadretto-engine" \
+        "$reference/bin/solid-difference" Tests/Fixtures/mounting-plate.scad
 } | tee "$evidence/environment.txt"
+python3 Tests/Engine/verify_staging.py Engine/package-runtime.py "$ENGINE_MACOS_TARGET"
 python3 Tests/Engine/verify_spike.py "$reference/bin/openscad" "$worker/bin/scadretto-engine" \
     "$reference/bin/solid-difference" Tests/Fixtures/mounting-plate.scad "$evidence" \
     --font-cache "$reference/bin/fc-cache" --fonts "$reference/Resources/fonts" \

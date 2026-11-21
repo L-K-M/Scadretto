@@ -49,7 +49,7 @@ jobs:
 
   engine:
     name: Pinned engine on arm64 macOS
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 55
     env:
       HOMEBREW_NO_AUTO_UPDATE: '1'
@@ -60,6 +60,11 @@ jobs:
           persist-credentials: false
       - name: Install build tools
         run: brew install cmake ninja pkgconf bison flex meson gettext
+      - name: Cache pinned dependency archives
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .build/engine/downloads
+          key: engine-downloads-${{ hashFiles('Engine/dependencies.lock') }}
       - name: Build pinned reference and worker
         run: Scripts/build-engine
       - name: Verify trace and geometry

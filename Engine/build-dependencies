@@ -9,6 +9,7 @@ recipe="$(cd "$(dirname "$0")" && pwd -P)"
 dependency_lock="$recipe/dependencies.lock"
 archives="$(cd "$recipe/.." && pwd -P)/.build/engine/downloads"
 macos_target=${MACOSX_DEPLOYMENT_TARGET:?}
+: "${SDKROOT:?Set SDKROOT to the macOS SDK from xcrun --show-sdk-path}"
 export CFLAGS="-O2 -mmacosx-version-min=$macos_target"
 export CXXFLAGS="$CFLAGS"
 export CPPFLAGS="-I$prefix/include"
@@ -120,7 +121,22 @@ autoconf_install libffi configure --enable-static --disable-shared --disable-doc
 # The macOS 27 SDK exposes pipe2() even when the deployment target predates
 # it. Keep GLib's portable fallback so a call on macOS 14 cannot hit a weak
 # import that is missing at runtime.
-sed -i '' "/^  'pipe2',\$/d" "$sources/glib/meson.build"
+if [[ ! -f "$sources/glib/.scadretto-pipe2-disabled" ]]; then
+    glib_config="$sources/glib/meson.build"
+    if [[ ! -f "$glib_config.original" ]]; then
+        cp "$glib_config" "$glib_config.original"
+    fi
+    if ! grep -q "^  'pipe2',\$" "$glib_config.original"; then
+        printf '%s\n' 'GLib pipe2 probe moved. Recheck the deployment-target fallback.' >&2
+        exit 1
+    fi
+    sed "/^  'pipe2',\$/d" "$glib_config.original" > "$glib_config"
+    if grep -q "^  'pipe2',\$" "$glib_config"; then
+        printf '%s\n' 'GLib pipe2 probe was not removed.' >&2
+        exit 1
+    fi
+    touch "$sources/glib/.scadretto-pipe2-disabled"
+fi
 meson_install glib --default-library shared -Ddocumentation=false -Dman-pages=disabled \
     -Ddtrace=disabled -Dtests=false -Dintrospection=disabled -Dsysprof=disabled
 if ! installed openssl; then

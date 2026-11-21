@@ -39,6 +39,9 @@ def validate(binary, target):
 
 
 def package(executable, prefix, frameworks, target):
+    if frameworks != executable.parent.parent / "Frameworks":
+        raise ValueError("Expected Frameworks to be a sibling of the executable directory")
+    frameworks.mkdir(exist_ok=True)
     bundled = {}
     commands = {}
 
@@ -53,9 +56,14 @@ def package(executable, prefix, frameworks, target):
         for name in names:
             if name.startswith(("/usr/lib/", "/System/Library/")):
                 continue
-            input_path = Path(name)
-            if not input_path.is_absolute():
-                input_path = prefix / "lib" / input_path.name
+            if name.startswith("@rpath/"):
+                input_path = prefix / "lib" / name[len("@rpath/"):]
+            elif name.startswith("@loader_path/"):
+                input_path = source.parent / name[len("@loader_path/"):]
+            elif name.startswith("/"):
+                input_path = Path(name)
+            else:
+                raise ValueError(f"Unsupported install name in {source}: {name}")
             input_path = input_path.resolve(strict=True)
             if not input_path.is_relative_to(prefix):
                 raise ValueError(f"Dependency outside pinned prefix: {name}")
@@ -89,5 +97,7 @@ def package(executable, prefix, frameworks, target):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) != 5:
+        sys.exit("Usage: package-runtime.py EXECUTABLE PREFIX FRAMEWORKS MACOS_TARGET")
     executable, prefix, frameworks = [Path(path).resolve() for path in sys.argv[1:4]]
     package(executable, prefix, frameworks, sys.argv[4])

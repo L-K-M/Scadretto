@@ -44,6 +44,12 @@ integration.
 
 ## Runtime source chain and hit
 
+The spike client calls `scadretto-engine --scadretto-job /path/to/request.json`
+with a relative `snapshot` of `main.scad` and an absolute `logicalPath`.
+The worker publishes `result.json` beside the request. Exit 0 signals a
+successful result, exit 1 reports a job error, and exit 2 reports failure
+to publish the result.
+
 The worker loads `main.scad` from the job directory and passes the bytes to
 the stock parser at the request's logical URL. The on-disk file at that URL
 contains only `cube(1);` in the verification case. The fixture is 350 bytes

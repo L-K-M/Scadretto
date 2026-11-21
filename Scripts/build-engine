@@ -52,17 +52,21 @@ for variant in reference worker; do
         if [[ $variant == worker ]]; then
             source_tree="$folder/source"
             if [[ ! -d "$source_tree/.git" ]]; then
-                git clone --quiet --shared "$ENGINE_UPSTREAM" "$source_tree"
-                git -C "$source_tree" submodule update --init --depth=1 -- \
-                    submodules/Clipper2 submodules/manifold submodules/sanitizers-cmake
+                # Publish the patched checkout only after cloning and replay
+                # succeed. A stopped git am cannot poison a later build.
+                (
+                    pending="$(mktemp -d "$folder/.source.XXXXXXXX")"
+                    trap 'rm -rf "$pending"' EXIT
+                    git clone --quiet "$ENGINE_UPSTREAM" "$pending"
+                    git -C "$pending" submodule update --init --depth=1 -- \
+                        submodules/Clipper2 submodules/manifold submodules/sanitizers-cmake
+                    engine_validate_source "$pending"
+                    git -C "$pending" -c user.name=Scadretto \
+                        -c user.email=scadretto@users.noreply.github.com am "$ENGINE_ROOT"/Engine/patches/*.patch
+                    mv "$pending" "$source_tree"
+                )
             fi
             engine_validate_submodules "$source_tree"
-            if [[ ! -f "$folder/.patched" ]]; then
-                engine_validate_source "$source_tree"
-                git -C "$source_tree" apply --check "$ENGINE_ROOT"/Engine/patches/*.patch
-                git -C "$source_tree" -c user.name=Scadretto -c user.email=scadretto@users.noreply.github.com am "$ENGINE_ROOT"/Engine/patches/*.patch
-                touch "$folder/.patched"
-            fi
         fi
         export PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig:$deps/share/pkgconfig"
         export OPENSCAD_LIBRARIES="$deps"

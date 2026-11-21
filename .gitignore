@@ -5,5 +5,3 @@ DerivedData/
 dist/
 xcuserdata/
 *.xcuserstate
-
-.engine/
