@@ -11,6 +11,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 - [ ] Verify the pinned engine's behavior on a main file that starts with a UTF-8 BOM; if normalization is needed, offset-adjust all reported source spans and prove it on a BOM fixture.
 - [ ] Write a tiny worker client that sends unsaved source with a logical path, reads the model and trace, and exercises a ray into the third inner wall. Inventory the pinned engine hooks and implement the minimum instrumentation needed. Capture the corresponding source substring, instance bindings, local/world transforms and actual final mesh evidence. Test with two instances sharing a cached primitive.
 - [ ] Compare the fixture with the reference. If face ownership is unavailable, implement the matched-surface fallback in file 03. If a compatible backend cannot build on macOS 14, try another supported revision or backend and record the result before changing the platform baseline.
+- [ ] Measure worker cold start plus engine initialization against the commit-to-frame budget in file 06. If it dominates the 1 s p95 target, schedule a keep-alive worker on the same wire contract before relying on the per-evaluation spawn in production.
 
 **Exit:** A clean Mac can reproduce both builds. The inner wall maps to iteration 2 with an unbroken link to `hole_d`. The source SHA and reference geometry comparison are in `Docs/Decisions/engine-spike.md`. Do not start a bespoke OpenSCAD interpreter to get past this gate.
 
