@@ -24,7 +24,7 @@ Scripts/                           bootstrap, verification, packaging
 Docs/Decisions/                    engine spike, coordinates, packaging and benchmark record
 ```
 
-Start with a checked-in `.xcodeproj`, a shared `Scadretto` scheme, Swift Package Manager lockfiles and one pinned engine dependency manifest. Build scripts resolve their own repository root and support spaces in paths. Keep fetched upstream sources and generated binaries in an ignored build directory. Check in the revision, patch series and instructions required to reproduce them.
+Start with a checked-in `.xcodeproj`, a shared `Scadretto` scheme, Swift Package Manager lockfiles and one pinned engine dependency manifest. Build scripts resolve their own repository root and support spaces in paths. Keep fetched upstream sources and generated binaries in an ignored build directory. Check in the revision, patch series and instructions required to reproduce them. The layout shows two `Tests/` directories on purpose: `Packages/ScadrettoKit/Tests/` holds the package's unit, contract and integration tests run by `swift test`, top-level `Tests/Fixtures/` is shared data referenced by both the package tests and the Xcode project, and top-level `Tests/UITests/` belongs to the application target.
 
 ## Data ownership
 
