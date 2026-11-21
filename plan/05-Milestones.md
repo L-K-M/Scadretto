@@ -60,7 +60,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 - [ ] Finish autosave/revert, separate dependency documents, reload/keep/compare flows, file replacement notifications and invalidation across windows. Exercise renamed/missing libraries and relative binary imports.
 - [ ] Exercise cancellation, crash recovery, empty results, ambiguous selections, multi-window isolation, rapid typing and text input composition. Make diagnostics accessible and ensure the keyboard can perform every required property edit.
-- [ ] Benchmark the fixture and the generated stress pattern under file 06's workload. Implement caching or instancing for measured bottlenecks. Confirm a slow evaluation never blocks typing or camera control.
+- [ ] Benchmark the fixture and the generated stress pattern under file 06's workload using its measurement method, and publish the raw sample logs and environment. Implement caching or instancing for measured bottlenecks. Confirm a slow evaluation never blocks typing or camera control.
 
 **Exit:** App, unit and integration suites pass on arm64. A real-Mac manual report covers trackpad, Retina picking, VoiceOver and external editing. Record measured timing percentiles and any unverified targets.
 

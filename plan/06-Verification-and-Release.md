@@ -98,8 +98,11 @@ xcodebuild -project Scadretto.xcodeproj -scheme Scadretto -destination 'platform
 
 Treat these as initial engineering budgets. Report observed p50/p95, sample count, hardware, OS, revision, backend and cold/warm state. Use release builds on a declared baseline such as an M1 with 16 GB RAM or equivalent. Re-run after pin changes.
 
+Define each interval precisely and log it per commit. For “commit to accepted shaded frame,” start when the committed transaction mutates the buffer and end when a frame built from the matching `EvaluationKey` is presented; report queue wait, worker wall time, decode/BVH time and presentation separately. Discard at least five warm-up commits per workload, then collect at least 30 samples, and publish p50/p95 with the raw sample log and harness version. Warm state means the helper and GPU pipelines are initialized; cold state additionally re-launches the helper and reloads resources. Record dropped frames and main-thread hitches alongside worker latency so slow decoding cannot hide behind an average.
+
 | Workload | Measurement | Target |
 |---|---|---|
+| First open | Cold app launch to first presented plate frame, with helper spawn recorded separately | p95 under 3 seconds on the declared baseline |
 | Canonical plate | Warm, commit to accepted shaded frame over 30 edits, excluding typing debounce | p95 under 1 second |
 | Active drag and orbit | Twenty seconds of interaction with the plate; then repeat with 100 valid repeated cutters on a larger plate | p95 frame time at or below 33 ms; a cut can update on commit |
 | Typing while worker is busy | 100 paced edits while running the larger pattern | p95 main-thread edit handling under 16 ms; zero stale scene commits |
