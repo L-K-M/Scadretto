@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Xcode and SwiftPM build products (Package.resolved stays checked in:
+# the plan requires pinned lockfiles)
+build/
+DerivedData/
+.build/
+xcuserdata/
+*.xcuserstate
+
+# Fetched upstream sources and generated binaries live in ignored build
+# directories per plan/01-Architecture.md
+Engine/build/
