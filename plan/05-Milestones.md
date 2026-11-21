@@ -27,7 +27,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 **Depends on M1.** Implement the job protocol, `ScadrettoEngineClient`, initial `ScadrettoViewport`, diagnostics and resource resolver.
 
-- [ ] Replace the spike client with a versioned job encoder, validated decoder and cancellable scheduler. Package the helper and runtime resources in the developer app. Inject the executable location in tests.
+- [ ] Replace the spike client with a versioned job encoder, validated decoder and cancellable scheduler. Check in the three golden protocol pairs from file 03, including the mounting-plate trace. Package the helper and runtime resources in the developer app. Inject the executable location in tests.
 - [ ] Load and shade the final mesh in Metal. Add camera framing, orbit, pan and zoom, resize/Retina handling and diagnostics that jump to the correct file/range.
 - [ ] Render from the live buffer, honor include/use/import paths, accept only the current key, clear valid empty scenes, and label stale last-good scenes. Simulate process crash, out-of-order completion and deleted include recovery.
 
