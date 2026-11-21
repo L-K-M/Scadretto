@@ -42,7 +42,7 @@ Give handle hits priority over object hits only while the handle is visible and 
 
 Click the inner cylindrical wall of hole three on the fixture. The breadcrumb identifies the third iteration, `mounting_hole` and `cylinder`. The inspector shows `Diameter 4`, the expression chain `d ← hole_d`, and `Shared parameter · 4 cutters`. Selecting that shared target lights up all four cutters. Drag its radius handle outward 0.5 model units or type a diameter of 5. The overlay reports diameter 5. Releasing changes only `hole_d = 4;` to `hole_d = 5;`. The ordinary source editor shows the edited declaration. Undo restores diameter 4 and all four bores.
 
-Use the same feedback for a local offset. A cheap moving outline or operand proxy is sufficient while dragging. Draw unchanged booleans in the existing shaded result and identify the moving overlay as a preview; update the actual boolean solid when the committed evaluation returns.
+Use the same feedback for a local offset. A cheap moving outline or operand proxy is sufficient while dragging. Draw unchanged booleans in the existing shaded result and identify the moving overlay as a preview; update the actual boolean solid when the committed evaluation returns. The live boolean preview extension in file 05 can later replace the proxy for models that evaluate fast enough.
 
 ## Files, libraries and external changes
 
