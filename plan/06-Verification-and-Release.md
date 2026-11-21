@@ -65,6 +65,7 @@ The plan's fixture and its three edits were rendered with stock OpenSCAD 2021.01
 | Area | Case | Assertion |
 |---|---|---|
 | Fidelity | BOM, CRLF, mixed line endings, no trailing newline, emoji, comments, tabs, scientific notation | No-op save matches raw bytes. One supported edit touches only its gold span; undo restores original bytes. |
+| Typed line endings | Return, Control-Return (`insertLineBreak:`) and `insertParagraphSeparator:` in a CRLF file; paste of LF, CR and U+2028 text; Return in a mixed file and on a final line without a newline | Every inserted separator matches the convention at the insertion point. No typed, pasted or dropped U+2028 or U+2029 reaches the source. Untouched bytes, including existing separators, stay as they are. |
 | Syntax drift | Worker source span differs from concrete syntax or target token | No write occurs. Highlight the diagnostic or allow code navigation only. |
 | Scope | Module-local `d` shadows a top-level `d`; two equal literal values; numeric positional and named arguments | Correct resolved formal/declaration and instance impact; unrelated code and shapes remain unchanged. |
 | Expressions | `wall/2`, nested arithmetic, inline/block comments, decimal comma UI locale, second drag after save/reopen | Formula remains evaluable; explicit offset retains future changes to `wall`. Golden diff covers accepted cases; unsupported ambiguous comments disable the action. |
