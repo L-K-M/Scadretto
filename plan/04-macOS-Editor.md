@@ -52,6 +52,7 @@ Use the same feedback for a local offset. A cheap moving outline or operand prox
 - Observe resolved dependency files and their parent directories to catch atomic replacements and deleted/recreated files. Debounce duplicate notifications. Track an unresolved include or asset's candidate parent path so creating it can recover the preview. Record resource roots on each evaluation. A changed dependency invalidates current write-back handles immediately.
 - Edit one active file per transaction in v1. Navigate to a dependency in a separate editor document when requested. Evaluate referring documents against their saved dependencies; label this behavior in the UI if an included file has unsaved edits elsewhere. Saving the dependency triggers reevaluation of affected parents.
 - When the helper fails to launch or load a library, offer logs and Retry Preview. Always preserve the source. Treat the helper as a child process of a non-sandboxed, directly distributed application in this plan. Its process boundary gives crash isolation; any later sandboxed distribution needs its own file-access design.
+- Provide a Quick Look preview extension for `.scad` files as a later extension. It renders with the same pinned worker and a per-file read-only cache, resolves includes relative to the previewed file, and shows the same diagnostics as the app without launching the full app or writing to the document.
 
 ## Accessibility and native acceptance
 
