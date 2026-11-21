@@ -36,7 +36,7 @@ A second document gets separate selections, worker requests, camera, diagnostics
 
 Start with click to select, ordinary drag on an explicit handle, background drag to orbit, Shift-drag to pan and scroll/pinch to zoom. Disambiguate a click from a drag with a small movement threshold. Respect backing scale when converting window coordinates to drawable pixels. Convert between AppKit's view coordinates and Metal's viewport convention exactly once. Test on a Retina display and with a resized viewport. A keyboard user must be able to reach the same property by outline and inspector alone.
 
-Give handle hits priority over object hits only while the handle is visible and a compatible operation is selected. Orient drag handles to their advertised frame. Use a projected axis or an axis-aligned drag plane; when ill-conditioned, show numeric entry. Honor a visible snap increment measured in model units. Recalculate the candidate value from mouse-down baseline each frame so snapping and round-trip motion do not accumulate floating-point error.
+Give handle hits priority over object hits only while the handle is visible and a compatible operation is selected. Orient drag handles to their advertised frame. Use a projected axis or an axis-aligned drag plane; when ill-conditioned, show numeric entry. Honor the visible snap increment from the app preferences (model units, default off, applied to the committed value as defined in [file 02](02-Source-and-Edits.md)). Recalculate the candidate value from mouse-down baseline each frame so snapping and round-trip motion do not accumulate floating-point error.
 
 ### Example interaction
 
