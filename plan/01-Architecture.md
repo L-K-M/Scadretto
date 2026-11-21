@@ -43,8 +43,8 @@ Format `Engine/patches/` as a `git format-patch` series — `NNNN-*.patch` files
 | `EvaluationOutcome` | Engine client | Immutable result for one key, including status, diagnostics, observed dependencies and file digests even when evaluation fails. A successful outcome also carries the scene. |
 | `SceneSnapshot` | Document controller | Last accepted successful scene: mesh, bounds, executed instances, source map and editable binding candidates. A failed outcome does not replace it. |
 | `Selection` | Per document window | Snapshot-scoped instance and source anchor. Camera and selection survive only when their targets can be re-established. |
-| `EditIntent` | Inspector or viewport | Requested operation, explicitly selected target and scope, units, original value, and the key at gesture start |
-| `SourcePatch` | Pure edit planner | Expected document key and source slices, replacements and an undo label. Applied only on the document's serial mutation path. |
+| `EditIntent` | Inspector or viewport | Requested operation, explicitly selected target and scope, units, original value, full key and accepted request ID at gesture start |
+| `SourcePatch` | Pure edit planner | Expected document key and source slices, replacements and an undo label. A graphical patch also carries its originating scene’s request ID. Applied only on the document's serial mutation path. |
 
 Save serializes the current source buffer. Source-writing controls require a successful outcome for the latest request and complete key, a writable target and no unresolved disk conflict. While waiting, cancelled or failed, label any last-good scene stale and disable its bindings. Diagnostics and evaluation status come from the latest accepted outcome, not from the last-good scene. Presentation state such as camera and panel visibility can live in window restoration or preferences. It must be possible to discard every cache and reconstruct a model by opening the source again.
 
@@ -64,7 +64,7 @@ The document owns committed bytes, revision, undo history and the accepted outco
 
 Off the main actor: Tree-sitter parsing, worker encoding and decoding, mesh processing, BVH construction and file I/O. Those workers receive immutable inputs and return immutable values; they never touch document state or AppKit. The engine client publishes results to the main actor, which checks the key, job token and dependency digests before swapping state.
 
-Cancellation is cooperative and propagated. A superseded request cancels its task; closing a document cancels its queued and active work; a drag that loses its selection or observes a revision change abandons its tentative patch. Tasks report cancellation rather than writing partial state. Tests assert main-actor isolation and that no off-main worker blocks typing or camera control.
+Cancel in-process tasks cooperatively and stop native evaluation using the bounded process termination in file 03. A superseded request cancels its task; closing a document cancels its queued and active work; a drag that loses its selection or observes a revision change abandons its tentative patch. Tasks report cancellation rather than writing partial state. Tests assert main-actor isolation and that no off-main worker blocks typing or camera control.
 
 ## Stable meaning across evaluations
 

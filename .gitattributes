@@ -1,8 +1,3 @@
-# Default: normalize text files to LF in the repository.
-* text=auto
-
-# .scad sources are byte-exact fixtures: line endings, BOMs and trailing
-# bytes are part of the test contract (plan/02, plan/06). Never convert.
+# SCAD sources and golden fixture data have byte-exact offsets and digests.
 *.scad -text
-
-*.md text eol=lf
+Tests/Fixtures/** -text

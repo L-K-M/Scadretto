@@ -7,7 +7,7 @@ original `.scad` file. Editing the same expression with the keyboard
 updates the inspector and the model.
 
 This repository currently contains the implementation plan and the
-canonical test fixture. Start with
+canonical and stress test fixtures. Start with
 [`plan/00-Start-Here.md`](plan/00-Start-Here.md) — the numbered files
 under [`plan/`](plan/) are parts of a single document covering
 architecture, source-edit rules, the OpenSCAD worker protocol, the macOS
