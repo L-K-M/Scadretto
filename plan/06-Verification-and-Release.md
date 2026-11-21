@@ -105,6 +105,12 @@ Treat these as initial engineering budgets. Report observed p50/p95, sample coun
 | Typing while worker is busy | 100 paced edits while running the larger pattern | p95 main-thread edit handling under 16 ms; zero stale scene commits |
 | Cancellation and cleanup | Alternate 50 distinct jobs, supersede or close repeatedly, inspect children and private job storage after settling | Zero orphaned workers and zero abandoned completed jobs; record peak memory and termination latency |
 
+### Stress workload
+
+`Tests/Fixtures/stress-100-cutters.scad` is the larger pattern named in the table above. It is a `2010 × 40 × 6` plate with 100 through-holes of diameter 4 on a 20-unit pitch starting at X = 15, cut with `$fn = 32`. Its bounds are `[0,0,0]` to `[2010,40,6]`; the bore centers are X = 15 + 20i for i = 0…99 at Y = 20. The expected solid volume is `2010 × 40 × 6 − 100 × 6 × (32/2) × (4/2)² × sin(2π/32)`, following the same regular-polygon convention as the canonical fixture.
+
+Use this fixture for the drag/orbit and typing workloads and for the cancellation series. Derive variants from its module and loop shape rather than hand-editing a second copy. Record the fixture's SHA-256 with every benchmark result; changing the fixture invalidates stored percentiles.
+
 ## Distribution gate
 
 1. Build an arm64 Release app for the declared deployment target. Put the child executable in the app's helpers location, dynamic libraries in Frameworks, and engine resources, fonts as licensed, and shader resources in bundle resources. Resolve paths relative to the executable or bundle. Run `file`, `otool -L` and deployment-target inspection recursively and flag developer-machine or Homebrew paths.
