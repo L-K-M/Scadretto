@@ -43,7 +43,7 @@ Save serializes the current source buffer. The outline and inspector always read
 ## End-to-end event flow
 
 1. An AppKit text edit, a numeric inspector entry, undo, redo or an accepted viewport gesture enters the same document transaction API. Accepting a transaction increments revision even when undo returns to bytes seen before. An unchanged transaction produces no undo item.
-2. Update text storage and the byte/UTF-16 index in one mutation. Refresh highlighting asynchronously. Schedule a worker request after about 150 ms of idle typing. Enter in an inspector or releasing a handle evaluates immediately.
+2. Update text storage and the byte/UTF-16 index in one mutation. Refresh highlighting asynchronously. Schedule a worker request after about 150 ms of idle typing, lengthened for slow models as described in file 03. Enter in an inspector or releasing a handle evaluates immediately.
 3. Capture immutable UTF-8 bytes and the current dependency generation. The worker returns the same key plus digests of all files read. A filesystem notification changes the generation even when the main source has identical bytes.
 4. Accept results on the main actor only if the complete key matches, source digests still agree and the document is open. Swap all scene-derived state in one operation. Keep the previous good mesh on parse/evaluation failure. Empty valid geometry is a successful result with no mesh.
 5. While dragging, calculate a tentative value and draw a local overlay. Commit a single patch on release. Escape, a concurrent source change, an incoming file conflict or a lost selection cancels the tentative edit. A cancelled gesture leaves no bytes or undo entry behind.
