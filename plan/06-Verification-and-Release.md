@@ -76,6 +76,7 @@ The plan's fixture and its three edits were rendered with stock OpenSCAD 2021.01
 | Failure recovery | Invalid code, valid empty `difference`, missing asset later created, child exits mid-write, corrupt mesh or protocol mismatch | Source stays editable and saveable. Valid empty clears prior geometry; errors preserve last-good geometry and show the reason. |
 | Files | External replacement while clean and dirty, autosave conflict, read-only dependency, sibling library in two documents | Dirty bytes survive. No silent overwrite. Dependency changes invalidate previews even when source is unchanged. |
 | Native UX | IME composition, Retina pick, document windows, dark mode, keyboard-only inspector, VoiceOver | Selection and ranges survive refresh, controls are discoverable and the active window owns Undo. |
+| Multi-window document | Two windows of one `NSDocument`; edit or undo from either while the other holds a selection or gesture | One buffer and one undo stack; no duplicate undo entries; both selections re-anchor or clear safely |
 
 ## Build and verification entry points
 

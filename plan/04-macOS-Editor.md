@@ -14,7 +14,7 @@ Build the application around `NSDocumentController`, one `ScadrettoDocument` sub
 | File and Edit menus | New, Open, Save, Save As or Duplicate as appropriate for native document mode, Revert, Undo, Redo and Find. Register `.scad` as an editable document type. Keep Finder and drag-to-open working. |
 | View and Model menus | Toggle editor/inspector/outline, frame selection, reevaluate, cancel evaluation, reveal source and choose an edit target. Provide accessible alternatives to viewport gestures. |
 
-A second document gets separate selections, worker requests, camera, diagnostics and undo history. Windows belonging to the same `NSDocument` share the one source buffer. Store window presentation preferences separately from the `.scad` bytes.
+A second document gets separate selections, worker requests, camera, diagnostics and undo history. Windows belonging to the same `NSDocument` share the one source buffer, transaction path and undo history. An edit committed in either window updates text, byte/UTF-16 index, syntax ranges and inspector state in both, and registers exactly one undo item. Re-anchor or clear the other window's selection and write-back handles by source anchor and call path rather than by index; each window keeps its own camera. During input composition in either window, defer graphical commits in both. Store window presentation preferences separately from the `.scad` bytes.
 
 ## Code editing and diagnostics
 
