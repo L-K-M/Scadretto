@@ -4,6 +4,8 @@
 
 Use a source-pinned headless OpenSCAD executable as a separate process. Build two variants from the same revision and dependencies: an untouched reference CLI for CI and a Scadretto worker carrying the trace patch. The worker is the geometry backend for the shipped app. The reference CLI is a development and verification tool. Upstream documents headless and no-OpenGL CMake options. Inspect the chosen revision's CMake settings before freezing flags and backend. [Upstream CMake](https://github.com/openscad/openscad/blob/master/CMakeLists.txt) · [Command-line usage](https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Using_OpenSCAD_in_a_command_line_environment)
 
+The trace patch is observation-only: it must not change evaluation results, geometry, diagnostics or exit status. `Scripts/verify-engine` builds the reference and patched worker from the same revision and compares their output on the full fixture suite, not only the plate. A patch that changes geometry, warnings or exit status is a failed gate, even when the trace it produces looks correct.
+
 In M0, look for the actual parser location record, expression evaluation, module and builtin argument binding, control-flow expansion, transformation nodes, dependency resolution and final geometry export in the pinned tree. Record source paths and symbols in `Docs/Decisions/engine-spike.md`. Add narrow observation hooks and a new worker entry point in the patched build. The protocol below is an API for Scadretto to implement. Stock `.ast`, `.csg` or STL export does not supply this contract.
 
 ### Spike pass conditions
