@@ -69,6 +69,7 @@ The plan's fixture and its three edits were rendered with stock OpenSCAD 2021.01
 | Area | Case | Assertion |
 |---|---|---|
 | Fidelity | BOM, CRLF, mixed line endings, no trailing newline, emoji, comments, tabs, scientific notation | No-op save matches raw bytes. One supported edit touches only its gold span; undo restores original bytes. |
+| Encoding | Invalid UTF-8, truncated multi-byte sequence, UTF-16 or Latin-1 input | Open fails with the first bad byte offset; no replacement characters and no silent transcoding |
 | Syntax drift | Worker source span differs from concrete syntax or target token | No write occurs. Highlight the diagnostic or allow code navigation only. |
 | Scope | Module-local `d` shadows a top-level `d`; two equal literal values; numeric positional and named arguments | Correct resolved formal/declaration and instance impact; unrelated code and shapes remain unchanged. |
 | Expressions | `wall/2`, nested arithmetic, inline/block comments, decimal comma UI locale, second drag after save/reopen | Formula remains evaluable; explicit offset retains future changes to `wall`. Golden diff covers accepted cases; unsupported ambiguous comments disable the action. |
