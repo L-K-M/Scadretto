@@ -6,10 +6,10 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 **Inputs:** [Architecture](01-Architecture.md), [worker contract](03-OpenSCAD-Worker.md) and the [mounting-plate fixture](06-Verification-and-Release.md#canonical-fixture).
 
-- [ ] Create `Tests/Fixtures/mounting-plate.scad` exactly as supplied. Choose a buildable OpenSCAD commit with a working macOS arm64 headless backend. Pin that commit, dependencies, backend options, resource paths and the parser/runtime pair. Record the Xcode, SDK and CMake versions used.
+- [ ] Create `Tests/Fixtures/mounting-plate.scad` exactly as supplied. Choose a buildable OpenSCAD commit with a working macOS arm64 headless build and the Manifold backend. Pin that commit, dependencies, backend options, resource paths and the parser/runtime pair. Record the Xcode, SDK and CMake versions used.
 - [ ] Implement `Scripts/bootstrap-macos`, `Scripts/build-engine` and `Scripts/verify-engine`. Bootstrap checks prerequisites with actionable errors, obtains pinned sources and verifies checksums/revisions. Build both reference and patched executables into separate product roots. Cache against pins, architecture, deployment target and patch digest.
 - [ ] Write a tiny worker client that sends unsaved source with a logical path, reads the model and trace, and exercises a ray into the third inner wall. Inventory the pinned engine hooks and implement the minimum instrumentation needed. Capture the corresponding source substring, instance bindings, local/world transforms and actual final mesh evidence. Test with two instances sharing a cached primitive.
-- [ ] Compare the fixture with the reference. If face ownership is unavailable, implement the matched-surface fallback in file 03. If a compatible backend cannot build on macOS 14, try another supported revision or backend and record the result before changing the platform baseline.
+- [ ] Compare the fixture with the reference. Derive face ownership from Manifold run provenance. Where it is unavailable, implement the matched-surface fallback in file 03. If a compatible backend cannot build on macOS 14, try another supported revision or backend and record the result before changing the platform baseline.
 
 **Exit:** A clean Mac can reproduce both builds. The inner wall maps to iteration 2 with an unbroken link to `hole_d`. The source SHA and reference geometry comparison are in `Docs/Decisions/engine-spike.md`. Do not start a bespoke OpenSCAD interpreter to get past this gate.
 
