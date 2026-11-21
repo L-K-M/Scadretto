@@ -70,6 +70,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 - [ ] Implement `Scripts/verify` and `Scripts/package-macos` with distinct local and distribution modes. Test a locally signed build on a machine without Homebrew or a system OpenSCAD installation.
 - [ ] Validate architecture, minimum OS, dependency paths and library/font resolution. Review redistribution licenses for the pinned dependency set and prepare the matching source/build instructions.
+- [ ] Decide how installed copies get new versions. Upstream's macOS app uses Sparkle. With Sparkle 2, sign update archives with an EdDSA key kept beside the release credentials, serve the appcast over HTTPS, and ask before the first automatic check. The app must work normally offline when a check cannot run. Sign Sparkle's helpers with the nested code. Because the worker lives in the bundle, an update replaces app and worker together and keeps their protocol versions paired. Without an updater, state in the release notes that updates are manual downloads.
 - [ ] When the release owner supplies credentials, sign nested code and app, notarize and staple, then run Gatekeeper and quarantine install checks on the final package. Record artifact checksums.
 
 **Exit:** The release checklist in file 06 records both functional verification and distribution state. An ad hoc developer package is a valid local deliverable; mark public distribution pending until those gates pass.
