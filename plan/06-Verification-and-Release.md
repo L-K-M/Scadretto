@@ -27,6 +27,10 @@ difference() {
 
 Initial bounds are `[0,0,0]` to `[120,40,6]`. Bore centers at Y = 20 are X = 15, 35, 55 and 75. The cutter extends below and above the solid. An acceptance test must distinguish those four *through-holes* from four separate cylinders drawn on a solid plate.
 
+### Fixture invariants
+
+Check in a fixture-invariant test next to the fixture. It must assert the exact UTF-8 byte length and SHA-256 of `Tests/Fixtures/mounting-plate.scad`, the byte ranges and values of the `hole_d`, `count` and `pitch` literals (`[74,75)`, `[85,86)`, `[96,98)`), the initial world bounds, and the expected volume for the original and the three edited states using the formula below. The test fails on any whitespace, line-ending, BOM or trailing-byte change, so a normalized checkout or an accidental edit cannot silently invalidate the byte-offset assertions in file 02 or the walkthrough.
+
 ## Mounting-plate walkthrough
 
 | Step | Action | Required result |
