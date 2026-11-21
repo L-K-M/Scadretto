@@ -2,7 +2,7 @@
 
 ## Canonical fixture
 
-Create `Tests/Fixtures/mounting-plate.scad` with UTF-8, LF line endings and a final newline. Keep this exact file as the baseline for byte-diff tests. OpenSCAD lengths are model units; the walkthrough uses the common millimetre convention.
+Create `Tests/Fixtures/mounting-plate.scad` with UTF-8, LF line endings and a final newline. Keep this exact file as the baseline for byte-diff tests. The repository's `.gitattributes` marks `*.scad` as binary so checkout and commit never rewrite line endings or encodings; edit fixtures only with byte-preserving tools. This matters because the byte-offset assertions in file 02 and any future CRLF/BOM fixtures silently break if a platform or editor normalizes them. OpenSCAD lengths are model units; the walkthrough uses the common millimetre convention.
 
 ```openscad
 // Scadretto acceptance fixture — keep this comment.

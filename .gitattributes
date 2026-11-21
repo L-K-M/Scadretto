@@ -1,0 +1,8 @@
+# Default: normalize text files to LF in the repository.
+* text=auto
+
+# .scad sources are byte-exact fixtures: line endings, BOMs and trailing
+# bytes are part of the test contract (plan/02, plan/06). Never convert.
+*.scad -text
+
+*.md text eol=lf
