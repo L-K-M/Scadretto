@@ -50,6 +50,14 @@ Save serializes the current source buffer. The outline and inspector always read
 
 Keep disk I/O, parsing large files, tessellation, worker waits and mesh decoding off the main actor. Mutate document state, AppKit views and undo registrations on the main actor. Upload buffers ahead of presentation and release old GPU buffers only after their in-flight command buffers finish.
 
+## Concurrency and thread safety
+
+The document is the single synchronization point. `ScadrettoCore` value types (`SourceDocument` state, `SyntaxSnapshot`, `EvaluationKey`, `SceneSnapshot`, `EditIntent`, `SourcePatch`) are `Sendable`, and the document's serial mutation path is the only writer of source bytes, revision, undo history and accepted scene. Every transaction — typing, inspector entry, undo/redo and a graphical commit — enters that path on the main actor. No two workers mutate a document at once.
+
+Off the main actor: Tree-sitter parsing, worker encoding and decoding, mesh processing, BVH construction and file I/O. Those workers receive immutable inputs and return immutable values; they never touch document state or AppKit. The engine client publishes results to the main actor, which checks the key, job token and dependency digests before swapping state.
+
+Cancellation is cooperative and propagated. A superseded request cancels its task; closing a document cancels its queued and active work; a drag that loses its selection or observes a revision change abandons its tentative patch. Tasks report cancellation rather than writing partial state. Tests assert main-actor isolation and that no off-main worker blocks typing or camera control.
+
 ## Stable meaning across evaluations
 
 A source range identifies a span in one version of one file. An execution path identifies an *occurrence* during that evaluation. They serve different purposes. A `for` loop can produce four cylinders from one span, and the same imported module can be called at many sites.
