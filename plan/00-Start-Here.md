@@ -24,6 +24,7 @@ See the [build and release guide](../CICD.md) for repository checks and the macO
 | Capability | First release |
 |---|---|
 | Documents | Open, edit, save and reopen UTF-8 `.scad` files. Use ordinary files with relative imports. Preserve comments, identifiers, line endings and untouched bytes. |
+| Help | A Help menu with a short walkthrough of the bidirectional edit model, the gesture and keyboard map, and a link to the full implementation plan. The example file is reachable from Help. |
 | Code → UI | An accepted evaluation replaces the model, instance outline, values and diagnostics together. Syntax errors leave a visibly stale last-good preview. |
 | UI → code | Edit literal dimensions on cubes, spheres and cylinders, direct numeric arguments to user modules, named numeric parameters and supported translations. Offer formula offsets or a shared parameter edit under the rules in file 02. |
 | Booleans and repetition | Inspect positive operands and cutters. Select one occurrence inside a module or loop and show the full impact of editing its source. Offer a pitch handle for the documented simple pattern. |

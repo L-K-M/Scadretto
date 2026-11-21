@@ -59,6 +59,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 **Depends on M4.** Complete save conflicts, worker resilience, input handling, accessibility and performance measurement.
 
 - [ ] Finish autosave/revert, separate dependency documents, reload/keep/compare flows, file replacement notifications and invalidation across windows. Exercise renamed/missing libraries and relative binary imports.
+- [ ] Add a Help menu with a short walkthrough of the bidirectional edit model, the gesture and keyboard map, and a link to the implementation plan. Verify that Open Example opens the bundled canonical fixture and that every documented command is reachable.
 - [ ] Exercise cancellation, crash recovery, empty results, ambiguous selections, multi-window isolation, rapid typing and text input composition. Make diagnostics accessible and ensure the keyboard can perform every required property edit.
 - [ ] Benchmark the fixture and the generated stress pattern under file 06's workload. Implement caching or instancing for measured bottlenecks. Confirm a slow evaluation never blocks typing or camera control.
 
