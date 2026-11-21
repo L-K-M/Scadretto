@@ -54,9 +54,19 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 **Exit:** The full editing and picking matrix in file 06 passes. Repeated edits preserve user formatting and formulas. No single-instance action rewrites a shared generator by accident.
 
-## M5 | Harden real macOS workflows
+## M5 | Export the accepted model
 
-**Depends on M4.** Complete save conflicts, worker resilience, input handling, accessibility and performance measurement.
+**Depends on M4.** Export serializes the accepted scene rather than introducing a second geometry path.
+
+- [ ] Add a File > Export command for binary STL, ASCII STL and OFF that sends the optional `export` object through the same job protocol and options digest. Disable it while the scene is stale or invalid, and explain why.
+- [ ] Validate exports by parsing them back and comparing bounds, signed volume and occupancy probes against the reference CLI built from `Engine/upstream.lock`; compare parsed geometry, never raw STL bytes or triangle order.
+- [ ] Handle cancellation, worker failure and very large meshes without blocking typing or the viewport, and record artifact hashes and format/version metadata in the verification report.
+
+**Exit:** Exporting the plate at baseline, diameter 5 and count 5 matches the reference geometry within the oracle tolerances. Export during a slow evaluation waits for the current key or fails with a clear message; it never emits an older scene.
+
+## M6 | Harden real macOS workflows
+
+**Depends on M5.** Complete save conflicts, worker resilience, input handling, accessibility and performance measurement.
 
 - [ ] Finish autosave/revert, separate dependency documents, reload/keep/compare flows, file replacement notifications and invalidation across windows. Exercise renamed/missing libraries and relative binary imports.
 - [ ] Exercise cancellation, crash recovery, empty results, ambiguous selections, multi-window isolation, rapid typing and text input composition. Make diagnostics accessible and ensure the keyboard can perform every required property edit.
@@ -64,9 +74,9 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 **Exit:** App, unit and integration suites pass on arm64. A real-Mac manual report covers trackpad, Retina picking, VoiceOver and external editing. Record measured timing percentiles and any unverified targets.
 
-## M6 | Deliver a reproducible distributable build
+## M7 | Deliver a reproducible distributable build
 
-**Depends on M5.** Package an arm64 app containing its own helper, required resources, dylibs, attribution and corresponding engine source material.
+**Depends on M6.** Package an arm64 app containing its own helper, required resources, dylibs, attribution and corresponding engine source material.
 
 - [ ] Implement `Scripts/verify` and `Scripts/package-macos` with distinct local and distribution modes. Test a locally signed build on a machine without Homebrew or a system OpenSCAD installation.
 - [ ] Validate architecture, minimum OS, dependency paths and library/font resolution. Review redistribution licenses for the pinned dependency set and prepare the matching source/build instructions.
@@ -79,6 +89,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 | Extension | Prerequisite | First acceptance example |
 |---|---|---|
 | Explicit “only this occurrence” | Binding trace, loop-identity proof, previewable structural diffs | On a recognized integer-range pattern, preview and accept a conditional offset for one occurrence. Other instances, comments and ordinary parameter behavior remain intact; cancel produces no diff. |
+| 3MF, STEP, DXF or SVG export | Deterministic STL and OFF export | Round-trip the plate through each format with an independent parser and compare parsed geometry against the reference |
 | Rotate and scale handles | Robust frame, pivot and handedness tests | Rotate about the displayed pivot under a transformed parent. Re-evaluation produces the previewed pose. |
 | Editing dependency files in place | Multi-document coordinated transactions and undo | Changing a library parameter previews all affected open documents and can be undone coherently. |
 | Intel or universal distribution | Reproducible x86_64 engine and dependency builds | Verify the native app/helper pairing and the same fixture suite on an actual Intel Mac. |
