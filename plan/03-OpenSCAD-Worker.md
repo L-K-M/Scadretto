@@ -54,6 +54,7 @@ Mesh descriptors declare byte offsets, counts, stride, scalar types, triangle wi
 | `PropertyRecord` | Display semantic such as diameter, evaluated numeric value and unit, originally supplied arguments, resolved formal, token/expression span, definition and binding chain when observed |
 | `OperationRecord` | Ordered child IDs for union, difference and intersection. Store operand role relative to its parent; a single “negative” flag does not encode nested differences. |
 | `DependencyEdge` | From a resolved declaration or call-site argument to a currently executed property/instance. Track consumers conservatively; unknown impact must be displayed as unknown. |
+| `CustomizerParameter` | Name, group, description, value type, declared range and step or choice list, and the initializer span, as upstream's parameter objects for the main file report them |
 | `Diagnostic` | Severity, message, file and optional byte span, optional call path, evaluation key |
 
 Collect provenance per occurrence, even when geometry evaluation uses a cached local mesh. Each loop iteration gets its own path and transform. Two equal cylinders can share vertex buffers, but each keeps a distinct runtime ID and parameter environment. Preserve include/use boundaries and original files for definition navigation. Treat imported assets or unsupported operators as opaque nodes with bounds and limited metadata.

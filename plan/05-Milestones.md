@@ -47,7 +47,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 **Depends on M3.** Keep an explicit support table beside the planner tests.
 
-- [ ] Add the remaining cube/sphere/cylinder bindings, explicit module arguments, transform vector edits, active-file named numeric parameters and the eligibility checks from file 02.
+- [ ] Add the remaining cube/sphere/cylinder bindings, explicit module arguments, transform vector edits, active-file named numeric parameters with their Customizer ranges, the Parameters panel and the eligibility checks from file 02.
 - [ ] Implement explicit local offsets and prefix insertion at verified syntax boundaries. Exercise combined transforms, center semantics, negative scales and singular transforms. Disable ambiguous implicit signatures and computed lists.
 - [ ] Implement impact tracking and selection reconciliation for shared calls, modules, shadowed names and repeated instances. Add the restricted pitch handle and numeric fallback for iteration zero.
 - [ ] Support nested booleans, ghost selection, rim ambiguity and outline fallback. Keep expressions inspectable when they have no approved rewrite.
