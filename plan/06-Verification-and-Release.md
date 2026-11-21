@@ -76,6 +76,7 @@ The plan's fixture and its three edits were rendered with stock OpenSCAD 2021.01
 | Failure recovery | Invalid code, valid empty `difference`, missing asset later created, child exits mid-write, corrupt mesh or protocol mismatch | Source stays editable and saveable. Valid empty clears prior geometry; errors preserve last-good geometry and show the reason. |
 | Files | External replacement while clean and dirty, autosave conflict, read-only dependency, sibling library in two documents | Dirty bytes survive. No silent overwrite. Dependency changes invalidate previews even when source is unchanged. |
 | Native UX | IME composition, Retina pick, document windows, dark mode, keyboard-only inspector, VoiceOver | Selection and ranges survive refresh, controls are discoverable and the active window owns Undo. |
+| Accessible model | VoiceOver from outline to inspector; selection change, committed edit and scene failure | The selection summary, scope, evaluated value and scene state are announced without sight; the same property is reachable from the outline and inspector alone. |
 
 ## Build and verification entry points
 
