@@ -100,10 +100,13 @@ Treat these as initial engineering budgets. Report observed p50/p95, sample coun
 
 | Workload | Measurement | Target |
 |---|---|---|
+| Cold launch | Cold start from Finder to the first accepted shaded frame of the canonical plate on a clean install, including worker cold start | p95 under 3 seconds |
 | Canonical plate | Warm, commit to accepted shaded frame over 30 edits, excluding typing debounce | p95 under 1 second |
 | Active drag and orbit | Twenty seconds of interaction with the plate; then repeat with 100 valid repeated cutters on a larger plate | p95 frame time at or below 33 ms; a cut can update on commit |
 | Typing while worker is busy | 100 paced edits while running the larger pattern | p95 main-thread edit handling under 16 ms; zero stale scene commits |
 | Cancellation and cleanup | Alternate 50 distinct jobs, supersede or close repeatedly, inspect children and private job storage after settling | Zero orphaned workers and zero abandoned completed jobs; record peak memory and termination latency |
+
+Measure cold launch separately from the warm commit path and break it into app launch, document open, worker cold start and first presented frame. The M0 worker cold-start measurement in file 03 is a component of this budget, not a substitute for it; if worker startup dominates, apply the same keep-alive decision before release.
 
 ## Distribution gate
 
