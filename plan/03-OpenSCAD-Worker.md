@@ -25,7 +25,7 @@ scadretto-engine --scadretto-job /absolute/job/request.json
 
 | Item | Required contents |
 |---|---|
-| `request.json` | `protocolVersion`, `requestID`, `EvaluationKey`, logical main URL, relative path to main UTF-8 snapshot, permitted library search roots, preview mode, selected geometry backend/options and expected worker build |
+| `request.json` | `protocolVersion`, `requestID`, `EvaluationKey`, logical main URL, untitled base directory when applicable, relative path to main UTF-8 snapshot, ordered permitted library and resource roots, preview mode, selected geometry backend/options and expected worker build. The worker verifies that the resolution inputs match the key's digest. |
 | `main.scad` | Exact unsaved source bytes for this job. Resolve paths and report diagnostics against the logical URL in the request. |
 | `result.json` | Echoed protocol, request ID, key, build SHA, status (`ok`, `error`), file table with digests, diagnostics, observed dependencies, scene tables and payload descriptors |
 | `mesh.bin` | Versioned final vertex and index buffers. Optional triangle-to-instance table has an explicit unknown value. |
