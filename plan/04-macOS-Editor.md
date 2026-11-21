@@ -38,6 +38,10 @@ Start with click to select, ordinary drag on an explicit handle, background drag
 
 Give handle hits priority over object hits only while the handle is visible and a compatible operation is selected. Orient drag handles to their advertised frame. Use a projected axis or an axis-aligned drag plane; when ill-conditioned, show numeric entry. Honor a visible snap increment measured in model units. Recalculate the candidate value from mouse-down baseline each frame so snapping and round-trip motion do not accumulate floating-point error.
 
+Keep the presented frame’s scene identity, view/projection matrices and drawable-to-view mapping together. Use those values for hit testing, including handle hits. A ready BVH or submitted frame may belong to a scene the user has yet to see. If the presented scene is no longer current or its coordinate mapping no longer describes the view, defer selection until the replacement is visible and require a fresh click. Validate an asynchronous hit against its frame and scene before exposing a writable target. Treat IDs as local to that successful evaluation, including repeated runs with an identical source key.
+
+Test with two scenes that assign the same instance ID to different cutters. Hold presentation of the second frame after its scene is accepted and click the first cutter’s pixel. The click must never select or arm the second cutter. Present the replacement, resize and orbit, then verify a fresh click at a projected bore wall selects the visible occurrence.
+
 ### Example interaction
 
 Click the inner cylindrical wall of hole three on the fixture. The breadcrumb identifies the third iteration, `mounting_hole` and `cylinder`. The inspector shows `Diameter 4`, the expression chain `d ← hole_d`, and `Shared parameter · 4 cutters`. Selecting that shared target lights up all four cutters. Drag its radius handle outward 0.5 model units or type a diameter of 5. The overlay reports diameter 5. Releasing changes only `hole_d = 4;` to `hole_d = 5;`. The ordinary source editor shows the edited declaration. Undo restores diameter 4 and all four bores.
