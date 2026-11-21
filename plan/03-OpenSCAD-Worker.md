@@ -25,11 +25,13 @@ scadretto-engine --scadretto-job /absolute/job/request.json
 
 | Item | Required contents |
 |---|---|
-| `request.json` | `protocolVersion`, `requestID`, `EvaluationKey`, logical main URL, relative path to main UTF-8 snapshot, permitted library search roots, preview mode, selected geometry backend/options and expected worker build |
+| `request.json` | `protocolVersion`, `requestID`, `EvaluationKey`, logical main URL, relative path to main UTF-8 snapshot, permitted library search roots, preview mode, selected geometry backend/options, the effective tessellation controls (`$fn`, `$fa`, `$fs`) and expected worker build |
 | `main.scad` | Exact unsaved source bytes for this job. Resolve paths and report diagnostics against the logical URL in the request. |
 | `result.json` | Echoed protocol, request ID, key, build SHA, status (`ok`, `error`), file table with digests, diagnostics, observed dependencies, scene tables and payload descriptors |
 | `mesh.bin` | Versioned final vertex and index buffers. Optional triangle-to-instance table has an explicit unknown value. |
 | `operands.bin` | Pickable or highlightable operand meshes and transforms, with per-range descriptors. Identical local meshes may share storage across instances. |
+
+The effective `$fn`, `$fa` and `$fs` values are part of the evaluation options digest: changing any of them is a different evaluation even when the source bytes are unchanged. The worker must apply them exactly as the reference CLI does. In v1 the request carries the values the editor resolved for the current source (including values set by the source itself); the reference comparison in file 06 must force the same values rather than relying on host defaults.
 
 The parent creates the job directory with private permissions. The child writes payloads first, closes them, writes a temporary manifest and atomically renames it to `result.json` last. On success exit 0, including for valid empty geometry. On a model error, write an error manifest then exit 1. Distinguish signal, timeout, protocol mismatch and internal exit separately. Parent accepts only a matching, fully validated result after child exit. A nonzero status with an `ok` manifest is a worker failure. A model error may still report dependencies and a diagnostic source span. Make protocol mismatch a visible development or packaging error.
 
