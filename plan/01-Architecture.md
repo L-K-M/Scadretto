@@ -26,6 +26,8 @@ Docs/Decisions/                    engine spike, coordinates, packaging and benc
 
 Start with a checked-in `.xcodeproj`, a shared `Scadretto` scheme, Swift Package Manager lockfiles and one pinned engine dependency manifest. Build scripts resolve their own repository root and support spaces in paths. Keep fetched upstream sources and generated binaries in an ignored build directory. Check in the revision, patch series and instructions required to reproduce them.
 
+Keep the license boundary visible in the tree. The repository `LICENSE` releases Scadretto's own code into the public domain under the Unlicense. The engine patches modify GPL-licensed OpenSCAD sources and carry upstream context lines, so license `Engine/patches/` and any worker entry-point sources under upstream's GPL-2.0-or-later. State this in `Engine/LICENSE` and point to it from the top-level license notice. Keep GPL-licensed OpenSCAD-derived code out of `App/` and `Packages/`; the application reaches the worker only through the job protocol. The MIT-licensed Tree-sitter runtime and grammar may stay in `Packages/ScadrettoSyntax` with their notices.
+
 ## Data ownership
 
 | Type | Owner | Contents and lifetime |
