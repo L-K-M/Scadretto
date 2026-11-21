@@ -18,6 +18,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 **Depends on M0.** Implement `ScadrettoCore`, `ScadrettoSyntax`, the `Scadretto` scheme, initial document window and package tests.
 
 - [ ] Implement raw bytes, source spans, a UTF-16 line index, revisioning, immutable snapshots and atomic checked transactions. Add golden input/output tests for the coordinate and undo cases in file 02.
+- [ ] Add invalid-UTF-8, truncated-multi-byte and non-UTF-8 fixtures; opening one fails with the first bad byte offset, creates no editable buffer and never substitutes replacement characters.
 - [ ] Bring in the pinned Tree-sitter grammar and runtime. Run its parser off the main thread and discard stale syntax responses. Verify call locations against the worker on the initial corpus. Syntax errors must still yield useful highlighting outside the invalid region.
 - [ ] Implement a plain `NSTextView` adapter, an `NSDocument` subclass and ordinary New/Open/Save/Revert. Add native Undo/Redo, unmodified round-trip saving and edited-state tracking. Add external-change baseline tracking before enabling autosave-in-place.
 
