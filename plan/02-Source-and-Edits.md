@@ -17,7 +17,7 @@ Keyboard edits modify the same buffer even with syntax errors. Graphical edits r
 
 ## Resolve the target before editing
 
-Give each editable property its display name, model value, unit, defining expression, source span, resolved declaration when available, operation, impact set and available scopes. Derive bindings from the worker's executed parameter and argument links. Looking up a declaration solely by identifier text breaks shadowed variables, module defaults and calls with positional arguments.
+Give each editable property its display name, model value, unit, defining expression, source span, resolved declaration when available, operation, impact set and available scopes. Derive bindings from the worker's executed parameter and argument links. Looking up a declaration solely by identifier text breaks shadowed variables, module defaults and calls with positional arguments. A default in a `use`d module, such as `module m(d = lib_size)`, resolves `lib_size` inside the library even when the main file declares the same name; offering the main-file declaration would edit the wrong variable.
 
 | Source at the selected target | UI action | Permitted patch |
 |---|---|---|
