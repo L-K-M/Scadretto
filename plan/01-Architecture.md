@@ -56,6 +56,22 @@ A source range identifies a span in one version of one file. An execution path i
 
 For each instance, record the shape operator, authoring file, call path, loop iteration and local-to-world transform. Reconcile selection after a rebuild by tracking the original source anchor through known edits and matching the call path, operation and iteration bindings. If there are zero or multiple matches, clear the selection or select the nearest uniquely matched parent in the outline. Worker IDs, triangle indices and line numbers are unsuitable as persistent document IDs.
 
+## Document and evaluation states
+
+A document has one evaluation state at a time, and the UI derives from that state rather than from ad-hoc flags:
+
+| State | Entered when | Viewport | Outline and inspector | Write-back handles |
+|---|---|---|---|---|
+| `empty` | New document, or a valid empty result | Blank | Source diagnostics only | Disabled |
+| `evaluating` | A request is scheduled | Last accepted scene, labelled stale if one exists | Last accepted scene, labelled stale | Disabled |
+| `ready` | A result matches the current key and digests | Accepted scene | Accepted scene and bindings | Enabled |
+| `stale` | A newer request is scheduled; the last scene no longer matches the key | Last accepted scene, labelled out of date | Last accepted scene, labelled out of date | Disabled |
+| `failed` | The latest outcome is an error | Last good scene, labelled stale | Last good scene, labelled stale; diagnostics from the outcome | Disabled |
+| `cancelled` | The user cancelled or superseded the request | Last accepted scene | Last accepted scene | Disabled |
+| `conflict` | An external change conflicts with unsaved bytes | Last accepted scene | Last accepted scene; conflict banner | Disabled |
+
+Transitions: `empty`, `ready`, `stale`, `failed` or `cancelled` → `evaluating` on a new transaction; `evaluating` → `ready` on an accepted success, `failed` on an accepted error, `cancelled` on supersession, or `stale` when a newer request is already scheduled; `stale` → `evaluating` when the newer request runs. `conflict` is orthogonal: it blocks saving until the user chooses Compare, Keep Editing or Reload from Disk. Every transition is published on the main actor and swaps scene-derived state in one operation.
+
 ## File resolution and the reference evaluator
 
 Give new documents a private temporary workspace. For saved files use the logical main file URL for includes, diagnostics and relative imports. Pass the unsaved bytes as an overlay at that URL. Resolve nested dependencies relative to their authoring file and record the engine's actual resolution order. Apply user-selected library roots and bundled resources consistently to the worker and reference CLI. An untitled document with an unresolved relative import should offer Save As or selection of a base directory. Save As changes resolution roots and invalidates the scene.
