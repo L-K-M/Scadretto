@@ -9,6 +9,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 - [ ] Create `Tests/Fixtures/mounting-plate.scad` exactly as supplied. Choose a buildable OpenSCAD commit with a working macOS arm64 headless backend. Pin that commit, dependencies, backend options, resource paths and the parser/runtime pair. Record the Xcode, SDK and CMake versions used.
 - [ ] Implement `Scripts/bootstrap-macos`, `Scripts/build-engine` and `Scripts/verify-engine`. Bootstrap checks prerequisites with actionable errors, obtains pinned sources and verifies checksums/revisions. Build both reference and patched executables into separate product roots. Cache against pins, architecture, deployment target and patch digest.
 - [ ] Write a tiny worker client that sends unsaved source with a logical path, reads the model and trace, and exercises a ray into the third inner wall. Inventory the pinned engine hooks and implement the minimum instrumentation needed. Capture the corresponding source substring, instance bindings, local/world transforms and actual final mesh evidence. Test with two instances sharing a cached primitive.
+- [ ] Decide whether Scadretto bundles any library in the bundled `libraries` root, and record each bundled library's license.
 - [ ] Compare the fixture with the reference. If face ownership is unavailable, implement the matched-surface fallback in file 03. If a compatible backend cannot build on macOS 14, try another supported revision or backend and record the result before changing the platform baseline.
 
 **Exit:** A clean Mac can reproduce both builds. The inner wall maps to iteration 2 with an unbroken link to `hole_d`. The source SHA and reference geometry comparison are in `Docs/Decisions/engine-spike.md`. Do not start a bespoke OpenSCAD interpreter to get past this gate.
@@ -29,7 +30,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 - [ ] Replace the spike client with a versioned job encoder, validated decoder and cancellable scheduler. Package the helper and runtime resources in the developer app. Inject the executable location in tests.
 - [ ] Load and shade the final mesh in Metal. Add camera framing, orbit, pan and zoom, resize/Retina handling and diagnostics that jump to the correct file/range.
-- [ ] Render from the live buffer, honor include/use/import paths, accept only the current key, clear valid empty scenes, and label stale last-good scenes. Simulate process crash, out-of-order completion and deleted include recovery.
+- [ ] Render from the live buffer, honor include/use/import paths and upstream's default library roots, accept only the current key, clear valid empty scenes, and label stale last-good scenes. Simulate process crash, out-of-order completion and deleted include recovery.
 
 **Exit:** Open the handwritten fixture from Finder, change `count` in text, and see the new hole in the shaded mesh and outline. Break and fix a statement without losing work. Running from a path with spaces succeeds.
 
