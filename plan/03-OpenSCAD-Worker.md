@@ -62,7 +62,7 @@ Keep a scoped binding stack while evaluating module calls, loops, `let` and assi
 
 ## Picking a boolean result
 
-1. Raycast the final visible surface, using a CPU BVH for v1. Return a world hit, triangle and normal. If the backend has a proven unique primitive ancestry for the triangle, use it and follow the instance chain to candidate authoring scopes.
+1. Raycast the final visible surface, using a CPU BVH for v1. Build the ray from the active projection; an orthographic view uses rays parallel to the view direction. Return a world hit, triangle and normal. If the backend has a proven unique primitive ancestry for the triangle, use it and follow the instance chain to candidate authoring scopes.
 2. Otherwise intersect candidate operand meshes around the *same world hit*, narrowing by transformed bounds, surface distance and normal alignment. Account for inverted cutter normals, nonuniform transforms and reflected winding. Document a scene-scaled distance tolerance with a floor and a cap; test small solids and close parallel walls. Matching the front face of a cutter somewhere else on the ray is insufficient.
 3. Offer multiple candidates for coincident surfaces, rims and ambiguous operation paths. If no reliable owner exists, keep the result selected and offer the outline or operand-isolation mode. The outline selects an exact executed instance independently of triangle ancestry.
 4. Selecting a cutter reveals a translucent operand and the subtracting operation. Selecting a shared declaration highlights all proven dependent occurrences. Render helpers, ghosts and gizmos in a separate pass so they cannot corrupt final-surface picks.

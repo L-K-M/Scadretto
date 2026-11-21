@@ -75,6 +75,7 @@ The plan's fixture and its three edits were rendered with stock OpenSCAD 2021.01
 | Scheduling | Render A finishes after B, dependency changes during drag, cancel, close while rendering | Stale results do not replace scene or accept edits; child processes and job files are reclaimed. |
 | Failure recovery | Invalid code, valid empty `difference`, missing asset later created, child exits mid-write, corrupt mesh or protocol mismatch | Source stays editable and saveable. Valid empty clears prior geometry; errors preserve last-good geometry and show the reason. |
 | Files | External replacement while clean and dirty, autosave conflict, read-only dependency, sibling library in two documents | Dirty bytes survive. No silent overwrite. Dependency changes invalidate previews even when source is unchanged. |
+| Navigation | Mouse wheel, trackpad scroll with momentum, pinch, right-drag, each standard view, orthographic projection | Each input produces its documented camera change; wheel and pinch zoom about the cursor. Picking and handle drags hit the projected wall point in both perspective and orthographic views. |
 | Native UX | IME composition, Retina pick, document windows, dark mode, keyboard-only inspector, VoiceOver | Selection and ranges survive refresh, controls are discoverable and the active window owns Undo. |
 
 ## Build and verification entry points
