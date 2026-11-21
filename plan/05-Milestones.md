@@ -50,7 +50,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 - [ ] Add the remaining cube/sphere/cylinder bindings, explicit module arguments, transform vector edits, active-file named numeric parameters and the eligibility checks from file 02.
 - [ ] Implement explicit local offsets and prefix insertion at verified syntax boundaries. Exercise combined transforms, center semantics, negative scales and singular transforms. Disable ambiguous implicit signatures and computed lists.
 - [ ] Implement impact tracking and selection reconciliation for shared calls, modules, shadowed names and repeated instances. Add the restricted pitch handle and numeric fallback for iteration zero.
-- [ ] Add the Measure tool for distances and angles between vertices and edges of the final mesh.
+- [ ] Add the Measure Distance and Measure Angle tools for point-to-point, point-to-edge and edge-to-edge distances, and angles between two edges, of the tessellated final mesh, per the Measurement row in file 06.
 - [ ] Support nested booleans, ghost selection, rim ambiguity and outline fallback. Keep expressions inspectable when they have no approved rewrite.
 
 **Exit:** The full editing and picking matrix in file 06 passes. Repeated edits preserve user formatting and formulas. No single-instance action rewrites a shared generator by accident.
