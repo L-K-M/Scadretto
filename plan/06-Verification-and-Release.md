@@ -55,7 +55,7 @@ Use a dependency fixture with `use <lib/part.scad>` and another with `include`. 
 
 ### Fixture preflight
 
-The plan's fixture and its three edits were rendered with stock OpenSCAD 2021.01 on Linux. The following measurements came from the exported binary STL. Every run had the expected bounds, two incident triangles per undirected edge, and 64 vertices per bore on each of the top and bottom faces. These numbers establish the example geometry; the macOS engine/build and interaction gates still require implementation.
+The plan's fixture and its three edits were rendered with stock OpenSCAD 2021.01 on Linux. The following measurements came from the exported binary STL. Every run had the expected bounds, two incident triangles per undirected edge, and 64 vertices per bore on each of the top and bottom faces. These numbers are provenance from that 2021.01 run, not the acceptance oracle: M0 pins the newest revision that builds headless on macOS 14 arm64, and if that pin differs from 2021.01 the reference CLI built from `Engine/upstream.lock` is authoritative, so re-measure and re-date this table against the pinned build. The macOS engine/build and interaction gates still require implementation.
 
 | File state | Measured solid volume in cubic model units | Bore centers on X |
 |---|---:|---|
