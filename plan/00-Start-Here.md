@@ -26,11 +26,12 @@ Give an implementation agent this whole directory. The numbered files are parts 
 | UI → code | Edit literal dimensions on cubes, spheres and cylinders, direct numeric arguments to user modules, named numeric parameters and supported translations. Offer formula offsets or a shared parameter edit under the rules in file 02. |
 | Booleans and repetition | Inspect positive operands and cutters. Select one occurrence inside a module or loop and show the full impact of editing its source. Offer a pitch handle for the documented simple pattern. |
 | Arbitrary OpenSCAD | Let the pinned engine evaluate valid 3D programs within its supported features and file inputs. Code navigation and inspection remain available for constructs without an editable handle. Report diagnostics for unsupported inputs. |
+| Export | Write the accepted scene to binary or ASCII STL and OFF through the same worker job, evaluation-options digest and final mesh as display. 3MF, STEP, DXF and SVG stay follow-on unless the owner prioritizes them. |
 | macOS delivery | Native Apple silicon application, working offline after installation. Deliver a Developer ID distribution build when release credentials are available. |
 
 **Platform assumption.** “Mac OS X” means modern macOS. Use macOS 14 or later on arm64 for the first release. Record the exact Xcode, SDK, deployment target and engine revision at M0. Intel support can follow once the dependency stack and helper pass the same fixture on an Intel Mac. The document format is independent of the CPU.
 
-**Editing boundary.** The first release operates on authored values and operations. Explicitly breaking one instance out of a procedural pattern, editing imported mesh topology, arbitrary face push/pull, simultaneous multi-file rewrites, and an interactive 2D sketcher are follow-on work. An included module remains useful in v1 because an explicit argument in the current file can still be edited. The proposed later milestones describe where the first two procedural extensions fit.
+**Editing boundary.** The first release operates on authored values and operations. Explicitly breaking one instance out of a procedural pattern, editing imported mesh topology, arbitrary face push/pull, simultaneous multi-file rewrites, and an interactive 2D sketcher are follow-on work. An included module remains useful in v1 because an explicit argument in the current file can still be edited. The proposed later milestones describe where the first two procedural extensions fit. Export serializes that same accepted evaluation; it does not introduce a second geometry path.
 
 ## User-visible contract
 

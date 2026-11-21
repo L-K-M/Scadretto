@@ -72,6 +72,7 @@ The plan's fixture and its three edits were rendered with stock OpenSCAD 2021.01
 | Transforms | Rotation under a parent, nonuniform scale, mirrored parent, singular matrix, first `translate` insertion | Committed object follows the displayed handle in the chosen frame. Unrepresentable moves are disabled. |
 | Procedural picking | Nested differences, identical cached cutters, shared call, coincident surfaces, rim pick | Inner wall resolves to a cutter; ambiguities present choices. Enclosed shapes are reachable through the outline. |
 | Source entry points | Typing, inspector, actual mouse drag, undo/redo, Save As and open from Finder | All paths converge on the same buffer, model and file. One visual gesture produces one undo item. |
+| Export | Binary STL, ASCII STL and OFF from the accepted scene | Parsed bounds, signed volume and occupancy probes match the reference; stale or invalid scenes cannot export |
 | Scheduling | Render A finishes after B, dependency changes during drag, cancel, close while rendering | Stale results do not replace scene or accept edits; child processes and job files are reclaimed. |
 | Failure recovery | Invalid code, valid empty `difference`, missing asset later created, child exits mid-write, corrupt mesh or protocol mismatch | Source stays editable and saveable. Valid empty clears prior geometry; errors preserve last-good geometry and show the reason. |
 | Files | External replacement while clean and dirty, autosave conflict, read-only dependency, sibling library in two documents | Dirty bytes survive. No silent overwrite. Dependency changes invalidate previews even when source is unchanged. |
@@ -92,7 +93,7 @@ xcodebuild -project Scadretto.xcodeproj -scheme Scadretto -destination 'platform
 ./Scripts/package-macos --local
 ```
 
-`verify-engine` runs worker contract, source trace and reference comparisons. `verify` runs the deterministic package, integration and application test suites and reports machine/toolchain metadata. For XCTest UI automation use a logged-in macOS runner that permits UI tests. A headless CI host can run core and worker suites; mark GUI coverage pending until the UI suite runs. Make all failures nonzero and preserve relevant source diffs, diagnostics and fixture names in CI artifacts. Successful local CI must not require release credentials.
+`verify-engine` runs worker contract, source trace and reference comparisons. `verify` runs the deterministic package, integration and application test suites, including export round-trips against the reference geometry, and reports machine/toolchain metadata. For XCTest UI automation use a logged-in macOS runner that permits UI tests. A headless CI host can run core and worker suites; mark GUI coverage pending until the UI suite runs. Make all failures nonzero and preserve relevant source diffs, diagnostics and fixture names in CI artifacts. Successful local CI must not require release credentials.
 
 ## Performance targets
 
