@@ -22,6 +22,7 @@ Give an implementation agent this whole directory. The numbered files are parts 
 | Capability | First release |
 |---|---|
 | Documents | Open, edit, save and reopen UTF-8 `.scad` files. Use ordinary files with relative imports. Preserve comments, identifiers, line endings and untouched bytes. |
+| Export | Export the accepted solid to binary or ASCII STL and OFF from the File menu, using the same evaluated mesh, units and orientation as the reference CLI. 3MF, STEP, DXF and image export are follow-on. |
 | Code → UI | An accepted evaluation replaces the model, instance outline, values and diagnostics together. Syntax errors leave a visibly stale last-good preview. |
 | UI → code | Edit literal dimensions on cubes, spheres and cylinders, direct numeric arguments to user modules, named numeric parameters and supported translations. Offer formula offsets or a shared parameter edit under the rules in file 02. |
 | Booleans and repetition | Inspect positive operands and cutters. Select one occurrence inside a module or loop and show the full impact of editing its source. Offer a pitch handle for the documented simple pattern. |
