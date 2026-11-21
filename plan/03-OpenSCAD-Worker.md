@@ -47,6 +47,12 @@ Mesh descriptors declare byte offsets, counts, stride, scalar types, triangle wi
 
 Round-trip a synthetic unit-cube mesh translated to X = 100000000 through the binary encoder and Swift decoder. Require distinct X bounds of 100000000 and 100000001 and a hit at the latter from a ray starting at (100000002, 0.5, 0.5) looking along −X. Frame the cube and check the rebased GPU vertices retain unit width and its selection overlay aligns.
 
+### Search-path dependencies
+
+For each ordered file lookup, report the requesting file, lookup name, candidates tested before the first success and the chosen logical path. An absent higher-priority candidate is a dependency of a successful result. Watch for its creation, using the nearest existing ancestor when directories are missing. Install watches and recheck the winning path and digest before publishing. A different winner invalidates the generation even if both copies contain identical bytes, since navigation and nested imports depend on the location.
+
+In a fixture with two ordered library roots, place `part.scad` only in the fallback root. Once its cube is visible, create a preferred copy defining a sphere. Require the sphere and its source location without touching the main file or fallback. Remove the preferred copy and require the original cube and location again.
+
 ## Trace contract
 
 | Record | Required information |
