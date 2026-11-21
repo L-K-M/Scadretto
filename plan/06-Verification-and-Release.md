@@ -84,6 +84,7 @@ The plan's fixture and its three edits were rendered with stock OpenSCAD 2021.01
 | Document registration | Finder double-click, drag-to-open, `open -a`, Open File for a `.scad` and for plain text | The app receives the file and opens it as an editable document; a read-only file opens for inspection and Save As creates a writable copy. |
 | Native UX | IME composition, Retina pick, document windows, dark mode, keyboard-only inspector, VoiceOver | Selection and ranges survive refresh, controls are discoverable and the active window owns Undo. |
 | Accessible model | VoiceOver from outline to inspector; selection change, committed edit and scene failure | The selection summary, scope, evaluated value and scene state are announced without sight; the same property is reachable from the outline and inspector alone. |
+| Multi-window document | Two windows of one `NSDocument`; edit or undo from either while the other holds a selection or gesture | One buffer and one undo stack; no duplicate undo entries; both selections re-anchor or clear safely |
 
 ## Build and verification entry points
 

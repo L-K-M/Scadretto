@@ -64,6 +64,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 - [ ] Finish autosave/revert, separate dependency documents, reload/keep/compare flows, file replacement notifications and invalidation across windows. Exercise renamed/missing libraries and relative binary imports.
 - [ ] Exercise cancellation, crash recovery, empty results, ambiguous selections, multi-window isolation, rapid typing and text input composition. Make diagnostics accessible and ensure the keyboard can perform every required property edit.
+- [ ] Test two windows of the same `NSDocument`: a commit or undo started in either window converges on one buffer and one undo stack, the other window's selection and handles re-anchor or clear safely, and no undo item is double-registered.
 - [ ] Benchmark the mounting-plate fixture and `Tests/Fixtures/stress-100-cutters.scad` under file 06's workload. Implement caching or instancing for measured bottlenecks. Confirm a slow evaluation never blocks typing or camera control.
 
 **Exit:** App, unit and integration suites pass on arm64. A real-Mac manual report covers trackpad, Retina picking, VoiceOver and external editing. Record measured timing percentiles and any unverified targets.
