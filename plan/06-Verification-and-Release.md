@@ -102,7 +102,6 @@ Define each interval precisely and log it per commit. For “commit to accepted 
 
 | Workload | Measurement | Target |
 |---|---|---|
-| First open | Cold app launch to first presented plate frame, with helper spawn recorded separately | p95 under 3 seconds on the declared baseline |
 | Canonical plate | Warm, commit to accepted shaded frame over 30 edits, excluding typing debounce | p95 under 1 second |
 | Active drag and orbit | Twenty seconds of interaction with the plate; then repeat with 100 valid repeated cutters on a larger plate | p95 frame time at or below 33 ms; a cut can update on commit |
 | Typing while worker is busy | 100 paced edits while running the larger pattern | p95 main-thread edit handling under 16 ms; zero stale scene commits |
