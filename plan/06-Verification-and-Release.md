@@ -129,7 +129,7 @@ Define each interval precisely and log it per commit. For “commit to accepted 
 | Canonical plate | Warm, commit to accepted shaded frame over 30 edits, excluding typing debounce | p95 under 1 second |
 | Active drag and orbit | Twenty seconds of interaction with the plate; then repeat with 100 valid repeated cutters on a larger plate | p95 frame time at or below 33 ms; a cut can update on commit |
 | Typing while worker is busy | 100 paced edits while running the larger pattern | p95 main-thread edit handling under 16 ms; zero stale scene commits |
-| Cancellation and cleanup | Alternate 50 distinct jobs, supersede or close repeatedly, inspect children and private job storage after settling | Zero orphaned workers and zero abandoned completed jobs; record peak memory and termination latency |
+| Cancellation and cleanup | Alternate 50 distinct jobs, supersede or close repeatedly, then quit normally, force quit and `kill -9` the app during a long evaluation; inspect children and private job storage after settling and after the next launch | Zero orphaned workers and zero abandoned completed jobs; record peak memory and termination latency |
 
 ### Stress workload
 
