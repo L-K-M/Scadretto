@@ -15,6 +15,12 @@ A patch contains `key`, `label` and one or more disjoint edits. Each edit holds 
 
 Keyboard edits modify the same buffer even with syntax errors. Graphical edits require a matching valid evaluation and verified bounds and binding. Undo and redo use document transactions and advance revision. During text input composition, defer conflicting graphical actions. Never register undo once in the text view and again in the document. Use a test that alternates typing, a radius edit, typing and three undos to exercise this.
 
+### Undo and redo across revisions
+
+Once a transaction commits, store its document-local before/after byte edits and logical selections in undo history. Keep inverse offsets in the post-edit buffer and forward offsets in the pre-edit buffer. Replay the top undo or redo group on the serial mutation path, checking the current source slices and history position. Each replay creates a fresh source revision and schedules evaluation. The original evaluation key guards the initial graphical commit only. Clear redo on a divergent edit and reset the history when an external reload replaces the document contents.
+
+Test a width change from `9` to `10`, followed by typing before that literal. Invalidate a dependency and take the worker offline. Two Undos must restore the intermediate and original byte buffers in order. Two Redos must restore the edited buffers, including the shifted literal. Verify the native Undo and Redo commands throughout.
+
 ## Resolve the target before editing
 
 Give each editable property its display name, model value, unit, defining expression, source span, resolved declaration when available, operation, impact set and available scopes. Derive bindings from the worker's executed parameter and argument links. Looking up a declaration solely by identifier text breaks shadowed variables, module defaults and calls with positional arguments.
