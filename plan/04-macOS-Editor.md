@@ -6,7 +6,7 @@ Build the application around `NSDocumentController`, one `ScadrettoDocument` sub
 
 | Surface | Required behavior |
 |---|---|
-| Source editor | Plain monospaced text, line numbers, syntax colors, find, diagnostics, jump-to-range, and selection synchronized on explicit navigation. Disable smart quotes, substitutions and rich text. Keep normal typing focus when the preview refreshes. |
+| Source editor | Plain monospaced text, line numbers, syntax colors, find, diagnostics, jump-to-range, and selection synchronized on explicit navigation. Disable smart quotes, smart dashes, automatic text replacement, autocorrection, continuous spell checking, grammar checking and rich text (plain-text storage only), so the input system never rewrites code bytes. Keep normal typing focus when the preview refreshes. |
 | Viewport | Shaded solid, orbit, pan, zoom, frame model and frame selection. Display local or world axes as applicable, selected outline, cutter overlay and editable handles. Preserve camera across reevaluations. |
 | Inspector | Selection breadcrumb, source location, authored expression, evaluated value, available edit scopes, affected occurrence count and reason for any disabled edit. Support numeric entry with Enter to commit and Escape to cancel. |
 | Instance outline | Display expanded module calls, loops, primitives and boolean operands. Distinguish the selected occurrence from the shared definition. Virtualize large subtrees and let users select enclosed operands. |
