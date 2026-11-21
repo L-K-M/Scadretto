@@ -60,6 +60,14 @@ Collect provenance per occurrence, even when geometry evaluation uses a cached l
 
 Keep a scoped binding stack while evaluating module calls, loops, `let` and assignments. Capture the evaluated argument → formal parameter → resolved declaration chain for supported scalar slots. Mark opaque arithmetic as an expression boundary unless a specific edit rule handles it. Track control dependencies when provable or mark the impact set partial. Keep the stock evaluator in charge of scoping, defaults, special variables and evaluation order. Never re-run random or time-dependent expressions merely to collect trace information.
 
+### Modifiers and tessellation controls
+
+Record the modifier characters that reach an executed node — `#` (debug/highlight), `%` (background), `*` (disable) and `!` (root) — with their source spans. A `*` subtree is absent from the authoritative scene; report it as disabled so the outline can explain why a statement produced no solid. A `%` subtree is present but rendered as a ghost: it must not become a pick target or a write-back source. A `#` subtree keeps its normal geometry and adds a highlight.
+
+Record the special variables that change tessellation or child selection for the executed subtree: `$fn`, `$fa`, `$fs` and `$children`, plus module-scope overrides. A change to any of them invalidates the scene even when the edited statement's bytes are unchanged. Record `$fn`/`$fa`/`$fs` per instance so the inspector can explain a mesh that differs from a perfect circle, and record `center` for `cylinder` and `sphere` so drag math uses the correct anchored face.
+
+Add a fixture that applies `#`, `%`, `*` and `!` to a module call and a loop, and assert the authoritative scene, the outline entries and the pick targets.
+
 ## Picking a boolean result
 
 1. Raycast the final visible surface, using a CPU BVH for v1. Return a world hit, triangle and normal. If the backend has a proven unique primitive ancestry for the triangle, use it and follow the instance chain to candidate authoring scopes.
