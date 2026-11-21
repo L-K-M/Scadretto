@@ -30,6 +30,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 - [ ] Replace the spike client with a versioned job encoder, validated decoder and cancellable scheduler. Package the helper and runtime resources in the developer app. Inject the executable location in tests.
 - [ ] Load and shade the final mesh in Metal. Add camera framing, orbit, pan and zoom, resize/Retina handling and diagnostics that jump to the correct file/range.
 - [ ] Render from the live buffer, honor include/use/import paths, accept only the current key, clear valid empty scenes, and label stale last-good scenes. Simulate process crash, out-of-order completion and deleted include recovery.
+- [ ] Distinguish valid 2D, valid empty 3D and invalid results. Display a 2D result flat on the z = 0 plane with a visible zero-thickness label, disable 3D handles, and keep diagnostics distinct in the failure matrix.
 
 **Exit:** Open the handwritten fixture from Finder, change `count` in text, and see the new hole in the shaded mesh and outline. Break and fix a statement without losing work. Running from a path with spaces succeeds.
 

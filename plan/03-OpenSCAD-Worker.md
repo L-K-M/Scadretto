@@ -45,6 +45,8 @@ Use explicit versioned formats with fixed-width little-endian fields and IEEE fl
 
 Mesh descriptors declare byte offsets, counts, stride, scalar types, triangle winding and bounding box. Initial layout can be packed `float32 xyz` positions, `uint32` triangle indices and optional `uint32` triangle owner IDs. Derive face normals from triangles for the first release. A missing owner table is distinct from a table assigning zero to all triangles. The decoder bounds-checks counts and multiplication, indices, offsets, file length, finite coordinates/transforms, and acyclic parent links before allocating or indexing. Protocol tests cover zero triangles, bad ranges, overflow and unknown fields. Unknown optional fields may be ignored; incompatible major versions fail cleanly.
 
+Distinguish three successful outcomes: a solid 3D mesh, a valid 2D result and an empty result. For a 2D result, emit a scene record marked `dimension: 2` with outline or region descriptors, or lift the closed outline to a degenerate z = 0 mesh; never present it as an empty 3D success. 3D property handles and picking require a solid 3D mesh, so the editor must label a 2D scene and keep its source navigation working.
+
 ## Trace contract
 
 | Record | Required information |
@@ -55,6 +57,7 @@ Mesh descriptors declare byte offsets, counts, stride, scalar types, triangle wi
 | `OperationRecord` | Ordered child IDs for union, difference and intersection. Store operand role relative to its parent; a single “negative” flag does not encode nested differences. |
 | `DependencyEdge` | From a resolved declaration or call-site argument to a currently executed property/instance. Track consumers conservatively; unknown impact must be displayed as unknown. |
 | `Diagnostic` | Severity, message, file and optional byte span, optional call path, evaluation key |
+| `DimensionRecord` | Evaluated dimension (2 or 3), representation kind, bounds and zero-thickness flag for a 2D result |
 
 Collect provenance per occurrence, even when geometry evaluation uses a cached local mesh. Each loop iteration gets its own path and transform. Two equal cylinders can share vertex buffers, but each keeps a distinct runtime ID and parameter environment. Preserve include/use boundaries and original files for definition navigation. Treat imported assets or unsupported operators as opaque nodes with bounds and limited metadata.
 
