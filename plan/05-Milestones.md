@@ -10,6 +10,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 - [ ] Implement `Scripts/bootstrap-macos`, `Scripts/build-engine` and `Scripts/verify-engine`. Bootstrap checks prerequisites with actionable errors, obtains pinned sources and verifies checksums/revisions. Build both reference and patched executables into separate product roots. Cache against pins, architecture, deployment target and patch digest. Wire `Scripts/verify-engine` and the reference comparison into the CI workflow so a PR that changes the pinned engine or a fixture fails before merge.
 - [ ] Verify the pinned engine's behavior on a main file that starts with a UTF-8 BOM; if normalization is needed, offset-adjust all reported source spans and prove it on a BOM fixture.
 - [ ] Write a tiny worker client that sends unsaved source with a logical path, reads the model and trace, and exercises a ray into the third inner wall. Inventory the pinned engine hooks and implement the minimum instrumentation needed. Capture the corresponding source substring, instance bindings, local/world transforms and actual final mesh evidence. Test with two instances sharing a cached primitive.
+- [ ] Decide whether Scadretto bundles any library in the bundled `libraries` root, and record each bundled library's license.
 - [ ] Compare the fixture with the reference. If face ownership is unavailable, implement the matched-surface fallback in file 03. If a compatible backend cannot build on macOS 14, try another supported revision or backend and record the result before changing the platform baseline.
 - [ ] Measure worker cold start plus engine initialization against the commit-to-frame budget in file 06. If it dominates the 1 s p95 target, schedule a keep-alive worker on the same wire contract before relying on the per-evaluation spawn in production.
 
@@ -35,7 +36,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 - [ ] Replace the spike client with a versioned job encoder, validated decoder and cancellable scheduler. Package the helper and runtime resources in the developer app. Inject the executable location in tests.
 - [ ] Load and shade the final mesh in Metal. Add camera framing, orbit, pan and zoom, resize/Retina handling, diagnostics that jump to the correct file/range and the evaluation console.
 - [ ] Add a warning-only fixture and assert that warnings reach the status area and jump to their source without clearing the accepted scene or disabling write-back.
-- [ ] Render from the live buffer, honor include/use/import paths, accept only the current key, clear valid empty scenes, and label stale last-good scenes. Simulate process crash, out-of-order completion and deleted include recovery.
+- [ ] Render from the live buffer, honor include/use/import paths and upstream's default library roots, accept only the current key, clear valid empty scenes, and label stale last-good scenes. Simulate process crash, out-of-order completion and deleted include recovery.
 
 **Exit:** Open the handwritten fixture from Finder, change `count` in text, and see the new hole in the shaded mesh and outline. Break and fix a statement without losing work. Running from a path with spaces succeeds.
 
