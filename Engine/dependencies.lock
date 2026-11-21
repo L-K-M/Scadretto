@@ -1,0 +1,15 @@
+double-conversion 42fd4d980ea86426e457b24bdfa835a6f5ad9517ddb01cdb42b99ab9c8dd5dc9 https://github.com/google/double-conversion/archive/refs/tags/v3.4.0.tar.gz
+boost ea7b982002cc9dfbe59b0b217b206f470dc75f3de0bb2973d844118934d82411 https://github.com/boostorg/boost/releases/download/boost-1.92.0/boost-1.92.0-b2-nodocs.tar.xz
+eigen e9c326dc8c05cd1e044c71f30f1b2e34a6161a3b6ecf445d56b53ff1669e3dec https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.tar.gz
+gmp a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898 https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz
+mpfr b67ba0383ef7e8a8563734e2e889ef5ec3c3b898a01d00fa0a6869ad81c6ce01 https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.xz
+gettext 85d99b79c981a404874c02e0342176cf75c7698e2b51fe41031cf6526d974f1a https://ftp.gnu.org/gnu/gettext/gettext-1.0.tar.gz
+freetype 93cd47eb719c325107f2d3cf087d06299e944c3b48a40b55537302304dea1dd5 https://downloads.sourceforge.net/project/freetype/freetype2/2.15.0/freetype-2.15.0.tar.xz
+harfbuzz e2ec49090744383cdbe7df808c1cedaafba06a97be8dc4211fe546ba585f12cb https://github.com/harfbuzz/harfbuzz/releases/download/15.2.0/harfbuzz-15.2.0.tar.xz
+openssl 603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz
+libzip c40062022a1963c80573d48f6070792297cecd7c6bffe3aefcac0d8b9bee8913 https://libzip.org/download/libzip-1.12.1.tar.xz
+fontconfig cecf4125622ed674d5630b6deaeff43e3695afe197bdcc560363a1820d858112 https://gitlab.freedesktop.org/fontconfig/fontconfig/-/archive/2.18.4/fontconfig-2.18.4.tar.gz
+pcre2 53c156e1ba416a20da8e65395daa132da0d80e76910424caca3fcdae7831d384 https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.49/pcre2-10.49.tar.bz2
+glib 93c941aa17d5eb1d53fe838365f29a8b4e539c222a256d974ec8f30fc413e396 https://download.gnome.org/sources/glib/2.90/glib-2.90.1.tar.xz
+cgal b6be77c60765a8456335de991eeaf6ffec55256984e4a9ecc6a97c37bbfe85bf https://github.com/CGAL/cgal/releases/download/v6.2.1/CGAL-6.2.1.tar.xz
+libffi f3a3082a23b37c293a4fcd1053147b371f2ff91fa7ea1b2a52e335676bac82dc https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz

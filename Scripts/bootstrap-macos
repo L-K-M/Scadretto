@@ -1,0 +1,23 @@
+#!/bin/bash
+set -euo pipefail
+
+# shellcheck source=Engine/build-common.sh
+source "$(dirname "$0")/../Engine/build-common.sh"
+engine_tools
+
+if [[ ! -e "$ENGINE_UPSTREAM/.git" ]]; then
+    mkdir -p "$ENGINE_UPSTREAM"
+    git -C "$ENGINE_UPSTREAM" init --quiet
+    git -C "$ENGINE_UPSTREAM" remote add origin "$OPENSCAD_URL"
+fi
+if ! git -C "$ENGINE_UPSTREAM" cat-file -e "$OPENSCAD_REVISION^{commit}" 2>/dev/null; then
+    git -C "$ENGINE_UPSTREAM" fetch --depth=1 origin "$OPENSCAD_REVISION"
+fi
+if ! git -C "$ENGINE_UPSTREAM" rev-parse --verify HEAD >/dev/null 2>&1; then
+    git -C "$ENGINE_UPSTREAM" checkout --detach "$OPENSCAD_REVISION"
+fi
+git -C "$ENGINE_UPSTREAM" submodule update --init --depth=1 -- \
+    submodules/Clipper2 submodules/manifold submodules/sanitizers-cmake
+engine_validate_source "$ENGINE_UPSTREAM"
+[[ -z $(git -C "$ENGINE_UPSTREAM" status --porcelain) ]] ||
+    engine_fail "Pristine OpenSCAD checkout has local edits: $ENGINE_UPSTREAM."

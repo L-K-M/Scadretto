@@ -1,3 +1,6 @@
 # SCAD sources and golden fixture data have byte-exact offsets and digests.
 *.scad -text
 Tests/Fixtures/** -text
+
+# Preserve the single-space context lines of upstream patches.
+Engine/patches/*.patch whitespace=-blank-at-eol

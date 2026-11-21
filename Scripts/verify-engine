@@ -1,0 +1,49 @@
+#!/bin/bash
+set -euo pipefail
+
+# shellcheck source=Engine/build-common.sh
+source "$(dirname "$0")/../Engine/build-common.sh"
+engine_tools
+cd "$ENGINE_ROOT"
+
+reference="$ENGINE_BUILD/reference"
+worker="$ENGINE_BUILD/worker"
+[[ -x "$reference/bin/openscad" && -x "$worker/bin/scadretto-engine" ]] ||
+    engine_fail "Run Scripts/build-engine before verification."
+
+# Replay the patch series onto a clean checkout, then compare its tree with
+# the source used to build the worker.
+# Resolve the product symlink before walking to its parent on macOS.
+worker_source="$(cd "$worker" && cd -P .. && pwd -P)/source"
+scratch="$(mktemp -d)"
+trap 'rm -rf "$scratch"' EXIT
+
+engine_validate_submodules "$worker_source"
+git -C "$worker_source" diff HEAD --exit-code
+[[ -z $(git -C "$worker_source" ls-files --others --exclude-standard) ]] ||
+    engine_fail "Worker source has additional files."
+git clone --quiet --shared "$ENGINE_UPSTREAM" "$scratch/upstream"
+git -C "$scratch/upstream" checkout --detach "$OPENSCAD_REVISION"
+git -C "$scratch/upstream" -c user.name=Scadretto \
+    -c user.email=scadretto@users.noreply.github.com am "$ENGINE_ROOT"/Engine/patches/*.patch
+expected_tree="$(git -C "$scratch/upstream" rev-parse 'HEAD^{tree}')"
+[[ $(git -C "$worker_source" rev-parse 'HEAD^{tree}') == "$expected_tree" ]] ||
+    engine_fail "The built worker source does not match the replayed patch series."
+
+evidence="$(mktemp -d "$ENGINE_BUILD/verification.XXXXXXXX")"
+printf 'Evidence: %s\n' "$evidence"
+{
+    uname -m
+    sysctl -n hw.model hw.memsize
+    sw_vers
+    xcodebuild -version
+    xcrun --sdk macosx --show-sdk-version
+    xcrun clang++ --version
+    cmake --version
+    printf 'OpenSCAD %s\nManifold %s\n' "$OPENSCAD_REVISION" "$MANIFOLD_REVISION"
+    shasum -a 256 "$reference/bin/openscad" "$worker/bin/scadretto-engine"
+} | tee "$evidence/environment.txt"
+python3 Tests/Engine/verify_spike.py "$reference/bin/openscad" "$worker/bin/scadretto-engine" \
+    "$reference/bin/solid-difference" Tests/Fixtures/mounting-plate.scad "$evidence" \
+    --font-cache "$reference/bin/fc-cache" --fonts "$reference/Resources/fonts" \
+    | tee "$evidence/verify.log"

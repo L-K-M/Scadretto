@@ -1,0 +1,110 @@
+#!/bin/bash
+set -euo pipefail
+
+# shellcheck source=Engine/build-common.sh
+source "$(dirname "$0")/../Engine/build-common.sh"
+engine_tools
+"$ENGINE_ROOT/Scripts/bootstrap-macos"
+
+jobs=${SCADRETTO_ENGINE_JOBS:-$(sysctl -n hw.ncpu)}
+[[ $jobs =~ ^[1-9][0-9]*$ ]] || engine_fail "SCADRETTO_ENGINE_JOBS must be a positive integer."
+cd "$ENGINE_ROOT"
+export MACOSX_DEPLOYMENT_TARGET="$ENGINE_MACOS_TARGET"
+export SDKROOT
+SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+export CC CXX
+CC="$(xcrun --sdk macosx --find clang)"
+CXX="$(xcrun --sdk macosx --find clang++)"
+
+fingerprint() {
+    local variant=$1
+    xcodebuild -version
+    xcrun --sdk macosx --show-sdk-version
+    "$CXX" --version
+    for tool in cmake ninja meson pkg-config bison flex python3 msgfmt make perl; do
+        "$tool" --version
+    done
+    printf '%s\n' "$SDKROOT" "$(uname -m)" "$MACOSX_DEPLOYMENT_TARGET" "$variant"
+    shasum -a 256 Tests/Engine/solid-difference.cc Engine/upstream.lock Engine/build-common.sh Engine/build-dependencies \
+        Engine/dependencies.lock Engine/package-runtime.py Engine/fonts.conf Scripts/build-engine
+    if [[ $variant == worker ]]; then
+        shasum -a 256 Engine/patches/*.patch
+    fi
+}
+fingerprint_key() {
+    fingerprint "$1" | shasum -a 256 | cut -d ' ' -f 1
+}
+
+deps_key="$(fingerprint_key dependencies)"
+deps="$ENGINE_BUILD/products/dependencies-$deps_key"
+if [[ ! -f "$deps/.ready" ]]; then
+    mkdir -p "$deps"
+    Engine/build-dependencies "$ENGINE_UPSTREAM" "$deps" "$ENGINE_BUILD/dependencies-work/$deps_key" "$jobs"
+    touch "$deps/.ready"
+fi
+ln -sfn "$deps" "$ENGINE_BUILD/dependencies"
+
+for variant in reference worker; do
+    folder="$ENGINE_BUILD/products/$variant-$(fingerprint_key "$variant")"
+    if [[ ! -f "$folder/.ready" ]]; then
+        mkdir -p "$folder"
+        source_tree="$ENGINE_UPSTREAM"
+        if [[ $variant == worker ]]; then
+            source_tree="$folder/source"
+            if [[ ! -d "$source_tree/.git" ]]; then
+                git clone --quiet --shared "$ENGINE_UPSTREAM" "$source_tree"
+                git -C "$source_tree" submodule update --init --depth=1 -- \
+                    submodules/Clipper2 submodules/manifold submodules/sanitizers-cmake
+            fi
+            engine_validate_submodules "$source_tree"
+            if [[ ! -f "$folder/.patched" ]]; then
+                engine_validate_source "$source_tree"
+                git -C "$source_tree" apply --check "$ENGINE_ROOT"/Engine/patches/*.patch
+                git -C "$source_tree" -c user.name=Scadretto -c user.email=scadretto@users.noreply.github.com am "$ENGINE_ROOT"/Engine/patches/*.patch
+                touch "$folder/.patched"
+            fi
+        fi
+        export PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig:$deps/share/pkgconfig"
+        export OPENSCAD_LIBRARIES="$deps"
+        unset PKG_CONFIG_PATH CMAKE_PREFIX_PATH CMAKE_LIBRARY_PATH CMAKE_INCLUDE_PATH
+        cmake -G Ninja -S "$source_tree" -B "$folder/build" \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_CXX_FLAGS="-I$deps/include" \
+            -DCMAKE_EXE_LINKER_FLAGS="-L$deps/lib -Wl,-headerpad_max_install_names" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$ENGINE_MACOS_TARGET" -DCMAKE_OSX_SYSROOT="$SDKROOT" \
+            -DCMAKE_PREFIX_PATH="$deps" -DBOOST_ROOT="$deps" -DBoost_USE_STATIC_LIBS=ON \
+            -DOPENSSL_ROOT_DIR="$deps" -DOPENSSL_USE_STATIC_LIBS=ON \
+            -DBISON_EXECUTABLE="$(command -v bison)" -DFLEX_EXECUTABLE="$(command -v flex)" \
+            -DNULLGL=ON -DAPPLE_UNIX=ON -DENABLE_TESTS=OFF -DENABLE_CGAL=ON \
+            -DENABLE_MANIFOLD=ON -DMANIFOLD_PAR=OFF -DUSE_MIMALLOC=OFF -DUSE_CCACHE=OFF \
+            -DUSE_MANIFOLD_MINKOWSKI=ON -DENABLE_CAIRO=OFF \
+            -DCMAKE_REQUIRE_FIND_PACKAGE_Lib3MF=OFF -DCMAKE_DISABLE_FIND_PACKAGE_Lib3MF=ON
+        cmake --build "$folder/build" --target OpenSCADExe --parallel "$jobs"
+
+        name=openscad
+        [[ $variant != worker ]] || name=scadretto-engine
+        install -d "$folder/product/bin" "$folder/product/Resources" "$folder/product/Frameworks"
+        cp "$folder/build/openscad" "$folder/product/bin/$name"
+        cp -R "$source_tree/color-schemes" "$folder/product/Resources/"
+        install -d "$folder/product/Resources/fonts" "$folder/product/Resources/libraries"
+        cp -R "$source_tree/fonts/Liberation-2.00.1" "$folder/product/Resources/fonts/"
+        cp Engine/fonts.conf "$folder/product/Resources/fonts/"
+        if [[ $variant == reference ]]; then
+            "$CXX" -std=c++17 -O2 -arch arm64 -mmacosx-version-min="$ENGINE_MACOS_TARGET" \
+                -I"$source_tree/submodules/manifold/include" \
+                -I"$folder/build/submodules/manifold/include" Tests/Engine/solid-difference.cc \
+                "$folder/build/submodules/manifold/src/libmanifold.a" \
+                "$folder/build/submodules/Clipper2/CPP/libClipper2.a" \
+                -o "$folder/product/bin/solid-difference"
+            cp "$deps/bin/fc-cache" "$folder/product/bin/fc-cache"
+            python3 Engine/package-runtime.py "$folder/product/bin/fc-cache" "$deps" \
+                "$folder/product/Frameworks" "$ENGINE_MACOS_TARGET"
+        fi
+        python3 Engine/package-runtime.py "$folder/product/bin/$name" "$deps" \
+            "$folder/product/Frameworks" "$ENGINE_MACOS_TARGET"
+        fingerprint "$variant" > "$folder/toolchain.txt"
+        touch "$folder/.ready"
+    fi
+    ln -sfn "$folder/product" "$ENGINE_BUILD/$variant"
+    printf '%s engine: %s\n' "$variant" "$folder/product"
+done

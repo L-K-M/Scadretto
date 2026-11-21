@@ -1,0 +1,599 @@
+From a48cf90da581d5c54c0d49aabd7ca950d2e91b8f Mon Sep 17 00:00:00 2001
+From: Scadretto <scadretto@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 23:35:57 +0100
+Subject: [PATCH] Trace executed scalar bindings and operand meshes
+
+Attach provenance to the values delivered by the evaluator. Retain loop occurrence identity when exporting cached primitive geometry.
+---
+ CMakeLists.txt             |   2 +-
+ src/core/Arguments.cc      |   7 +-
+ src/core/Expression.cc     |  10 +-
+ src/core/Parameters.cc     |   5 +
+ src/core/ScadrettoTrace.cc | 285 +++++++++++++++++++++++++++++++++++++
+ src/core/ScadrettoTrace.h  |  27 ++++
+ src/core/ScopeContext.cc   |   6 +-
+ src/core/Value.cc          |   6 +-
+ src/core/Value.h           |   4 +
+ src/core/control.cc        |   4 +
+ src/core/node.h            |   5 +
+ src/core/primitives.cc     |   6 +
+ src/openscad.cc            |   5 +
+ 13 files changed, 366 insertions(+), 6 deletions(-)
+ create mode 100644 src/core/ScadrettoTrace.cc
+ create mode 100644 src/core/ScadrettoTrace.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 17b5044..44c7397 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1639,7 +1639,7 @@ if (SORT_BUILD)
+ endif()
+ 
+ target_sources(OpenSCADLibInternal PUBLIC ${RESOURCE_FILES})
+-target_sources(OpenSCADLibInternal PRIVATE ${Sources})
++target_sources(OpenSCADLibInternal PRIVATE ${Sources} src/core/ScadrettoTrace.cc)
+ find_program(SHELL_EXE NAMES sh bash $ENV{SHELL})
+ add_custom_command(TARGET OpenSCADExe POST_BUILD
+     COMMAND "${SHELL_EXE}"
+diff --git a/src/core/Arguments.cc b/src/core/Arguments.cc
+index 9d482f9..28a2cbe 100644
+--- a/src/core/Arguments.cc
++++ b/src/core/Arguments.cc
+@@ -24,6 +24,8 @@
+  *
+  */
+ 
++#include "core/ScadrettoTrace.h"
++
+ #include "core/Arguments.h"
+ 
+ #include <memory>
+@@ -39,10 +41,13 @@ Arguments::Arguments(const AssignmentList& argument_expressions,
+   : evaluation_session(context->session())
+ {
+   for (const auto& argument_expression : argument_expressions) {
++    const auto& expression = argument_expression->getExpr();
++    auto value = expression->evaluate(context);
++    scadrettoMark(value, "argument", argument_expression->getName(), expression->location());
+     emplace_back(argument_expression->getName().empty()
+                    ? boost::none
+                    : boost::optional<std::string>(argument_expression->getName()),
+-                 argument_expression->getExpr()->evaluate(context));
++                 std::move(value));
+   }
+ }
+ 
+diff --git a/src/core/Expression.cc b/src/core/Expression.cc
+index 5883ca3..8043d17 100644
+--- a/src/core/Expression.cc
++++ b/src/core/Expression.cc
+@@ -23,6 +23,8 @@
+  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+  *
+  */
++#include "core/ScadrettoTrace.h"
++
+ #include "core/Expression.h"
+ 
+ #include <algorithm>
+@@ -226,7 +228,9 @@ void ArrayLookup::print(std::ostream& stream, const std::string&) const
+ 
+ Value Literal::evaluate(const std::shared_ptr<const Context>&) const
+ {
+-  return value.clone();
++  auto result = value.clone();
++  scadrettoMark(result, "literal", "", loc);
++  return result;
+ }
+ 
+ void Literal::print(std::ostream& stream, const std::string&) const
+@@ -365,7 +369,9 @@ Lookup::Lookup(std::string name, const Location& loc) : Expression(loc), name(st
+ 
+ Value Lookup::evaluate(const std::shared_ptr<const Context>& context) const
+ {
+-  return context->lookup_variable(this->name, loc).clone();
++  auto result = context->lookup_variable(this->name, loc).clone();
++  scadrettoMark(result, "lookup", this->name, loc);
++  return result;
+ }
+ 
+ void Lookup::print(std::ostream& stream, const std::string&) const
+diff --git a/src/core/Parameters.cc b/src/core/Parameters.cc
+index a6a3a02..102c23c 100644
+--- a/src/core/Parameters.cc
++++ b/src/core/Parameters.cc
+@@ -24,6 +24,8 @@
+  *
+  */
+ 
++#include "core/ScadrettoTrace.h"
++
+ #include "core/Parameters.h"
+ 
+ #include <cassert>
+@@ -225,6 +227,9 @@ static ContextFrame parse_without_defaults(Arguments arguments, const Location&
+       }
+     }
+ 
++    if (argument.value.scadrettoBinding) {
++      scadrettoMark(argument.value, "parameter", name, argument.value.scadrettoBinding->location);
++    }
+     output.set_variable(name, std::move(argument.value));
+   }
+   return output;
+diff --git a/src/core/ScadrettoTrace.cc b/src/core/ScadrettoTrace.cc
+new file mode 100644
+index 0000000..b029e03
+--- /dev/null
++++ b/src/core/ScadrettoTrace.cc
+@@ -0,0 +1,285 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++#include "core/ScadrettoTrace.h"
++
++#include <cmath>
++#include <fstream>
++#include <iomanip>
++#include <iterator>
++#include <map>
++#include <sstream>
++#include <stdexcept>
++#include <vector>
++
++#include <openssl/sha.h>
++
++#include "core/Assignment.h"
++#include "core/BuiltinContext.h"
++#include "core/Context.h"
++#include "core/EvaluationSession.h"
++#include "core/ModuleInstantiation.h"
++#include "core/RenderVariables.h"
++#include "core/SourceFile.h"
++#include "core/TransformNode.h"
++#include "core/Tree.h"
++#include "core/Value.h"
++#include "core/parsersettings.h"
++#include "ext/json/json.hpp"
++#include "geometry/GeometryEvaluator.h"
++#include "geometry/PolySet.h"
++#include "geometry/PolySetUtils.h"
++#include "openscad.h"
++#include "utils/printutils.h"
++
++using nlohmann::json;
++
++namespace {
++bool traceEnabled = false;
++constexpr auto maxSourceBytes = 16 * 1024 * 1024;
++constexpr auto maxRequestBytes = 64 * 1024;
++constexpr auto maxMessages = 256;
++constexpr auto maxMessageBytes = 4096;
++
++std::string readFile(const fs::path& path, std::size_t limit)
++{
++  auto length = fs::file_size(path);
++  if (length > limit) throw std::runtime_error("Job input exceeds size limit");
++  std::ifstream stream(path, std::ios::binary);
++  std::string contents(length, '\0');
++  if (!stream.read(contents.data(), length) || stream.peek() != EOF) {
++    throw std::runtime_error("Cannot read job input");
++  }
++  return contents;
++}
++
++std::string digest(const std::string& text)
++{
++  unsigned char bytes[SHA256_DIGEST_LENGTH];
++  SHA256(reinterpret_cast<const unsigned char *>(text.data()), text.size(), bytes);
++  std::ostringstream hex;
++  for (auto byte : bytes) hex << std::hex << std::setw(2) << std::setfill('0') << unsigned(byte);
++  return hex.str();
++}
++
++struct MainSource {
++  fs::path logicalPath;
++  std::string bytes;
++  std::size_t bomBytes;
++  std::vector<std::size_t> lines;
++
++  MainSource(fs::path path, std::string bytes)
++    : logicalPath(std::move(path)), bytes(std::move(bytes)),
++      bomBytes(this->bytes.rfind("\xef\xbb\xbf", 0) == 0 ? 3 : 0), lines{0}
++  {
++    for (std::size_t i = 0; i < this->bytes.size(); ++i) {
++      if (this->bytes[i] == '\n') lines.push_back(i + 1);
++    }
++  }
++
++  json span(const Location& loc) const
++  {
++    // The pin's lexer reports one-based byte columns and exclusive end locations.
++    if (loc.isNone() || loc.filePath() != logicalPath) return nullptr;
++    const auto offset = [this](int line, int column) {
++      if (line < 1 || column < 1 || std::size_t(line) > lines.size()) {
++        throw std::out_of_range("source location");
++      }
++      auto start = lines[line - 1];
++      auto end = std::size_t(line) < lines.size() ? lines[line] : bytes.size();
++      if (std::size_t(column - 1) > end - start) throw std::out_of_range("source column");
++      return start + std::size_t(column - 1);
++    };
++    try {
++      auto start = offset(loc.firstLine(), loc.firstColumn());
++      auto end = offset(loc.lastLine(), loc.lastColumn());
++      if (start <= end) return {{"file", logicalPath.string()}, {"start", start}, {"end", end}};
++    } catch (const std::out_of_range&) {
++      // No span for parser locations in the synthetic end-of-input newline.
++    }
++    return nullptr;
++  }
++};
++
++json packMesh(const std::shared_ptr<const Geometry>& geometry)
++{
++  json vertices = json::array();
++  json triangles = json::array();
++  const auto polygonMesh = PolySetUtils::getGeometryAsPolySet(geometry);
++  if (polygonMesh && !polygonMesh->isEmpty()) {
++    auto triangulation = !polygonMesh->isTriangular() ? PolySetUtils::tessellate_faces(*polygonMesh)
++                                                      : nullptr;
++    const auto& mesh = triangulation ? *triangulation : *polygonMesh;
++    for (const auto& v : mesh.vertices) vertices.push_back({v.x(), v.y(), v.z()});
++    for (const auto& face : mesh.indices) {
++      if (face.size() != 3) throw std::runtime_error("Expected a triangulated mesh");
++      triangles.push_back({face[0], face[1], face[2]});
++    }
++  }
++  return {{"vertices", std::move(vertices)}, {"triangles", std::move(triangles)}};
++}
++
++json matrix(const Transform3d& transform)
++{
++  const auto& values = transform.matrix();
++  return std::vector<double>(values.data(), values.data() + 16);
++}
++
++struct SceneTrace {
++  const MainSource& source;
++  const Tree& tree;
++  GeometryEvaluator& evaluator;
++  json instances = json::array();
++  json operands = json::array();
++  // Tree's geometry cache key is independent of occurrence identity and source binding.
++  std::map<std::string, std::size_t> operandIDs;
++
++  void visit(const AbstractNode& node, json parent, const Transform3d& parentWorld,
++             std::map<std::string, double> iteration)
++  {
++    if (node.modinst && node.modinst->isBackground()) return;
++    for (const auto& [name, value] : node.scadrettoIteration) iteration[name] = value;
++    Transform3d local = Transform3d::Identity();
++    if (auto transform = dynamic_cast<const TransformNode *>(&node)) local = transform->matrix;
++    Transform3d world = parentWorld * local;
++    json operand;
++    if (dynamic_cast<const LeafNode *>(&node)) {
++      auto key = tree.getIdString(node);
++      if (auto entry = operandIDs.find(key); entry != operandIDs.end()) {
++        operand = entry->second;
++      } else {
++        auto geometry = evaluator.evaluateGeometry(node, true);
++        if (geometry && geometry->getDimension() == 3 && !geometry->isEmpty()) {
++          auto id = operands.size();
++          operands.push_back(packMesh(geometry));
++          operandIDs.emplace(std::move(key), id);
++          operand = id;
++        }
++      }
++    }
++
++    json diameter;
++    if (node.scadrettoDiameter) {
++      json chain = json::array();
++      for (auto binding = node.scadrettoDiameter; binding; binding = binding->previous) {
++        chain.push_back({{"kind", binding->kind}, {"name", binding->name},
++                         {"span", source.span(binding->location)}});
++      }
++      diameter = {{"value", node.scadrettoDiameterValue}, {"chain", std::move(chain)}};
++    }
++    instances.push_back({{"id", node.index()}, {"parent", parent},
++                         {"name", node.modinst ? node.modinst->name() : node.name()},
++                         {"span", node.modinst ? source.span(node.modinst->location()) : json(nullptr)},
++                         {"iteration", iteration}, {"local", matrix(local)}, {"world", matrix(world)},
++                         {"operand", operand}, {"diameter", diameter}});
++    for (const auto& child : node.children) visit(*child, node.index(), world, iteration);
++  }
++};
++
++void writeResult(const fs::path& directory, const json& result)
++{
++  const auto partial = directory / "result.tmp";
++  std::ofstream output(partial, std::ios::binary | std::ios::trunc);
++  output.exceptions(std::ios::badbit | std::ios::failbit);
++  output << result.dump(-1, ' ', false, json::error_handler_t::replace) << '\n';
++  output.close();
++  fs::rename(partial, directory / "result.json");
++}
++}  // namespace
++
++void scadrettoMark(Value& value, const std::string& kind, const std::string& name,
++                   const Location& location)
++{
++  if (!traceEnabled || value.type() != Value::Type::NUMBER) return;
++  value.scadrettoBinding = std::make_shared<ScadrettoBinding>(
++    ScadrettoBinding{kind, name, location, value.scadrettoBinding});
++}
++
++void scadrettoRecordIteration(AbstractNode& loop, std::size_t firstChild,
++                              const std::vector<std::shared_ptr<Assignment>>& arguments,
++                              const std::shared_ptr<const Context>& iterationContext)
++{
++  if (!traceEnabled || firstChild == loop.children.size()) return;
++  std::map<std::string, double> bindings;
++  for (const auto& arg : arguments) {
++    const auto& name = arg->getName();
++    const auto& value = iterationContext->lookup_variable(name, arg->location());
++    if (value.type() == Value::Type::NUMBER) bindings[name] = value.toDouble();
++  }
++  for (auto i = firstChild; i < loop.children.size(); ++i) {
++    loop.children[i]->scadrettoIteration = bindings;
++  }
++}
++
++int scadrettoRunJob(const std::string& requestPath)
++{
++  const auto directory = fs::absolute(requestPath).parent_path();
++  json result = {{"status", "error"}};
++  json console = json::array();
++  set_output_handler([](const Message& message, void *data) {
++    auto& capture = *static_cast<json *>(data);
++    if (capture.size() < maxMessages) {
++      capture.push_back(message.str().substr(0, maxMessageBytes));
++    }
++  }, nullptr, &console);
++
++  try {
++    const auto request = json::parse(readFile(requestPath, maxRequestBytes));
++    fs::path logicalPath(request.at("logicalPath").get<std::string>());
++    if (!logicalPath.is_absolute() || request.at("snapshot") != "main.scad") {
++      throw std::runtime_error("Job needs an absolute logical source path and main.scad snapshot");
++    }
++    MainSource source(logicalPath, readFile(directory / "main.scad", maxSourceBytes));
++    result["sourceByteLength"] = source.bytes.size();
++    result["sourceSHA256"] = digest(source.bytes);
++    result["bomBytes"] = source.bomBytes;
++
++    traceEnabled = true;
++    const auto constructionDirectory = logicalPath.parent_path();
++    EvaluationSession session(constructionDirectory.string());
++    ContextHandle<BuiltinContext> builtins{Context::create<BuiltinContext>(&session)};
++    RenderVariables{.preview = false, .time = 0, .camera = Camera{}}.applyToContext(builtins);
++    // The spike resolves sibling inputs and uses only explicit resource roots.
++    for (const auto& library : request.value("libraryRoots", std::vector<std::string>{})) {
++      if (!fs::path(library).is_absolute()) throw std::runtime_error("Library root must be absolute");
++      add_librarydir(library);
++    }
++    fs::current_path(constructionDirectory);
++    SourceFile *parsed = nullptr;
++    const auto path = logicalPath.string();
++    const auto ok = parse(parsed, source.bytes + "\n", path, path, false);
++    std::unique_ptr<SourceFile> file(parsed);
++    if (!ok || !file) throw std::runtime_error("Could not parse source snapshot");
++    file->handleDependencies();
++
++    AbstractNode::resetIndexCounter();
++    std::shared_ptr<const FileContext> fileContext;
++    auto absoluteRoot = file->instantiate(*builtins, &fileContext);
++    auto root = find_root_tag(absoluteRoot);
++    if (!root) root = absoluteRoot;
++
++    Tree tree(root, constructionDirectory.string());
++    GeometryEvaluator evaluator(tree);
++    const auto geometry = evaluator.evaluateGeometry(*root, true);
++    if (geometry && geometry->getDimension() != 3 && !geometry->isEmpty()) {
++      throw std::runtime_error("Top-level geometry is not three-dimensional");
++    }
++    result["mesh"] = packMesh(geometry);
++    SceneTrace trace{source, tree, evaluator};
++    trace.visit(*root, nullptr, Transform3d::Identity(), {});
++    result["instances"] = std::move(trace.instances);
++    result["operands"] = std::move(trace.operands);
++    result["status"] = "ok";
++  } catch (const std::exception& error) {
++    result["error"] = error.what();
++  }
++
++  traceEnabled = false;
++  set_output_handler(nullptr, nullptr, nullptr);
++  result["console"] = std::move(console);
++  try {
++    writeResult(directory, result);
++  } catch (const std::exception& error) {
++    LOG(message_group::Error, "Could not write Scadretto job result: %1$s", error.what());
++    return 2;
++  }
++  return result["status"] == "ok" ? 0 : 1;
++}
+diff --git a/src/core/ScadrettoTrace.h b/src/core/ScadrettoTrace.h
+new file mode 100644
+index 0000000..c6ddfb1
+--- /dev/null
++++ b/src/core/ScadrettoTrace.h
+@@ -0,0 +1,27 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++#pragma once
++
++#include <cstddef>
++#include <memory>
++#include <string>
++#include <vector>
++
++#include "core/AST.h"
++
++class AbstractNode;
++class Context;
++class Value;
++
++struct ScadrettoBinding {
++  std::string kind;
++  std::string name;
++  Location location;
++  std::shared_ptr<const ScadrettoBinding> previous;
++};
++
++void scadrettoMark(Value& value, const std::string& kind, const std::string& name,
++                   const Location& location);
++void scadrettoRecordIteration(AbstractNode& loop, std::size_t firstChild,
++                              const std::vector<std::shared_ptr<class Assignment>>& arguments,
++                              const std::shared_ptr<const Context>& iterationContext);
++int scadrettoRunJob(const std::string& requestPath);
+diff --git a/src/core/ScopeContext.cc b/src/core/ScopeContext.cc
+index 1f67cb1..8517256 100644
+--- a/src/core/ScopeContext.cc
++++ b/src/core/ScopeContext.cc
+@@ -1,3 +1,5 @@
++#include "core/ScadrettoTrace.h"
++
+ #include "core/ScopeContext.h"
+ 
+ #include <cmath>
+@@ -23,7 +25,9 @@ void ScopeContext::init()
+           "Parameter %1$s is overwritten with a literal", quoteVar(assignment->getName()));
+     }
+     try {
+-      set_variable(assignment->getName(), assignment->getExpr()->evaluate(get_shared_ptr()));
++      auto value = assignment->getExpr()->evaluate(get_shared_ptr());
++      scadrettoMark(value, "assignment", assignment->getName(), assignment->getExpr()->location());
++      set_variable(assignment->getName(), std::move(value));
+     } catch (EvaluationException& e) {
+       if (assignment->locationOfOverwrite().isNone()) {
+         e.LOG(message_group::Trace, assignment->location(), this->documentRoot(), "assignment to %1$s",
+diff --git a/src/core/Value.cc b/src/core/Value.cc
+index ea7e401..d91a8e7 100644
+--- a/src/core/Value.cc
++++ b/src/core/Value.cc
+@@ -222,7 +222,11 @@ Value Value::clone() const
+   switch (this->type()) {
+   case Type::UNDEFINED: return {};
+   case Type::BOOL:      return std::get<bool>(this->value);
+-  case Type::NUMBER:    return std::get<double>(this->value);
++  case Type::NUMBER: {
++    Value copy(std::get<double>(this->value));
++    copy.scadrettoBinding = this->scadrettoBinding;
++    return copy;
++  }
+   case Type::STRING:    return std::get<str_utf8_wrapper>(this->value).clone();
+   case Type::RANGE:     return std::get<RangePtr>(this->value).clone();
+   case Type::VECTOR:    return std::get<VectorType>(this->value).clone();
+diff --git a/src/core/Value.h b/src/core/Value.h
+index 2e236f1..76ce7a5 100644
+--- a/src/core/Value.h
++++ b/src/core/Value.h
+@@ -22,6 +22,7 @@ class tostream_visitor;
+ class EvaluationSession;
+ class Expression;
+ class Value;
++struct ScadrettoBinding;
+ 
+ class QuotedString : public std::string
+ {
+@@ -328,6 +329,9 @@ public:
+   [[nodiscard]] Value clone() const;  // Use sparingly to explicitly copy a Value
+   ~Value() = default;
+ 
++  // Set only for numeric values in a Scadretto job.
++  std::shared_ptr<const ScadrettoBinding> scadrettoBinding;
++
+   Value(int v) : value(double(v)) {}
+   Value(const char *v) : value(str_utf8_wrapper(v)) {}  // prevent insane implicit conversion to bool!
+   Value(char *v)
+diff --git a/src/core/control.cc b/src/core/control.cc
+index 6145a21..006962f 100644
+--- a/src/core/control.cc
++++ b/src/core/control.cc
+@@ -24,6 +24,8 @@
+  *
+  */
+ 
++#include "core/ScadrettoTrace.h"
++
+ #include <cstddef>
+ #include <cstdint>
+ #include <memory>
+@@ -179,7 +181,9 @@ static std::shared_ptr<AbstractNode> builtin_for(const ModuleInstantiation *inst
+   if (!inst->arguments.empty()) {
+     LcFor::forEach(inst->arguments, inst->location(), context,
+                    [inst, node](const std::shared_ptr<const Context>& iterationContext) {
++                     const auto firstChild = node->children.size();
+                      Children(inst->scope, iterationContext).instantiate(node);
++                     scadrettoRecordIteration(*node, firstChild, inst->arguments, iterationContext);
+                    });
+   }
+   return node;
+diff --git a/src/core/node.h b/src/core/node.h
+index 9c68d71..2a5ab45 100644
+--- a/src/core/node.h
++++ b/src/core/node.h
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include <map>
++
+ #include <cstddef>
+ #include <deque>
+ #include <memory>
+@@ -56,6 +58,9 @@ public:
+   // FIXME: Make protected
+   std::vector<std::shared_ptr<AbstractNode>> children;
+   const ModuleInstantiation *modinst;
++  std::shared_ptr<const struct ScadrettoBinding> scadrettoDiameter;
++  double scadrettoDiameterValue = 0;
++  std::map<std::string, double> scadrettoIteration;
+ 
+   // progress_mark is a running number used for progress indication
+   // FIXME: Make all progress handling external, put it in the traverser class?
+diff --git a/src/core/primitives.cc b/src/core/primitives.cc
+index adf3c1e..bf7df3d 100644
+--- a/src/core/primitives.cc
++++ b/src/core/primitives.cc
+@@ -24,6 +24,8 @@
+  *
+  */
+ 
++#include "core/ScadrettoTrace.h"
++
+ #include "core/primitives.h"
+ 
+ #include <algorithm>
+@@ -526,6 +528,10 @@ static std::shared_ptr<AbstractNode> builtin_cylinder(const ModuleInstantiation
+     node->center = parameters["center"].toBool();
+   }
+ 
++  if (dr_var == "d" && !r1 && !r2 && node->r1 > 0 && std::isfinite(node->r1)) {
++    node->scadrettoDiameter = parameters["d"].scadrettoBinding;
++    node->scadrettoDiameterValue = 2 * node->r1;
++  }
+   return node;
+ }
+ 
+diff --git a/src/openscad.cc b/src/openscad.cc
+index 0299770..4170356 100644
+--- a/src/openscad.cc
++++ b/src/openscad.cc
+@@ -99,6 +99,7 @@
+ #include "core/customizer/ParameterSet.h"
+ #include "core/node.h"
+ #include "core/parsersettings.h"
++#include "core/ScadrettoTrace.h"
+ #include "core/str_utf8_wrapper.h"
+ #include "geometry/Geometry.h"
+ #include "geometry/GeometryEvaluator.h"
+@@ -911,6 +912,10 @@ int openscad_main(int argc, char **argv)
+ #endif
+   Builtins::initialize();
+ 
++  if (argc == 3 && std::string_view(argv[1]) == "--scadretto-job") {
++    return scadrettoRunJob(argv[2]);
++  }
++
+   std::error_code cwd_error;
+   const auto original_path = fs::current_path(cwd_error);
+   if (cwd_error) {

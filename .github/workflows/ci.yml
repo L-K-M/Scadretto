@@ -26,7 +26,7 @@ jobs:
       - name: Check repository scripts
         run: |
           set -euo pipefail
-          shellcheck -x Scripts/*.sh
+          shellcheck -x Scripts/*.sh Scripts/bootstrap-macos Scripts/build-engine Scripts/verify-engine Engine/build-dependencies
           Scripts/build.sh --help
           Scripts/release.sh --help
           if Scripts/release.sh --preflight 01.2.3 > "$RUNNER_TEMP/invalid-version" 2>&1; then
@@ -46,3 +46,28 @@ jobs:
             fi
             grep -F 'distribution requires the Xcode project' "$RUNNER_TEMP/release-preflight"
           fi
+
+  engine:
+    name: Pinned engine on arm64 macOS
+    runs-on: macos-26
+    timeout-minutes: 55
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      SCADRETTO_ENGINE_JOBS: '2'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install build tools
+        run: brew install cmake ninja pkgconf bison flex meson gettext
+      - name: Build pinned reference and worker
+        run: Scripts/build-engine
+      - name: Verify trace and geometry
+        run: Scripts/verify-engine
+      - name: Retain engine verification evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: engine-verification
+          path: .build/engine/verification.*/**
+          include-hidden-files: true
