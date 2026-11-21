@@ -94,7 +94,7 @@ xcodebuild -project Scadretto.xcodeproj -scheme Scadretto -destination 'platform
 ./Scripts/package-macos --local
 ```
 
-`verify-engine` runs worker contract, source trace and reference comparisons. `verify` runs the deterministic package, integration and application test suites and reports machine/toolchain metadata. For XCTest UI automation use a logged-in macOS runner that permits UI tests. A headless CI host can run core and worker suites; mark GUI coverage pending until the UI suite runs. Make all failures nonzero and preserve relevant source diffs, diagnostics and fixture names in CI artifacts. Successful local CI must not require release credentials.
+`verify-engine` runs worker contract, source trace and reference comparisons. It also replays `Engine/patches/` onto a clean checkout of the pinned revision and fails on any divergence, so the documented patch series is always the one the worker was built from. `verify` runs the deterministic package, integration and application test suites and reports machine/toolchain metadata. For XCTest UI automation use a logged-in macOS runner that permits UI tests. A headless CI host can run core and worker suites; mark GUI coverage pending until the UI suite runs. Make all failures nonzero and preserve relevant source diffs, diagnostics and fixture names in CI artifacts. Successful local CI must not require release credentials.
 
 ## Performance targets
 

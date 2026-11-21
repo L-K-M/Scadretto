@@ -26,6 +26,8 @@ Docs/Decisions/                    engine spike, coordinates, packaging and benc
 
 Start with a checked-in `.xcodeproj`, a shared `Scadretto` scheme, Swift Package Manager lockfiles and one pinned engine dependency manifest. Build scripts resolve their own repository root and support spaces in paths. Keep fetched upstream sources and generated binaries in an ignored build directory. Check in the revision, patch series and instructions required to reproduce them.
 
+Format `Engine/patches/` as a `git format-patch` series — `NNNN-*.patch` files applied in order with `git am` onto the pinned commit, each commit message describing the observation hook it adds. `Scripts/build-engine` applies the series rather than assuming a prepared tree, and `Scripts/verify-engine` replays it onto a pristine upstream checkout and compares the resulting source tree, so the shipped worker cannot silently depend on unrecorded working-tree state or a patch that only applies manually.
+
 ## Data ownership
 
 | Type | Owner | Contents and lifetime |
