@@ -70,7 +70,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 - [ ] Implement `Scripts/verify` and `Scripts/package-macos` with distinct local and distribution modes. Test a locally signed build on a machine without Homebrew or a system OpenSCAD installation.
 - [ ] Validate architecture, minimum OS, dependency paths and library/font resolution. Review redistribution licenses for the pinned dependency set and prepare the matching source/build instructions.
-- [ ] When the release owner supplies credentials, sign nested code and app, notarize and staple, then run Gatekeeper and quarantine install checks on the final package. Record artifact checksums.
+- [ ] When the release owner supplies credentials, sign nested code, including the worker with the hardened runtime, and the app, notarize and staple, then run Gatekeeper and quarantine install checks on the final package. Record artifact checksums.
 
 **Exit:** The release checklist in file 06 records both functional verification and distribution state. An ad hoc developer package is a valid local deliverable; mark public distribution pending until those gates pass.
 
