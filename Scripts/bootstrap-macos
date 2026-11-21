@@ -21,3 +21,4 @@ git -C "$ENGINE_UPSTREAM" submodule update --init --depth=1 -- \
 engine_validate_source "$ENGINE_UPSTREAM"
 [[ -z $(git -C "$ENGINE_UPSTREAM" status --porcelain) ]] ||
     engine_fail "Pristine OpenSCAD checkout has local edits: $ENGINE_UPSTREAM."
+engine_fetch_archives

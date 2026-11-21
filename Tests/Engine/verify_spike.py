@@ -128,7 +128,7 @@ def run(executable, arguments, environment, log):
     return process, elapsed * 1000
 
 
-def worker_job(worker, directory, source, logical_path, env):
+def worker_job(worker, directory, source, logical_path, env, expected_error=None):
     directory.mkdir(mode=0o700, exist_ok=True)
     (directory / "main.scad").write_bytes(source)
     request = directory / "request.json"
@@ -136,9 +136,13 @@ def worker_job(worker, directory, source, logical_path, env):
     result_path = directory / "result.json"
     result_path.unlink(missing_ok=True)
     process, elapsed = run(worker, ["--scadretto-job", request], env, directory / "worker.log")
-    check(process.returncode == 0 and result_path.is_file(), f"Worker failed in {directory}")
+    check(result_path.is_file(), f"Worker did not publish a result in {directory}")
     result = json.loads(result_path.read_bytes())
-    check(result["status"] == "ok", result)
+    if expected_error is None:
+        check(process.returncode == 0 and result["status"] == "ok", result)
+    else:
+        check(process.returncode == 1 and result["status"] == "error", result)
+        check(expected_error in result["error"] and "mesh" not in result, result)
     check(result["sourceByteLength"] == len(source), "Wrong source byte length")
     check(result["sourceSHA256"] == hashlib.sha256(source).hexdigest(), "Wrong source digest")
     check(result["bomBytes"] == (3 if source.startswith(BOM) else 0), "Wrong BOM length")
@@ -408,6 +412,10 @@ def verify(args):
     preview = b"if ($preview) cube(3); else cube(2);\n"
     result, _ = worker_job(args.worker, base / "preview", preview, logical, environment)
     check(volume(result["mesh"]) == 8, "Worker did not use final-render semantics")
+    worker_job(args.worker, base / "parse-error", b"cube(2;\n", logical, environment,
+               expected_error="Could not parse")
+    worker_job(args.worker, base / "unsupported-2d", b"square(2);\n", logical, environment,
+               expected_error="not three-dimensional")
 
     times = [worker_job(args.worker, base / "timing", original, logical, environment)[1] for _ in range(31)]
     evidence["workerTiming"] = {"firstMilliseconds": times[0], "warmMilliseconds": times[1:],
@@ -446,7 +454,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for parameter in ("reference", "worker", "oracle", "fixture", "evidence"):
         parser.add_argument(parameter, type=lambda path: Path(path).resolve())
-    parser.add_argument("--font-cache", type=Path)
+    parser.add_argument("--font-cache", type=lambda path: Path(path).resolve())
     parser.add_argument("--fonts", type=Path)
     args = parser.parse_args()
     if (args.font_cache is None) != (args.fonts is None):

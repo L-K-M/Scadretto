@@ -28,7 +28,9 @@ def validate(binary, target):
     if tool("lipo", "-archs", binary).strip() != "arm64":
         raise ValueError(f"Expected arm64-only binary: {binary}")
     build = tool("vtool", "-show-build", binary)
-    versions = re.findall(r"^\s*(?:minos|version)\s+(\d+(?:\.\d+)+)$", build, re.MULTILINE)
+    versions = re.findall(r"^\s*minos\s+(\d+(?:\.\d+)+)$", build, re.MULTILINE)
+    if "LC_VERSION_MIN_MACOSX" in build and not versions:
+        versions = re.findall(r"LC_VERSION_MIN_MACOSX\s+cmdsize \d+\s+version (\S+)", build)
     if len(versions) != 1:
         raise ValueError(f"Missing or ambiguous deployment target: {binary}")
     version = lambda value: tuple(int(part) for part in (value + ".0.0").split(".")[:3])

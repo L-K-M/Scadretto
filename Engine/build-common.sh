@@ -53,3 +53,22 @@ engine_validate_submodules() {
             engine_fail "Submodule '$path' has local edits."
     done
 }
+
+engine_fetch_archives() (
+    mkdir -p "$ENGINE_BUILD/downloads"
+    local name digest url archive partial
+    while read -r name digest url; do
+        archive="$ENGINE_BUILD/downloads/$digest"
+        if [[ ! -f "$archive" ]]; then
+            partial="$(mktemp "$ENGINE_BUILD/downloads/.partial.XXXXXXXX")"
+            trap 'rm -f "$partial"' EXIT
+            printf 'Fetching %s\n' "$name"
+            curl --fail --location --show-error --silent --retry 2 \
+                --connect-timeout 20 --max-time 180 "$url" -o "$partial"
+            printf '%s  %s\n' "$digest" "$partial" | shasum -a 256 --check
+            mv "$partial" "$archive"
+        else
+            printf '%s  %s\n' "$digest" "$archive" | shasum -a 256 --check
+        fi
+    done < "$ENGINE_ROOT/Engine/dependencies.lock"
+)

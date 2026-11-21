@@ -8,7 +8,11 @@ pins the evaluator, its Flex/Bison grammar, Clipper2 and Manifold together.
 [The dependency lock](../../Engine/dependencies.lock) pins the downloaded
 archives by SHA-256. The build records the actual Flex and Bison versions
 along with the SDK, compiler and CMake inputs in each product's toolchain
-record.
+record. For the editor parser, the OpenSCAD Tree-sitter grammar
+`4c36a4fb569688c97cfa28090031e039a6079244` (v0.7.1) and Tree-sitter runtime
+`7f534862c3ec939c3a6ee147f7600ef5c1bf900f` (v0.26.9) agree on ABI 15.
+A native C build of this pair parsed the mounting plate and a CRLF input
+with an emoji comment, an include and a cylinder without error nodes.
 
 The spike uses the headless `NULLGL` build with the serial Manifold backend
 and the CGAL compatibility code. A trial with `ENABLE_CGAL=OFF` failed in
@@ -18,7 +22,17 @@ configuration disables GUI, Cairo, 3MF, TBB and mimalloc. Resource lookup
 starts from the executable's sibling `Resources` directory. The bundled
 `libraries` directory is empty. The only bundled fonts are the upstream
 Liberation 2.00.1 files under the SIL Open Font License 1.1, with their
-upstream license text included.
+upstream license text included. FreeType disables the SDK's optional HVF
+backend and the GLib recipe uses its portable pipe fallback. The macOS 27
+SDK otherwise enables pipe2 even at a macOS 14 deployment target.
+
+Clipper2, Manifold, Boost, double-conversion, FreeType, HarfBuzz and OpenSSL
+are static in the source-built engine. GLib, libintl, GMP and MPFR retain
+separately replaceable libraries. Fontconfig also stays shared with the
+development `fc-cache` tool. libzip uses the shared-library target to
+resolve its system zlib and crypto dependencies when linked. The build
+collects this closure from the pinned prefix, rewrites it to `@rpath`
+under the staged `Frameworks` folder, and ad hoc signs the binaries.
 
 The reference CLI resolves explicit `OPENSCADPATH` entries in order before
 its user library and bundled roots. The spike job uses the logical main
@@ -123,7 +137,7 @@ libraries on the development Mac while the source-built runtime was under
 development. Its geometry and source evidence above are separate from
 runtime deployment verification.
 
-The first measured packaged-by-hand plate worker launch and evaluation
+The initial Homebrew-linked plate worker launch and evaluation
 took 403 ms. In the same probe the 30 warm process-plus-evaluation samples
 had p50 25 ms and p95 65 ms. Those intervals include job execution and
 serialization through child exit. They exclude scheduling, decode, GPU
@@ -133,6 +147,25 @@ The named Liberation Sans case took 398 ms on its own empty cache and
 29 ms warm. M2 must serialize initialization and share the warmed cache
 across jobs. These observations support retaining one child per evaluation
 for this spike.
+
+A second run used binaries linked against the source-built dependency
+prefix and staged with the runtime closure. All geometry checks, including
+the table above, passed again. The timing series had warm p50 19 ms and
+p95 126 ms. The default and named font first/warm pairs were 36/19 ms
+and 178/20 ms. A cold run of staged `fc-cache` took 164 ms. The worker ran
+with an isolated environment, and `otool -L` showed only staging-relative
+third-party libraries and Apple system paths. The binary and bundled
+libraries passed arm64 and Mach-O deployment checks.
+
+The source-built probe artifacts and hashes from this Mac were:
+
+| Path under `.build/m0/` | SHA-256 |
+| --- | --- |
+| `source-reference/bin/openscad` | `d8459551972e86847c0532fac1ebe95a11fe48d04863f58e83b5b43253aefdde` |
+| `source-worker/bin/scadretto-engine` | `3d7d0b59365ebf2d97bbf8e57064fd9a3e17f7379113220fbc0d94b35171f5e5` |
+
+The probe evidence is in `.build/m0/source-verification-2/`. The
+format-patch replay and CI job provide the clean source-tree checks.
 
 The M0 tests exercise CPU rays and the evaluator through its spike job
 interface. The real application mouse path, versioned production protocol,
