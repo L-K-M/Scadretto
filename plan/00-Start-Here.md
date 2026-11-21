@@ -32,7 +32,7 @@ See the [build and release guide](../CICD.md) for repository checks and the macO
 
 **Platform assumption.** “Mac OS X” means modern macOS. Use macOS 14 or later on arm64 for the first release. Record the exact Xcode, SDK, deployment target and engine revision at M0. Intel support can follow once the dependency stack and helper pass the same fixture on an Intel Mac. The document format is independent of the CPU.
 
-**Editing boundary.** The first release operates on authored values and operations. Explicitly breaking one instance out of a procedural pattern, editing imported mesh topology, arbitrary face push/pull, simultaneous multi-file rewrites, and an interactive 2D sketcher are follow-on work. An included module remains useful in v1 because an explicit argument in the current file can still be edited. The proposed later milestones describe where the first two procedural extensions fit.
+**Editing boundary.** In the first release the visual CAD editor means direct manipulation of authored parameters: viewport handles, inspector fields and the instance outline acting on the source the user wrote. It is not a freeform modeler. The first release operates on authored values and operations. Explicitly breaking one instance out of a procedural pattern, editing imported mesh topology, arbitrary face push/pull, simultaneous multi-file rewrites, and an interactive 2D sketcher are follow-on work. An included module remains useful in v1 because an explicit argument in the current file can still be edited. The proposed later milestones describe where the first two procedural extensions fit.
 
 ## User-visible contract
 
