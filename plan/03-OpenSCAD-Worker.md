@@ -55,6 +55,9 @@ Mesh descriptors declare byte offsets, counts, stride, scalar types, triangle wi
 | `OperationRecord` | Ordered child IDs for union, difference and intersection. Store operand role relative to its parent; a single “negative” flag does not encode nested differences. |
 | `DependencyEdge` | From a resolved declaration or call-site argument to a currently executed property/instance. Track consumers conservatively; unknown impact must be displayed as unknown. |
 | `Diagnostic` | Severity, message, file and optional byte span, optional call path, evaluation key |
+| `ConsoleMessage` | Ordered `echo()` output and engine messages: upstream's formatted text, including its group prefix and location suffix, the upstream message group (echo, warning, error, trace, deprecated, parser, font, export and the others it defines), file, optional byte span and call path. Bound the count and total bytes and report truncation. |
+
+Capture console output through the engine's message logging hook in the patched worker and write it into `result.json`, including for a failed evaluation. Do not parse stdout or stderr for it. The reference CLI writes the parsing and instantiation messages, which include `echo()` and `assert` output, with `-o <file>.echo`. That export skips geometry evaluation, so compare it with the worker's messages up to the start of geometry evaluation, and check messages raised during geometry evaluation against golden files.
 
 Collect provenance per occurrence, even when geometry evaluation uses a cached local mesh. Each loop iteration gets its own path and transform. Two equal cylinders can share vertex buffers, but each keeps a distinct runtime ID and parameter environment. Preserve include/use boundaries and original files for definition navigation. Treat imported assets or unsupported operators as opaque nodes with bounds and limited metadata.
 
