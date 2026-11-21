@@ -15,7 +15,7 @@ In M0, look for the actual parser location record, expression evaluation, module
 
 ## Version 1 transport
 
-For v1, start one child per evaluation with `Process` and a private job directory. This gives cancellation by terminating the child, including while inside a long native boolean. Keep the wire contract transport-independent for later worker reuse. Use direct executable URLs and argv entries. Resolve paths from the app bundle. Drain stdout/stderr concurrently and bound diagnostic output. Protocol data is exchanged through files; stdout and stderr are logs.
+For v1, start one child per evaluation with `Process` and a private job directory. This gives cancellation by terminating the child, including while inside a long native boolean. Keep the wire contract transport-independent for later worker reuse. Measure cold spawn plus engine initialization at M0 — dyld, C++ runtime setup, bundled resource loading — and record it against the commit-to-frame budget in file 06. If startup is a significant fraction of the 1 s p95 target, promote a keep-alive worker that reuses this same job-directory contract rather than redesigning the protocol. Use direct executable URLs and argv entries. Resolve paths from the app bundle. Drain stdout/stderr concurrently and bound diagnostic output. Protocol data is exchanged through files; stdout and stderr are logs.
 
 Proposed invocation for the patched executable:
 
