@@ -28,7 +28,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 **Depends on M1.** Implement the job protocol, `ScadrettoEngineClient`, initial `ScadrettoViewport`, diagnostics and resource resolver.
 
 - [ ] Replace the spike client with a versioned job encoder, validated decoder and cancellable scheduler. Package the helper and runtime resources in the developer app. Inject the executable location in tests.
-- [ ] Load and shade the final mesh in Metal. Add camera framing, orbit, pan and zoom with the mouse and trackpad mappings in file 04, standard views, orthographic projection, resize/Retina handling and diagnostics that jump to the correct file/range.
+- [ ] Load and shade the final mesh in Metal. Add camera framing, orbit, pan and zoom with the mouse and trackpad mappings in file 04, the standard views, the Show Edges and Show Axes toggles, the orbit/pan swap preference, orthographic projection, resize/Retina handling and diagnostics that jump to the correct file/range.
 - [ ] Render from the live buffer, honor include/use/import paths, accept only the current key, clear valid empty scenes, and label stale last-good scenes. Simulate process crash, out-of-order completion and deleted include recovery.
 
 **Exit:** Open the handwritten fixture from Finder, change `count` in text, and see the new hole in the shaded mesh and outline. Break and fix a statement without losing work. Running from a path with spaces succeeds.
