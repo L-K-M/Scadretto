@@ -73,6 +73,7 @@ The plan's fixture and its three edits were rendered with stock OpenSCAD 2021.01
 | Procedural picking | Nested differences, identical cached cutters, shared call, coincident surfaces, rim pick | Inner wall resolves to a cutter; ambiguities present choices. Enclosed shapes are reachable through the outline. |
 | Source entry points | Typing, inspector, actual mouse drag, undo/redo, Save As and open from Finder | All paths converge on the same buffer, model and file. One visual gesture produces one undo item. |
 | Scheduling | Render A finishes after B, dependency changes during drag, cancel, close while rendering | Stale results do not replace scene or accept edits; child processes and job files are reclaimed. |
+| Scene reuse | Drag commit, then Undo and Redo; Revert after edits; a dependency file changed between the edit and the Undo | Undo shows the earlier geometry without a new job, and handles return after their bindings are re-verified. A changed dependency forces a fresh evaluation instead of reuse. |
 | Failure recovery | Invalid code, valid empty `difference`, missing asset later created, child exits mid-write, corrupt mesh or protocol mismatch | Source stays editable and saveable. Valid empty clears prior geometry; errors preserve last-good geometry and show the reason. |
 | Files | External replacement while clean and dirty, autosave conflict, read-only dependency, sibling library in two documents | Dirty bytes survive. No silent overwrite. Dependency changes invalidate previews even when source is unchanged. |
 | Native UX | IME composition, Retina pick, document windows, dark mode, keyboard-only inspector, VoiceOver | Selection and ranges survive refresh, controls are discoverable and the active window owns Undo. |
@@ -101,6 +102,7 @@ Treat these as initial engineering budgets. Report observed p50/p95, sample coun
 | Workload | Measurement | Target |
 |---|---|---|
 | Canonical plate | Warm, commit to accepted shaded frame over 30 edits, excluding typing debounce | p95 under 1 second |
+| Undo to an evaluated state | 30 alternating Undo and Redo steps after a diameter drag on the plate | p95 under 100 ms from command to accepted frame, with no worker job started |
 | Active drag and orbit | Twenty seconds of interaction with the plate; then repeat with 100 valid repeated cutters on a larger plate | p95 frame time at or below 33 ms; a cut can update on commit |
 | Typing while worker is busy | 100 paced edits while running the larger pattern | p95 main-thread edit handling under 16 ms; zero stale scene commits |
 | Cancellation and cleanup | Alternate 50 distinct jobs, supersede or close repeatedly, inspect children and private job storage after settling | Zero orphaned workers and zero abandoned completed jobs; record peak memory and termination latency |
