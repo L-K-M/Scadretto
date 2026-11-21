@@ -13,16 +13,21 @@ Packages/ScadrettoKit/
   Sources/ScadrettoSyntax/         Tree-sitter C bridge, syntax queries, byte coordinate index
   Sources/ScadrettoEngineClient/   request scheduling, result decoder, helper process
   Sources/ScadrettoViewport/       Metal renderer, camera, hit testing and handle geometry
-  Tests/                           unit, contract and integration tests
+  Tests/ScadrettoCoreTests/        source, range, patch and transaction contracts
+  Tests/ScadrettoSyntaxTests/      byte/UTF-16 conversion and grammar queries
+  Tests/ScadrettoEngineClientTests/ request encoding, result decoding and scheduler tests
+  Tests/ScadrettoViewportTests/   camera, hit-testing and handle math tests
 Engine/
   upstream.lock                    upstream commit, dependency revisions, build flags
   patches/                         ordered, replayable changes against that commit
   protocol/                        manifest specification, examples and binary layouts
 Tests/Fixtures/                    handwritten SCAD, includes, assets and golden edits
-Tests/UITests/                     document-window and interaction tests
+Tests/UITests/                     XCUITest target for document-window and interaction tests
 Scripts/                           bootstrap, verification, packaging
 Docs/Decisions/                    engine spike, coordinates, packaging and benchmark record
 ```
+
+SwiftPM discovers one test target per subdirectory of `Packages/ScadrettoKit/Tests/`; declare each target in `Package.swift`. A single flat `Tests/` directory is not a target, so `swift test --package-path Packages/ScadrettoKit` would report no tests. Keep the root `Tests/Fixtures/` files reachable as a resource bundle from both the package tests and the Xcode UI-test target; `Tests/UITests/` is an Xcode target, not a SwiftPM target.
 
 Start with a checked-in `.xcodeproj`, a shared `Scadretto` scheme, Swift Package Manager lockfiles and one pinned engine dependency manifest. Build scripts resolve their own repository root and support spaces in paths. Keep fetched upstream sources and generated binaries in an ignored build directory. Check in the revision, patch series and instructions required to reproduce them.
 
