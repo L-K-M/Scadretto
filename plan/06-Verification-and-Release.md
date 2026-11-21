@@ -103,7 +103,7 @@ Treat these as initial engineering budgets. Report observed p50/p95, sample coun
 | Canonical plate | Warm, commit to accepted shaded frame over 30 edits, excluding typing debounce | p95 under 1 second |
 | Active drag and orbit | Twenty seconds of interaction with the plate; then repeat with 100 valid repeated cutters on a larger plate | p95 frame time at or below 33 ms; a cut can update on commit |
 | Typing while worker is busy | 100 paced edits while running the larger pattern | p95 main-thread edit handling under 16 ms; zero stale scene commits |
-| Slow model | A model that takes about five seconds to evaluate; 60 seconds of typing with pauses of 0.5 to 2 seconds | Typing p95 under 16 ms. At most one job is superseded per measured evaluation time, at most 12 in the 60 seconds. The final source starts evaluating within the lengthened idle delay after typing stops. |
+| Slow model | A model that takes about five seconds to evaluate; 60 seconds of typing with pauses of 0.5 to 2 seconds | Typing p95 under 16 ms. Automatic jobs launched during the 60 seconds stay under 12. After the idle delay has adapted, zero automatic jobs are superseded while pauses remain shorter than that delay, and the status area reports slowed automatic preview. The final source starts evaluating exactly once, within the lengthened idle delay after typing stops. |
 | Cancellation and cleanup | Alternate 50 distinct jobs, supersede or close repeatedly, inspect children and private job storage after settling | Zero orphaned workers and zero abandoned completed jobs; record peak memory and termination latency |
 
 ## Distribution gate
