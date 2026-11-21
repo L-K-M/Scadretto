@@ -25,7 +25,7 @@ See the [build and release guide](../CICD.md) for repository checks and the macO
 |---|---|
 | Documents | Open, edit, save and reopen UTF-8 `.scad` files. Use ordinary files with relative imports. Preserve comments, identifiers, line endings and untouched bytes. |
 | Code → UI | An accepted evaluation replaces the model, instance outline, values and diagnostics together. Syntax errors leave a visibly stale last-good preview. |
-| UI → code | Edit literal dimensions on cubes, spheres and cylinders, direct numeric arguments to user modules, named numeric parameters and supported translations. Offer formula offsets or a shared parameter edit under the rules in file 02. |
+| UI → code | Edit literal dimensions on cubes, spheres, cylinders, squares and circles, `linear_extrude` heights, direct numeric arguments to user modules, named numeric parameters and supported translations. Offer formula offsets or a shared parameter edit under the rules in file 02. |
 | Booleans and repetition | Inspect positive operands and cutters. Select one occurrence inside a module or loop and show the full impact of editing its source. Offer a pitch handle for the documented simple pattern. |
 | Arbitrary OpenSCAD | Let the pinned engine evaluate valid 3D programs within its supported features and file inputs. Code navigation and inspection remain available for constructs without an editable handle. Report diagnostics for unsupported inputs. |
 | macOS delivery | Native Apple silicon application, working offline after installation. Deliver a Developer ID distribution build when release credentials are available. |
