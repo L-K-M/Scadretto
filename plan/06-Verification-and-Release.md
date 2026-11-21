@@ -75,7 +75,7 @@ The plan's fixture and its three edits were rendered with stock OpenSCAD 2021.01
 | Scheduling | Render A finishes after B, dependency changes during drag, cancel, close while rendering | Stale results do not replace scene or accept edits; child processes and job files are reclaimed. |
 | Failure recovery | Invalid code, valid empty `difference`, missing asset later created, child exits mid-write, corrupt mesh or protocol mismatch | Source stays editable and saveable. Valid empty clears prior geometry; errors preserve last-good geometry and show the reason. |
 | Files | External replacement while clean and dirty, autosave conflict, read-only dependency, sibling library in two documents | Dirty bytes survive. No silent overwrite. Dependency changes invalidate previews even when source is unchanged. |
-| Native UX | IME composition, Retina pick, document windows, dark mode, keyboard-only inspector, VoiceOver | Selection and ranges survive refresh, controls are discoverable and the active window owns Undo. |
+| Native UX | IME composition, including Undo from the Edit menu, Revert, an external reload, a conflict resolution, a pending graphical patch and a background highlight pass while text is marked, Retina pick, document windows, dark mode, keyboard-only inspector, VoiceOver | Selection and ranges survive refresh. Held mutations run only after the composition is committed or cancelled, against re-verified preconditions, no evaluation is scheduled from marked text, and highlighting never changes attributes inside the marked range. Controls are discoverable and the active window owns Undo. |
 
 ## Build and verification entry points
 
