@@ -15,6 +15,8 @@ Give an implementation agent this whole directory. The numbered files are parts 
 | [05 Milestones](05-Milestones.md) | Ordered work packages with targets, dependencies and exit conditions |
 | [06 Verification and release](06-Verification-and-Release.md) | Canonical test fixture, behavioral oracles, performance targets and packaging |
 
+See the [build and release guide](../CICD.md) for repository checks and the macOS release process.
+
 **First assignment for an agent.** Complete M0 on a Mac. Produce a reproducible upstream reference build, a patched headless worker spike, and a report of which source ranges and geometry identities survived the mounting-plate example. Then complete M1–M3 to put one real viewport edit through the application. A mock scene is useful in tests. The M3 demonstration must open an ordinary file and use the real worker.
 
 ## Release scope
