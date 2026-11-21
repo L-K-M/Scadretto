@@ -66,7 +66,7 @@ The engine owns OpenSCAD evaluation, boolean operations, and expression values. 
 
 | Component | Use | M0 check |
 |---|---|---|
-| AppKit `NSDocument` and `NSTextView` | Native save, reopen, first responder, Undo and text input | Use the same document undo manager for keyboard and viewport edits |
+| AppKit `NSDocument` and `NSTextView` | Native save, reopen, first responder, Undo and text input | Use the same document undo manager for keyboard and viewport edits. Prototype line numbers on the intended TextKit version without an unplanned fallback to TextKit 1; M1 records the choice |
 | MetalKit `MTKView` | Final shaded mesh, cutter overlays, manipulation handles | Render offscreen, pick with Retina scaling and render on the minimum target |
 | Tree-sitter runtime and OpenSCAD grammar | Error-tolerant syntax and byte spans | Pin compatible runtime/grammar revisions, verify fixtures with comments, Unicode and `include` |
 | OpenSCAD headless build | Geometry and evaluation trace | Build upstream reference and patched worker from the same revision, compare the same options |
