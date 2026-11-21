@@ -85,4 +85,7 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 | Explicit “only this occurrence” | Binding trace, loop-identity proof, previewable structural diffs | On a recognized integer-range pattern, preview and accept a conditional offset for one occurrence. Other instances, comments and ordinary parameter behavior remain intact; cancel produces no diff. |
 | Rotate and scale handles | Robust frame, pivot and handedness tests | Rotate about the displayed pivot under a transformed parent. Re-evaluation produces the previewed pose. |
 | Editing dependency files in place | Multi-document coordinated transactions and undo | Changing a library parameter previews all affected open documents and can be undone coherently. |
+| Editing imported mesh topology | Trace support for `import` nodes and explicit scope rules | An imported face stays inspect-only in v1 with a source link; the follow-on previews a local transform on the `import()` call without rewriting the asset. |
+| Arbitrary face push/pull | Handle math generalized beyond axis-aligned primitives | Dragging one cube face moves that face only; the committed evaluation matches the previewed solid. |
+| Interactive 2D sketcher | 2D editing under the same verified rewrite rules as the 3D handles | Sketching a rectangle on the plate's top face inserts a verified statement that survives the byte-diff review. |
 | Intel or universal distribution | Reproducible x86_64 engine and dependency builds | Verify the native app/helper pairing and the same fixture suite on an actual Intel Mac. |
