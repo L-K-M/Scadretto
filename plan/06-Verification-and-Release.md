@@ -79,20 +79,22 @@ The plan's fixture and its three edits were rendered with stock OpenSCAD 2021.01
 
 ## Build and verification entry points
 
-The agent creates these project scripts in M0–M6. The commands below are acceptance interfaces for the future repository. They have not been executed against a Scadretto application.
+The agent creates the engine and verification scripts in M0–M6. The commands below are acceptance interfaces for the future repository. They have not been executed against a Scadretto application. The repository already provides `Scripts/build.sh` and `Scripts/release.sh` as the supported app-build and release-tag wrappers; the raw `xcodebuild` invocations remain the underlying commands.
 
 ```sh
 ./Scripts/bootstrap-macos
 ./Scripts/build-engine
 ./Scripts/verify-engine
+Scripts/build.sh --debug
 swift test --package-path Packages/ScadrettoKit
 xcodebuild -project Scadretto.xcodeproj -scheme Scadretto -configuration Debug -destination 'platform=macOS,arch=arm64' build
 xcodebuild -project Scadretto.xcodeproj -scheme Scadretto -destination 'platform=macOS,arch=arm64' test
 ./Scripts/verify
 ./Scripts/package-macos --local
+Scripts/release.sh --preflight 1.2.3
 ```
 
-`verify-engine` runs worker contract, source trace and reference comparisons. `verify` runs the deterministic package, integration and application test suites and reports machine/toolchain metadata. For XCTest UI automation use a logged-in macOS runner that permits UI tests. A headless CI host can run core and worker suites; mark GUI coverage pending until the UI suite runs. Make all failures nonzero and preserve relevant source diffs, diagnostics and fixture names in CI artifacts. Successful local CI must not require release credentials.
+`verify-engine` runs worker contract, source trace and reference comparisons. `verify` runs the deterministic package, integration and application test suites and reports machine/toolchain metadata. GitHub Actions runs repository script checks on every pull request and push to `main`; wire the pinned engine checks into CI in M0 and the package tests and app build in M1, as described in [the build and release guide](../CICD.md). For XCTest UI automation use a logged-in macOS runner that permits UI tests. A headless CI host can run core and worker suites; mark GUI coverage pending until the UI suite runs. Make all failures nonzero and preserve relevant source diffs, diagnostics and fixture names in CI artifacts. Successful local CI must not require release credentials.
 
 ## Performance targets
 
