@@ -233,6 +233,13 @@ final class ViewportLinearHandleTests: XCTestCase {
         XCTAssertEqual(zero.sign, .plus, "A drag to zero must not write -0")
     }
 
+    func testAnInvisibleMoveKeepsALiteralsDigits() throws {
+        let linear = ViewportLinearHandle(anchor: .zero, axis: SIMD3(1, 0, 0), value: .pi, valuePerUnit: 1)
+        XCTAssertNil(linear.value(from: 0, to: 1e-14, snap: 0))
+        let diameter = ViewportDiameterHandle(center: .zero, radialUnit: SIMD3(1, 0, 0), diameter: .pi)
+        XCTAssertNil(diameter.resized(from: 1, to: 1 + 1e-14, snap: 0))
+    }
+
     func testADimensionPreviewsOnlyValuesItCanCommit() throws {
         let size = ViewportLinearHandle(anchor: .zero, axis: SIMD3(1, 0, 0), value: 10, valuePerUnit: 1,
                                         exclusiveMinimum: 0)

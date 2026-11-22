@@ -26,3 +26,14 @@ func anAmbiguousOrNonfiniteEntryIsRefused(locale: String, text: String) {
     let edit = try #require(try literal.edit(setting: value, in: document))
     #expect(edit.replacement == Data("2.5".utf8))
 }
+
+@Test(arguments: ["en_US", "de_DE"])
+func returnOnAnUntouchedFieldKeepsTheLiteralsDigits(_ identifier: String) {
+    let locale = Locale(identifier: identifier)
+    for authored in [Double.pi, 0.1234567890123456, -12345.678901234567, 4, 0] {
+        let untouched = PropertyEntry.text(of: authored, locale: locale)
+        #expect(PropertyEntry.value(of: untouched, shown: authored, locale: locale) == authored)
+    }
+    #expect(PropertyEntry.value(of: "3", shown: .pi, locale: locale) == 3)
+    #expect(PropertyEntry.value(of: "none", shown: .pi, locale: locale) == nil)
+}

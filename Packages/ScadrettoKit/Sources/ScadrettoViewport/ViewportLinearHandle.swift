@@ -77,7 +77,7 @@ public struct ViewportLinearHandle: Equatable, Sendable {
         guard proposal.isFinite, proposal != value else { return nil }
         let candidate = draggedValue(proposal, snap: snap)
         if let exclusiveMinimum, candidate <= exclusiveMinimum { return nil }
-        return candidate.isFinite && candidate != value ? candidate : nil
+        return candidate.isFinite && changesDraggedValue(value, to: candidate) ? candidate : nil
     }
 
     /// Whether the view point grabs the projected baseline grip.
@@ -94,6 +94,11 @@ func draggedValue(_ proposal: Double, snap: Double) -> Double {
     let decimal = String(format: "%.12g", locale: Locale(identifier: "en_US_POSIX"), stepped)
     let value = Double(decimal) ?? stepped
     return value == 0 ? 0 : value
+}
+
+/// A move below the twelve digits of a drag must not round away a literal's own.
+func changesDraggedValue(_ baseline: Double, to candidate: Double) -> Bool {
+    candidate != baseline && candidate != draggedValue(baseline, snap: 0)
 }
 
 /// A draft marker for another occurrence affected by a scalar edit.

@@ -40,6 +40,8 @@ makes a binding complete and a drag safe.
 - When the chosen property disappears, or a wrapper is inserted or removed
   between it and the selection, the inspector waits for an explicit choice.
   An inserted move continues as the translation it created.
+- A field shows twelve significant digits. Committing what it showed keeps
+  the literal's own digits and adds no undo entry.
 - A drag proposes at most twelve significant digits, snapped or not, and
   no dimension at or below zero. Only its own release commits it.
 

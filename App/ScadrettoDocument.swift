@@ -515,8 +515,9 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     }
 
     private func submitProperty(_ text: String) {
-        guard let active = activeEdit else { return }
-        guard let value = PropertyEntry.value(of: text) else {
+        guard let active = activeEdit,
+              let shown = propertyChoices.first(where: { $0.id == active.choiceID })?.value else { return }
+        guard let value = PropertyEntry.value(of: text, shown: shown) else {
             editor?.previewWorkspace.sidebar.inspector.showMessage("Enter a finite number.")
             return
         }

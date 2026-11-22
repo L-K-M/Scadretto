@@ -23,7 +23,7 @@ public struct ViewportDiameterHandle: Equatable, Sendable {
         guard proposal.isFinite, proposal > 0, proposal != diameter else { return nil }
         // The numeric field can still accept a user's full-precision input.
         let value = draggedValue(proposal, snap: snap)
-        return value.isFinite && value > 0 && value != diameter ? value : nil
+        return value.isFinite && value > 0 && changesDraggedValue(diameter, to: value) ? value : nil
     }
 
     func radiusCoordinate(at point: CGPoint, in frame: ViewportTransform) -> Double? {

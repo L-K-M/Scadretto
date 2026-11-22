@@ -1,5 +1,6 @@
 import AppKit
 import ScadrettoEngineClient
+import ScadrettoPlanning
 
 @MainActor
 final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelegate, NSTextViewDelegate {
@@ -398,7 +399,7 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
         dimension.stringValue = inspection.property
         field.setAccessibilityIdentifier(inspection.fieldIdentifier)
         field.setAccessibilityLabel(inspection.property)
-        field.stringValue = inspection.value.map(Self.number) ?? ""
+        field.stringValue = inspection.value.map { PropertyEntry.text(of: $0) } ?? ""
         field.isEnabled = inspection.writable
     }
 
@@ -409,7 +410,7 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
 
     func showPreview(_ diameter: Double?) {
         if let diameter, let initial = inspection?.value {
-            detail.stringValue = "Preview · \(Self.number(initial)) → \(Self.number(diameter))"
+            detail.stringValue = "Preview · \(PropertyEntry.text(of: initial)) → \(PropertyEntry.text(of: diameter))"
             detail.isHidden = false
         } else {
             showMessage(inspection?.detail ?? "")
@@ -428,9 +429,5 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
     @objc private func commit() { onCommit?(field.stringValue) }
     @objc private func changeProperty() {
         onChoice?(choices.indexOfSelectedItem)
-    }
-
-    private static func number(_ value: Double) -> String {
-        value.formatted(.number.grouping(.never).precision(.significantDigits(1...12)))
     }
 }
