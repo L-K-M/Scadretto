@@ -194,14 +194,24 @@ final class ScadrettoUITests: XCTestCase {
 
     @MainActor
     func testExternalBackupRenameDoesNotRedirectSave() throws {
+        try saveAfterExternalMove(refilledWith: Data("cube(2);\n".utf8))
+    }
+
+    @MainActor
+    func testFileMovedAwayIsNeitherFollowedNorRecreated() throws {
+        try saveAfterExternalMove(refilledWith: nil)
+    }
+
+    /// Edits a file, moves it aside as another program would, then takes Save's default answer.
+    @MainActor
+    private func saveAfterExternalMove(refilledWith external: Data?) throws {
         let app = launch()
         defer { app.terminate() }
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appending(path: "Shared.scad")
-        let backup = directory.appending(path: "Shared-backup.scad")
+        let moved = directory.appending(path: "Shared-backup.scad")
         let original = Data("cube(1);\n".utf8)
-        let external = Data("cube(2);\n".utf8)
         try original.write(to: url)
 
         let editor = open(url, in: app)
@@ -210,25 +220,26 @@ final class ScadrettoUITests: XCTestCase {
         editor.typeText("// local ")
         waitForText("// local cube(1);", in: editor)
 
-        // Another program moves the file aside and only later writes at its path. AppKit reports
-        // a path refilled within half a second as a change, and follows the move when it is later.
-        try FileManager.default.moveItem(at: url, to: backup)
+        // AppKit reports a path refilled within half a second as a change. It follows the move
+        // when the path stays empty longer, so wait before any refill.
+        try FileManager.default.moveItem(at: url, to: moved)
         settle(3)
-        try external.write(to: url)
+        try external?.write(to: url)
         settle(2)
 
         choose("Save", from: "File", in: app)
-        // AppKit's moved-document sheet offers Save, under the backup's name, as its default.
+        // A followed move makes Save, under the new name, the default answer of AppKit's sheet.
         let acceptDefault = app.sheets.buttons["Save"].firstMatch
         if acceptDefault.waitForExistence(timeout: 3) { acceptDefault.click() }
-        let redirected = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            (try? Data(contentsOf: backup)) != original
+        let written = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            (try? Data(contentsOf: moved)) != original || (try? Data(contentsOf: url)) != external
         }, object: nil)
-        redirected.isInverted = true
-        XCTAssertEqual(XCTWaiter.wait(for: [redirected], timeout: 4), .completed,
-                       "Save followed the other application's backup")
-        XCTAssertEqual(try Data(contentsOf: backup), original)
-        XCTAssertEqual(try Data(contentsOf: url), external)
+        written.isInverted = true
+        XCTAssertEqual(XCTWaiter.wait(for: [written], timeout: 4), .completed,
+                       "Save wrote to a file the user did not choose")
+        XCTAssertEqual(try Data(contentsOf: moved), original)
+        XCTAssertEqual(try? Data(contentsOf: url), external)
+        XCTAssertTrue((editor.value as? String)?.contains("// local") == true, "The local edit was lost")
     }
 
     @MainActor
