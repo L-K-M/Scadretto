@@ -1,4 +1,4 @@
-From 2bdf11d1300a0da8362d939072fa52eb69c866de Mon Sep 17 00:00:00 2001
+From 5e5aa842675f1b20c5b44a8804729b82e7067885 Mon Sep 17 00:00:00 2001
 From: Scadretto <scadretto@users.noreply.github.com>
 Date: Sun, 22 Nov 2026 03:14:50 +0100
 Subject: [PATCH] Expose versioned worker jobs and dependencies
@@ -10,9 +10,9 @@ by OpenSCAD while leaving the base evaluation unchanged.
  CMakeLists.txt                    |   2 +-
  src/FontCache.cc                  |  10 +
  src/core/ImportNode.cc            |  12 +-
- src/core/ScadrettoDependencies.cc | 447 ++++++++++++++++++++++
- src/core/ScadrettoDependencies.h  |  97 +++++
- src/core/ScadrettoTrace.cc        | 601 ++++++++++++++++++++++++++++--
+ src/core/ScadrettoDependencies.cc | 444 ++++++++++++++++++++++
+ src/core/ScadrettoDependencies.h  |  98 +++++
+ src/core/ScadrettoTrace.cc        | 604 ++++++++++++++++++++++++++++--
  src/core/SourceFile.cc            |   6 +-
  src/core/SourceFileCache.cc       |   9 +-
  src/core/SurfaceNode.cc           |   3 +
@@ -21,7 +21,7 @@ by OpenSCAD while leaving the base evaluation unchanged.
  src/core/parsersettings.cc        |  16 +-
  src/core/parsersettings.h         |   8 +-
  src/io/dxfdim.cc                  |   5 +
- 14 files changed, 1187 insertions(+), 45 deletions(-)
+ 14 files changed, 1188 insertions(+), 45 deletions(-)
  create mode 100644 src/core/ScadrettoDependencies.cc
  create mode 100644 src/core/ScadrettoDependencies.h
 
@@ -112,10 +112,10 @@ index c762976..8c3095f 100644
    if (actualtype == ImportType::UNKNOWN) {
 diff --git a/src/core/ScadrettoDependencies.cc b/src/core/ScadrettoDependencies.cc
 new file mode 100644
-index 0000000..7597d98
+index 0000000..d95382b
 --- /dev/null
 +++ b/src/core/ScadrettoDependencies.cc
-@@ -0,0 +1,447 @@
+@@ -0,0 +1,444 @@
 +// SPDX-License-Identifier: GPL-2.0-or-later
 +#include "core/ScadrettoDependencies.h"
 +
@@ -129,6 +129,7 @@ index 0000000..7597d98
 +#include <openssl/evp.h>
 +
 +#ifndef _WIN32
++#include <fcntl.h>
 +#include <sys/file.h>
 +#include <unistd.h>
 +#endif
@@ -156,7 +157,6 @@ index 0000000..7597d98
 +  std::uint64_t byteLength = 0;
 +  bool hasBytes = false;
 +  std::string kind;
-+  bool writable = false;
 +  std::vector<std::uint64_t> lineStarts;  // empty => no span index
 +};
 +
@@ -308,9 +308,6 @@ index 0000000..7597d98
 +  if (error) return;
 +  record.resolvedPath = boundedPath(fs_generic_string(canonical));
 +  trackedFileKeys[canonical.generic_string()] = id;
-+#ifndef _WIN32
-+  record.writable = ::access(record.resolvedPath.c_str(), W_OK) == 0;
-+#endif
 +}
 +
 +DependencyFile& fileRecord(const std::string& path, scadretto::DependencyKind kind)
@@ -414,6 +411,7 @@ index 0000000..7597d98
 +    const std::lock_guard<std::mutex> lock(dependenciesMutex);
 +    if (!enabled) return;
 +    auto& record = fileRecord(path, kind);
++    if (record.kind.empty()) return;
 +    digestBuffer(record, bytes);
 +  } catch (...) {
 +  }
@@ -425,7 +423,7 @@ index 0000000..7597d98
 +  try {
 +    const std::lock_guard<std::mutex> lock(dependenciesMutex);
 +    if (!enabled) return;
-+    if (trackedLookups.size() >= maxDependencyLookups) {
++    if (trackedLookups.size() >= maxDependencyLookups || candidates.size() > maxLookupCandidates) {
 +      ++droppedLookups;
 +      return;
 +    }
@@ -433,7 +431,6 @@ index 0000000..7597d98
 +    record.requestingPath = boundedPath(requestingFile);
 +    record.name = bounded(name, maxNameBytes);
 +    for (const auto& candidate : candidates) {
-+      if (record.candidates.size() >= maxLookupCandidates) break;
 +      record.candidates.push_back(boundedPath(candidate));
 +    }
 +    record.winner = boundedPath(winner);
@@ -565,10 +562,10 @@ index 0000000..7597d98
 +}  // namespace scadretto
 diff --git a/src/core/ScadrettoDependencies.h b/src/core/ScadrettoDependencies.h
 new file mode 100644
-index 0000000..dee2b89
+index 0000000..2a8a042
 --- /dev/null
 +++ b/src/core/ScadrettoDependencies.h
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,98 @@
 +// SPDX-License-Identifier: GPL-2.0-or-later
 +#pragma once
 +
@@ -582,6 +579,7 @@ index 0000000..dee2b89
 +//
 +// The worker calls scadretto::beginDependencies() before evaluating a job and
 +// splices dependencyFiles()/dependencyLookups() into result.json afterwards.
++// Each worker process runs one job and has one recording session.
 +// Every observe*() function is a no-op while recording is disabled, never
 +// throws, and never changes upstream behavior: hook sites only read values
 +// upstream already computed.
@@ -667,7 +665,7 @@ index 0000000..dee2b89
 +
 +}  // namespace scadretto
 diff --git a/src/core/ScadrettoTrace.cc b/src/core/ScadrettoTrace.cc
-index b029e03..3dc0cdd 100644
+index b029e03..72b6580 100644
 --- a/src/core/ScadrettoTrace.cc
 +++ b/src/core/ScadrettoTrace.cc
 @@ -1,27 +1,41 @@
@@ -982,7 +980,7 @@ index b029e03..3dc0cdd 100644
      for (const auto& child : node.children) visit(*child, node.index(), world, iteration);
    }
  };
-@@ -179,39 +368,352 @@ void writeResult(const fs::path& directory, const json& result)
+@@ -179,39 +368,355 @@ void writeResult(const fs::path& directory, const json& result)
    const auto partial = directory / "result.tmp";
    std::ofstream output(partial, std::ios::binary | std::ios::trunc);
    output.exceptions(std::ios::badbit | std::ios::failbit);
@@ -1095,27 +1093,31 @@ index b029e03..3dc0cdd 100644
 -    const auto& name = arg->getName();
 -    const auto& value = iterationContext->lookup_variable(name, arg->location());
 -    if (value.type() == Value::Type::NUMBER) bindings[name] = value.toDouble();
++  const auto& entries = request.at(field);
++  if (!entries.is_array()) {
++    throw std::runtime_error(std::string("Job field ") + field + " must be an array of absolute paths");
+   }
+-  for (auto i = firstChild; i < loop.children.size(); ++i) {
+-    loop.children[i]->scadrettoIteration = bindings;
 +  std::vector<std::string> values;
-+  for (const auto& entry : request.at(field)) {
++  for (const auto& entry : entries) {
 +    if (!entry.is_string() || !fs::path(entry.get<std::string>()).is_absolute()) {
 +      throw std::runtime_error(std::string("Job field ") + field + " needs absolute paths");
 +    }
 +    values.push_back(entry.get<std::string>());
    }
--  for (auto i = firstChild; i < loop.children.size(); ++i) {
--    loop.children[i]->scadrettoIteration = bindings;
 +  return values;
-+}
-+
+ }
+ 
+-int scadrettoRunJob(const std::string& requestPath)
 +std::string stringField(const json& object, const char *field)
 +{
 +  if (!object.contains(field) || !object.at(field).is_string()) {
 +    throw std::runtime_error(std::string("Job field ") + field + " must be a string");
-   }
++  }
 +  return object.at(field).get<std::string>();
- }
- 
--int scadrettoRunJob(const std::string& requestPath)
++}
++
 +bool isUnsignedField(const json& object, const char *field)
 +{
 +  return object.contains(field) && object.at(field).is_number_unsigned();
@@ -1324,11 +1326,10 @@ index b029e03..3dc0cdd 100644
 +      if (geometry && geometry->getDimension() != 3 && !geometry->isEmpty()) {
 +        return fail("unsupportedDimension", "Top-level geometry is not three-dimensional");
 +      }
-+      if (geometry && !geometry->isEmpty()) {
-+        result["mesh"] = meshPayload.append(geometry);
-+      }
++      json mesh = geometry && !geometry->isEmpty() ? meshPayload.append(geometry) : json(nullptr);
 +      SceneTrace trace{source, tree, evaluator, &operandPayload};
 +      trace.visit(*root, nullptr, Transform3d::Identity(), {});
++      result["mesh"] = std::move(mesh);
 +      result["instances"] = std::move(trace.instances);
 +      result["operands"] = std::move(trace.operands);
 +      result["operations"] = std::move(trace.operations);
@@ -1355,7 +1356,7 @@ index b029e03..3dc0cdd 100644
    json result = {{"status", "error"}};
    json console = json::array();
    set_output_handler([](const Message& message, void *data) {
-@@ -283,3 +785,44 @@ int scadrettoRunJob(const std::string& requestPath)
+@@ -283,3 +788,44 @@ int scadrettoRunJob(const std::string& requestPath)
    }
    return result["status"] == "ok" ? 0 : 1;
  }
