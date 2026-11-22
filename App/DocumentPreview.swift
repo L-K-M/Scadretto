@@ -108,22 +108,29 @@ final class DocumentPreview {
                 let changed: @Sendable () -> Void = { [weak self] in
                     Task { @MainActor in self?.dependencyChanged(for: id) }
                 }
-                let watched = await Task.detached(priority: .utility) {
+                let prepared = await Task.detached(priority: .utility) {
                     let watch = DependencyWatch(result: result, onChange: changed)
                     let upload = result.scene?.mesh.map {
                         ViewportMeshUpload(mesh: ViewportMesh(positions: $0.positions, indices: $0.indices))
                     }
-                    return (watch: watch, isCurrent: watch.isCurrent(), upload: upload)
+                    return (watch: watch, upload: upload)
                 }.value
                 guard let self, isCurrent(request, input: input), !Task.isCancelled,
                       result.requestID == id, result.key == request.key else { return }
-                guard watched.isCurrent else {
+
+                // Route new watch events before the final dependency check.
+                dependencies = prepared.watch
+                dependencyRequest = id
+                let dependenciesAreCurrent = await Task.detached(priority: .utility) {
+                    prepared.watch.isCurrent()
+                }.value
+                guard isCurrent(request, input: input), !Task.isCancelled, dependencyRequest == id else { return }
+                guard dependenciesAreCurrent else {
+                    stopWatchingDependencies()
                     changedDuringEvaluation()
                     return
                 }
 
-                dependencies = watched.watch
-                dependencyRequest = id
                 dependencyRetries = 0
                 outcome = evaluation.outcome
                 log = evaluation.log
@@ -131,7 +138,7 @@ final class DocumentPreview {
                 case .rendered, .empty: lastGood = result
                 case .modelError, .unsupportedDimension: break
                 }
-                onUpdate?(.outcome(evaluation.outcome, watched.upload))
+                onUpdate?(.outcome(evaluation.outcome, prepared.upload))
             } catch {
                 guard let self, currentID == id, !Task.isCancelled else { return }
                 if case EngineFailure.crashed(_, let logs) = error { log = logs }

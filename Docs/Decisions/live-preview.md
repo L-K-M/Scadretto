@@ -20,7 +20,8 @@ previous mesh with stale styling. An accepted empty model clears it.
 The worker records the search candidates actually tested by OpenSCAD.
 The application watches consumed paths and the nearest existing directories
 for missing candidates. It checks observed digests and the winning path
-before accepting a scene. Use-file dependencies have the digest of the
+before accepting a scene. The new watch can deliver events to the document
+before that last check begins. Use-file dependencies have the digest of the
 buffer passed to the parser. The stream-based readers record the file at
 the read boundary and the parent checks that digest again. M5 covers
 coordinated replacements, provider hydration and concurrent file changes.
@@ -47,7 +48,7 @@ Scripts/build.sh --debug
 xcodebuild -project Scadretto.xcodeproj -scheme Scadretto \
   -destination 'platform=macOS,arch=arm64' -parallel-testing-enabled NO \
   -derivedDataPath "$PWD/.build/m2/DerivedData" \
-  -resultBundlePath "$PWD/.build/m2/native-07.xcresult" \
+  -resultBundlePath "$PWD/.build/m2/native-08.xcresult" \
   CODE_SIGN_IDENTITY='Apple Development' test
 ```
 
