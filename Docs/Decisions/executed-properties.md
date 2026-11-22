@@ -40,14 +40,17 @@ entry remains available for the verified literal.
 ## Bounds
 
 Releasing a provenance chain recurses once per link. Chains stop at 4,096
-links and emitted chains at 256. Computed results share one node per set
-of possible literals, so long lists retain no per-element history. A
-union of more than 32 literals marks those literals partial.
+links and emitted chains at 256. A recursive forwarding probe kept its
+diameter literal at depth 83 and became read-only at depth 84.
+Computed results share one node per set of possible literals, so long
+lists retain no per-element history. A union of more than 32 literals
+marks those literals partial.
 
 Executions of a call site share their property definitions and argument
 lists in result-level tables. If the records still exceed the 16 MiB
 manifest limit, the worker omits them, sets `propertiesOmitted`, and
-publishes the scene as inspect-only.
+publishes the scene as inspect-only. The plate loop kept property detail
+at 5,000 holes and lost it at 6,500.
 
 ## Worker verification
 
@@ -77,6 +80,24 @@ The verifier also covers partial impact sets, dependent child frames, a
 3,000-hole loop, 200,000 linked evaluations and a 500,000-element computed
 list. The first revision of this patch exceeded the manifest limit on
 that loop and crashed on the linked evaluations. The current worker
-renders all three. The list peaked at 53 MB, against 54 MB for the worker
-without property records. Geometry payloads for the plate, the stress fixture and the loop
-variants up to 7,500 holes were byte-identical to that worker's.
+renders all three. The impact case first failed on that revision for its
+missing `impactComplete` field. A separate probe showed its unsafe
+`dragVerified` result. The 256 MiB memory bound fails on three retained
+earlier builds of the patch, which peaked at 285 to 331 MiB.
+
+## Cost against the worker without property records
+
+A differential run on 14 programs compared this worker with the one on
+main at `3f27e0f`. `mesh.bin` and `operands.bin` were byte-identical in
+each case. Both workers accepted 7,500 holes and rejected 8,500.
+
+| Program | Peak memory | Manifest |
+| --- | --- | --- |
+| 500,000 computed elements | 54.3 to 54.5 MiB | 1.95 to 2.61 KB |
+| 3,000 holes | 883 to 894 MiB | 6.36 to 7.83 MB |
+| 3,000 distinct statements | 104.6 to 168.7 MiB | 1.70 to 7.94 MB |
+| 150 recursive modules | 34.5 to 45.7 MiB | 149 KB to 1.02 MB |
+
+KB and MB are decimal. The machine was running other work, so these runs
+support no timing claim. The records are in
+`.build/m4/resume-probe/compare-payloads.log` and `memory-red.log` beside it.
