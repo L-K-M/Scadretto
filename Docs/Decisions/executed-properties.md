@@ -27,7 +27,9 @@ records every evaluated variable read. A literal's impact set is complete
 only when each read carrying it leads to a recorded property. Reads below
 a call, index, member or comprehension result stay unexplained. So do
 special variables, which built-ins read without a lookup. An incomplete
-set is a lower bound and the editor must say so.
+set is a lower bound and the editor must say so. The built-in scope's
+literals, such as `$fn = 0`, have no source bytes. They are never an
+origin, and their impact set is never complete.
 
 A drag is verified only for a complete set in a known frame. No other
 recorded property on the same ancestor and descendant path may consume
@@ -63,8 +65,8 @@ The Apple M4 Max development machine ran macOS 27.0.1 (26A434) with Xcode
 27.2 (27B52), SDK 27.2 and CMake 4.4.5. The OpenSCAD and Manifold revisions
 remain the ones recorded in [the engine spike](engine-spike.md).
 The worker SHA-256 was
-`aaff99c8635af3f295ff67c877f2a2a03715483e002b44649cf3d984d7c5a175`.
-Raw records are in `.build/engine/verification.ONsmfhk8/v1/`.
+`3dde403401f4b24e646431091ca5ef9a1251f4da3d057d3c6f2d6c8c23080f38`.
+Raw records are in `.build/engine/verification.QCOm5Mno/v1/`.
 
 The v1 verifier exercised real positional and named slots, an ignored
 radius, a superseded height, an unbound ninth argument, two-component
@@ -84,6 +86,9 @@ renders all three. The impact case first failed on that revision for its
 missing `impactComplete` field. A separate probe showed its unsafe
 `dragVerified` result. The 256 MiB memory bound fails on three retained
 earlier builds of the patch, which peaked at 285 to 331 MiB.
+A later run through the Swift decoder found `null` inputs for built-in
+defaults, which both goldens avoided by setting `$fn`. The verifier now
+rejects a spanless input in every job, and failed on that worker first.
 
 ## Cost against the worker without property records
 
@@ -94,10 +99,11 @@ each case. Both workers accepted 7,500 holes and rejected 8,500.
 | Program | Peak memory | Manifest |
 | --- | --- | --- |
 | 500,000 computed elements | 54.3 to 54.5 MiB | 1.95 to 2.61 KB |
-| 3,000 holes | 883 to 894 MiB | 6.36 to 7.83 MB |
-| 3,000 distinct statements | 104.6 to 168.7 MiB | 1.70 to 7.94 MB |
-| 150 recursive modules | 34.5 to 45.7 MiB | 149 KB to 1.02 MB |
+| 3,000 holes | 878 to 898 MiB | 6.36 to 7.83 MB |
+| 3,000 distinct statements | 105.0 to 173.4 MiB | 1.70 to 7.94 MB |
+| 150 recursive modules | 34.6 to 45.6 MiB | 149 KB to 1.02 MB |
 
 KB and MB are decimal. The machine was running other work, so these runs
 support no timing claim. The records are in
-`.build/m4/resume-probe/compare-payloads.log` and `memory-red.log` beside it.
+`.build/m4/resume-probe/compare-payloads-fixed.log` and `memory-red.log`
+beside it.

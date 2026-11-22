@@ -83,7 +83,8 @@ index, a finite `value`, an optional `dragVerified` flag and, for pitch,
   value toward its observed origin. A chain holds at most 256 links.
 - `inputs`, the literal spans that can supply the value through observed
   operations. An instance is affected by a literal if any of its
-  properties lists that literal.
+  properties lists that literal. Every entry is a span. A built-in default
+  such as `$fn = 0` has no source bytes and is never listed.
 - `impactComplete`, true only for a property with a writable literal whose
   evaluated reads all lead to recorded properties. When false, other uses
   of the literal are unknown and the affected set is a lower bound.

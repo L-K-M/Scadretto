@@ -1,4 +1,4 @@
-From f201d1f8f289658eb2029485fb43257face7d7a1 Mon Sep 17 00:00:00 2001
+From cdfca3ff2ff37b35363c0bbf5c06be0a0bc309c5 Mon Sep 17 00:00:00 2001
 From: Scadretto <scadretto@users.noreply.github.com>
 Date: Sun, 22 Nov 2026 12:11:48 +0100
 Subject: [PATCH] Observe executed properties and pitch inputs
@@ -9,7 +9,7 @@ Subject: [PATCH] Observe executed properties and pitch inputs
  src/core/Expression.cc     | 111 ++++++--
  src/core/Parameters.cc     |  42 ++-
  src/core/Parameters.h      |   6 +-
- src/core/ScadrettoTrace.cc | 511 ++++++++++++++++++++++++++++++++++++-
+ src/core/ScadrettoTrace.cc | 514 ++++++++++++++++++++++++++++++++++++-
  src/core/ScadrettoTrace.h  |  60 +++++
  src/core/ScopeContext.cc   |  16 +-
  src/core/ScopeContext.h    |   1 +
@@ -19,7 +19,7 @@ Subject: [PATCH] Observe executed properties and pitch inputs
  src/core/control.cc        |   1 +
  src/core/node.h            |   2 +
  src/core/primitives.cc     |  54 +++-
- 15 files changed, 788 insertions(+), 50 deletions(-)
+ 15 files changed, 791 insertions(+), 50 deletions(-)
 
 diff --git a/src/core/Arguments.cc b/src/core/Arguments.cc
 index 28a2cbe..5d64f42 100644
@@ -385,7 +385,7 @@ index 3199b2d..e205c58 100644
    bool valid(const std::string& name, const Value& value, Value::Type type);
    std::string caller = "";
 diff --git a/src/core/ScadrettoTrace.cc b/src/core/ScadrettoTrace.cc
-index 72b6580..4140604 100644
+index 72b6580..0e4e358 100644
 --- a/src/core/ScadrettoTrace.cc
 +++ b/src/core/ScadrettoTrace.cc
 @@ -14,7 +14,11 @@
@@ -411,7 +411,7 @@ index 72b6580..4140604 100644
 +#include "core/RenderNode.h"
  #include "core/RenderVariables.h"
  #include "core/ScadrettoDependencies.h"
-@@ -57,7 +63,141 @@ constexpr auto maxPayloadBytes = 256ULL * 1024 * 1024;
+@@ -57,7 +63,142 @@ constexpr auto maxPayloadBytes = 256ULL * 1024 * 1024;
  constexpr auto maxInstances = 65536;
  constexpr auto maxExecutableBytes = 512ULL * 1024 * 1024;
 +// Releasing a chain recurses once per link, so its depth has to stay bounded.
@@ -502,7 +502,8 @@ index 72b6580..4140604 100644
 +  }
 +  const Location *site = nullptr;
 +  if (kind == "literal") {
-+    origins = impact.literal(location);
++    // Built-in defaults such as $fn have no bytes to edit, so they are no origin.
++    if (!location.isNone()) origins = impact.literal(location);
 +  } else if (kind == "lookup") {
 +    site = &location;
 +    impact.read(location, origins);
@@ -553,7 +554,7 @@ index 72b6580..4140604 100644
 +
  std::string readFile(const fs::path& path, std::size_t limit)
  {
-@@ -300,6 +440,159 @@ struct SceneTrace {
+@@ -300,6 +441,161 @@ struct SceneTrace {
    }
  
 +  struct Occurrence {
@@ -657,7 +658,9 @@ index 72b6580..4140604 100644
 +    }
 +    auto inputs = json::array();
 +    if (property.binding && property.binding->origins) {
-+      for (const auto *literal : *property.binding->origins) inputs.push_back(span(*literal));
++      for (const auto *literal : *property.binding->origins) {
++        if (auto source = span(*literal); !source.is_null()) inputs.push_back(std::move(source));
++      }
 +    }
 +    return {{"semantic", property.semantic}, {"formal", property.formal}, {"status", property.status},
 +            {"displayMultiplier", property.displayMultiplier}, {"centered", property.centered},
@@ -691,7 +694,7 @@ index 72b6580..4140604 100644
 +      auto properties = json::array();
 +      for (const auto& property : detail.properties) {
 +        const auto *literal = property.status == "bound" ? writableLiteral(property.binding.get()) : nullptr;
-+        const bool complete = literal && !untraced.count(literal);
++        const bool complete = literal && !untraced.count(literal) && !span(*literal).is_null();
 +        json record = {{"definition", intern(propertyDefinitions, definitionIDs,
 +                                              propertyDefinition(property, complete))},
 +                       {"value", property.value}};
@@ -714,20 +717,20 @@ index 72b6580..4140604 100644
 +             std::optional<std::size_t> parentIndex = std::nullopt, bool knownFrame = true)
    {
      if (node.modinst && node.modinst->isBackground()) return;
-@@ -339,4 +632,5 @@ struct SceneTrace {
+@@ -339,4 +635,5 @@ struct SceneTrace {
                                       {"property", binding->name}});
          }
 +        if (branching(*binding)) break;
        }
        diameter = {{"value", node.scadrettoDiameterValue}, {"chain", std::move(chain)}};
-@@ -347,4 +641,6 @@ struct SceneTrace {
+@@ -347,4 +644,6 @@ struct SceneTrace {
                           {"iteration", iteration}, {"local", matrix(local)}, {"world", matrix(world)},
                           {"operand", operand}, {"diameter", diameter}});
 +    const auto index = occurrences.size();
 +    occurrences.push_back({&node, parentIndex, index + 1, knownFrame, stableFrame && loops == 1});
  
      if (v1() && (dynamic_cast<const CsgOpNode *>(&node) ||
-@@ -360,5 +656,17 @@ struct SceneTrace {
+@@ -360,5 +659,17 @@ struct SceneTrace {
      }
  
 -    for (const auto& child : node.children) visit(*child, node.index(), world, iteration);
@@ -746,7 +749,7 @@ index 72b6580..4140604 100644
 +    }
    }
  };
-@@ -369,5 +677,16 @@ void writeResult(const fs::path& directory, const json& result)
+@@ -369,5 +680,16 @@ void writeResult(const fs::path& directory, const json& result)
    std::ofstream output(partial, std::ios::binary | std::ios::trunc);
    output.exceptions(std::ios::badbit | std::ios::failbit);
 -  const auto serialized = result.dump(-1, ' ', false, json::error_handler_t::replace);
@@ -764,7 +767,7 @@ index 72b6580..4140604 100644
 +  }
    if (result.contains("protocolVersion") && serialized.size() >= maxManifestBytes) {
      throw std::runtime_error("The result manifest exceeds its size limit");
-@@ -548,5 +867,6 @@ int runJobV1(const json& request, const fs::path& directory)
+@@ -548,5 +870,6 @@ int runJobV1(const json& request, const fs::path& directory)
            : "The model exceeds the dependency tracing limits";
          result["mesh"] = nullptr;
 -        for (const auto field : {"operands", "instances", "operations", "dependencyEdges"}) {
@@ -772,7 +775,7 @@ index 72b6580..4140604 100644
 +                                 "propertyDefinitions", "argumentLists"}) {
            result[field] = json::array();
          }
-@@ -695,6 +1015,9 @@ int runJobV1(const json& request, const fs::path& directory)
+@@ -695,6 +1018,9 @@ int runJobV1(const json& request, const fs::path& directory)
        SceneTrace trace{source, tree, evaluator, &operandPayload};
        trace.visit(*root, nullptr, Transform3d::Identity(), {});
 +      trace.attachDetails();
@@ -782,7 +785,7 @@ index 72b6580..4140604 100644
 +      result["argumentLists"] = std::move(trace.argumentLists);
        result["operands"] = std::move(trace.operands);
        result["operations"] = std::move(trace.operations);
-@@ -791,10 +1114,184 @@ int runJobM0(const std::string& requestPath, const fs::path& directory)
+@@ -791,10 +1117,184 @@ int runJobM0(const std::string& requestPath, const fs::path& directory)
  }  // namespace
  
 +bool scadrettoTracing()

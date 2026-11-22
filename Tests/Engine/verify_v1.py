@@ -92,6 +92,12 @@ def run_job(worker, job, source, request, environment, expected_code=0):
         main = next(file for file in result["files"] if file["kind"] == "main")
         check(main["logicalPath"] == request["logicalPath"] and main["byteLength"] == len(source)
               and main["sha256"] == checksum(source), f"{job.name}: main snapshot identity differs")
+    for index, definition in enumerate(result.get("propertyDefinitions", [])):
+        inputs = definition["inputs"]
+        check(all(isinstance(item, dict) for item in inputs),
+              f"{job.name}: property definition {index} lists an input without a source span")
+        check(inputs or not definition["impactComplete"],
+              f"{job.name}: property definition {index} claims complete impact for no literal")
     return result
 
 
@@ -611,6 +617,22 @@ def check_impact_and_drag(args, environment, build):
     print("Untraced consumers, dependent frames and partial impact sets passed")
 
 
+def check_builtin_defaults(args, environment, build):
+    # The built-in scope's literals have no bytes that an edit could replace.
+    for name, source in (("sphere", b"sphere(r = 2);\n"), ("cylinder", b"cylinder(h = 2, d = 4);\n"),
+                         ("time", b"translate([$t, 0, 0]) cube(1);\n")):
+        logical = args.evidence / f"default-{name}.scad"
+        result = run_job(args.worker, args.evidence / f"default-{name}", source,
+                         request_for(source, logical, build), environment)
+        defaults = [item for record in result["instances"] for item in executed_properties(result, record)
+                    if item["semantic"] == ("translateX" if name == "time" else "fragmentCount")]
+        check(defaults, f"{name}: the built-in value was not traced")
+        for item in defaults:
+            check(not item["inputs"] and not item.get("impactComplete") and not item.get("dragVerified"),
+                  f"{name}: a built-in default was presented as an editable literal")
+    print("Built-in defaults supplied no editable literal")
+
+
 def check_long_provenance(args, environment, build):
     programs = {
         "passed-argument": "function walk(i, kept) = i == 0 ? kept : walk(i - 1, kept);\ncube(walk(%d, 2));\n",
@@ -668,6 +690,7 @@ def main():
     check_executed_properties(args, environment, build)
     check_impact_and_drag(args, environment, build)
     check_large_loop(args, environment, build)
+    check_builtin_defaults(args, environment, build)
     check_long_provenance(args, environment, build)
     check_computed_list_memory(args, environment, build)
     check_lifetime_pipe(args, environment, build)
