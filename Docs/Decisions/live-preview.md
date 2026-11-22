@@ -47,7 +47,7 @@ Scripts/build.sh --debug
 xcodebuild -project Scadretto.xcodeproj -scheme Scadretto \
   -destination 'platform=macOS,arch=arm64' -parallel-testing-enabled NO \
   -derivedDataPath "$PWD/.build/m2/DerivedData" \
-  -resultBundlePath "$PWD/.build/m2/native-06.xcresult" \
+  -resultBundlePath "$PWD/.build/m2/native-07.xcresult" \
   CODE_SIGN_IDENTITY='Apple Development' test
 ```
 
@@ -59,11 +59,17 @@ meshes. The portable golden omits ownership because this backend uses the
 M0 surface-matching fallback. The verifier also checks the BOM warning span,
 the selected search root before and after creating and deleting a preferred
 copy, nested relative STL import, a DAT surface, and the bundled font.
+The worker follow-up checks malformed root arrays, incomplete dependency
+searches, and an occurrence limit exceeded after rendering started. The
+three portable goldens also matched from a logical directory containing
+Unicode and quotes. The raw engine run is under
+`.build/engine/verification.xa93cKQV`.
 
 The package suite exercises the three on-disk examples, decoder bounds and
 links, a cube at X = 100,000,000, child signal and timeout handling,
-bounded process logs, and replacement of an active request. Native tests
-open the plate from a path containing spaces. Editing `count` raises the
+bounded process logs, and replacement of an active request. All 35 package
+tests and seven native UI tests passed. The native tests open the plate
+from a path containing spaces. Editing `count` raises the
 preview from 1,052 to 1,312 triangles, and the outline shows `i = 4`. A
 captured frame records the five-bore result. The suite checks parser
 failure and recovery, the empty model, diagnostic navigation to
