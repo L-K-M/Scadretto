@@ -398,7 +398,7 @@ public struct MeshDescriptor: Codable, Equatable, Sendable {
 
 /// One executed call-tree occurrence. `local` and `world` are 16-element
 /// column-major affine matrices, right-handed Z up, `world = parent x local`.
-public struct InstanceRecord: Codable, Equatable, Sendable {
+public struct InstanceRecord: Equatable, Sendable {
     public let id: UInt32
     public let parent: UInt32?
     public let name: String
@@ -408,6 +408,12 @@ public struct InstanceRecord: Codable, Equatable, Sendable {
     public let world: [Double]
     public let operand: UInt32?
     public let diameter: DiameterRecord?
+    public let definitionSpan: WireSpan?
+    public let arguments: [ArgumentRecord]?
+    public let properties: [PropertyRecord]?
+    /// The instance lies below an operation whose placement the trace cannot
+    /// represent, so a spatial handle would point at the wrong frame.
+    public let opaqueFrame: Bool
 
     public init(
         id: UInt32,
@@ -418,7 +424,11 @@ public struct InstanceRecord: Codable, Equatable, Sendable {
         local: [Double],
         world: [Double],
         operand: UInt32?,
-        diameter: DiameterRecord?
+        diameter: DiameterRecord?,
+        definitionSpan: WireSpan? = nil,
+        arguments: [ArgumentRecord]? = nil,
+        properties: [PropertyRecord]? = nil,
+        opaqueFrame: Bool = false
     ) {
         self.id = id
         self.parent = parent
@@ -429,6 +439,10 @@ public struct InstanceRecord: Codable, Equatable, Sendable {
         self.world = world
         self.operand = operand
         self.diameter = diameter
+        self.definitionSpan = definitionSpan
+        self.arguments = arguments
+        self.properties = properties
+        self.opaqueFrame = opaqueFrame
     }
 }
 
@@ -451,6 +465,115 @@ public struct ChainLink: Codable, Equatable, Sendable {
         self.kind = kind
         self.name = name
         self.span = span
+    }
+}
+
+/// One call-site argument as resolved against a builtin or module signature.
+/// An empty `name` is a positional argument; an empty `formal` is unbound.
+public struct ArgumentRecord: Codable, Equatable, Sendable {
+    public enum Status: String, Codable, Sendable {
+        case bound
+        case superseded
+        case unbound
+        case ignored
+    }
+
+    public let name: String
+    public let formal: String
+    public let status: Status
+    public let expression: WireSpan?
+
+    public init(name: String, formal: String, status: Status, expression: WireSpan?) {
+        self.name = name
+        self.formal = formal
+        self.status = status
+        self.expression = expression
+    }
+}
+
+/// One editable numeric facet of an instance, derived from a bound argument.
+/// `semantic` names the facet in module-independent terms and `formal` the
+/// parameter it came from; the pair is unique within an instance.
+public struct PropertyRecord: Equatable, Sendable {
+    public enum Semantic: String, Codable, Sendable {
+        case cubeUniformSize
+        case cubeSizeX
+        case cubeSizeY
+        case cubeSizeZ
+        case sphereDiameter
+        case cylinderHeight
+        case cylinderDiameter
+        case cylinderBottomRadius
+        case cylinderTopRadius
+        case fragmentCount
+        case translateX
+        case translateY
+        case translateZ
+        case moduleArgument
+        case pitch
+    }
+
+    public enum Status: String, Codable, Sendable {
+        case bound
+        case `default`
+        case invalid
+        case computedVector
+    }
+
+    /// The range-loop iteration a pitch value landed on. Only valid on `.pitch`.
+    public struct Pitch: Codable, Equatable, Sendable {
+        public let iteration: Double
+
+        public init(iteration: Double) {
+            self.iteration = iteration
+        }
+    }
+
+    public let semantic: Semantic
+    public let formal: String
+    public let status: Status
+    public let value: Double
+    /// The displayed value over the authored value: 0.5, 1 or 2.
+    public let displayMultiplier: Double
+    public let centered: Bool
+    public let expression: WireSpan?
+    /// Ordered bindings that produced the value, innermost first.
+    public let chain: [ChainLink]
+    /// Literals that can supply the value through observed operations.
+    public let inputs: [WireSpan]
+    /// Every evaluated use of the writable literal is traced. When false,
+    /// the affected set is a lower bound.
+    public let impactComplete: Bool
+    /// A drag preview of this property matches reevaluation.
+    public let dragVerified: Bool
+    public let pitch: Pitch?
+
+    public init(
+        semantic: Semantic,
+        formal: String,
+        status: Status,
+        value: Double,
+        displayMultiplier: Double,
+        centered: Bool,
+        expression: WireSpan?,
+        chain: [ChainLink],
+        inputs: [WireSpan] = [],
+        impactComplete: Bool = false,
+        dragVerified: Bool = false,
+        pitch: Pitch?
+    ) {
+        self.semantic = semantic
+        self.formal = formal
+        self.status = status
+        self.value = value
+        self.displayMultiplier = displayMultiplier
+        self.centered = centered
+        self.expression = expression
+        self.chain = chain
+        self.inputs = inputs
+        self.impactComplete = impactComplete
+        self.dragVerified = dragVerified
+        self.pitch = pitch
     }
 }
 
@@ -563,13 +686,17 @@ public struct SceneSnapshot: Equatable, Sendable {
     /// Instances in the worker's executed order; parents always precede children.
     public let instances: [InstanceRecord]
     public let operations: [OperationRecord]
+    /// Property detail exceeded the manifest limit, so the scene is inspect-only.
+    public let propertiesOmitted: Bool
 
     public init(
         mesh: Mesh?,
         operands: [Operand],
         instances: [InstanceRecord],
-        operations: [OperationRecord]
+        operations: [OperationRecord],
+        propertiesOmitted: Bool = false
     ) {
+        self.propertiesOmitted = propertiesOmitted
         self.mesh = mesh
         self.operands = operands
         self.instances = instances

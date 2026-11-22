@@ -41,8 +41,9 @@ The [verification guide](plan/06-Verification-and-Release.md#build-and-verificat
 lists the test and release entry points.
 
 GitHub Actions runs repository script checks, pinned engine verification and
-Swift package tests on PRs and pushes to `main`. The document app build uses
-the checked runtime from the engine job.
+Swift package tests on PRs and pushes to `main`. The package tests and the
+document app build use the checked runtime from the engine job. Without a
+built worker, the planner's live-worker tests report themselves skipped.
 Run the UI test plan on a logged-in Mac:
 
 ```sh

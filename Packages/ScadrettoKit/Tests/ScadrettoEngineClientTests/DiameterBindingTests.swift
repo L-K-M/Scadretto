@@ -2,47 +2,16 @@ import Foundation
 import ScadrettoCore
 import ScadrettoEngineClient
 import ScadrettoSyntax
+import ScadrettoTestSupport
 import ScadrettoViewport
 import Testing
 import simd
 
 @Test @MainActor func plateBindingResolvesThirdCutterAndPlansCheckedPatch() async throws {
-    var repository = URL(fileURLWithPath: #filePath)
-    for _ in 0..<5 { repository.deleteLastPathComponent() }
-    let job = repository.appending(path: "Engine/protocol/golden/plate")
-    let source = repository.appending(path: "Tests/Fixtures/mounting-plate.scad")
-
-    // Decode the checked-in v1 plate result under its recorded identity.
-    let request = try JSONDecoder().decode(EngineRequest.self,
-                                           from: Data(contentsOf: job.appending(path: "request.json")))
-    let document = SourceDocument(buffer: try SourceBuffer(bytes: Data(contentsOf: source)))
-    let snapshot = document.snapshot
-    let outcome = try ResultDecoder().decode(jobDirectory: job, request: request,
-                                             termination: .exited(0),
-                                             sourceByteLength: UInt64(snapshot.buffer.bytes.count))
-
-    // Rebind only the snapshot identity fields so the decoded result keys this
-    // document's current snapshot; everything else stays the golden payload.
-    let decoded = outcome.result
-    let result = EvaluationResult(
-        requestID: decoded.requestID,
-        key: EvaluationKey(
-            documentID: snapshot.documentID,
-            sourceRevision: snapshot.revision,
-            dependencyGeneration: decoded.key.dependencyGeneration,
-            resolutionDigest: decoded.key.resolutionDigest,
-            optionsDigest: decoded.key.optionsDigest,
-            workerBuild: decoded.key.workerBuild
-        ),
-        workerBuild: decoded.workerBuild,
-        files: decoded.files,
-        diagnostics: decoded.diagnostics,
-        console: decoded.console,
-        droppedConsoleMessages: decoded.droppedConsoleMessages,
-        dependencyEdges: decoded.dependencyEdges,
-        lookups: decoded.lookups,
-        scene: decoded.scene
-    )
+    let plate = try await PlateGolden.load()
+    let document = plate.document
+    let snapshot = plate.snapshot
+    let result = plate.result
 
     // The original third cutter carries iteration i == 2 in the engine trace.
     let scene = try #require(result.scene)

@@ -33,12 +33,12 @@ public struct ViewportMeshUpload: Sendable {
 
     var vertexCount: Int { vertexData.count }
 
-    public init(mesh: ViewportMesh) {
+    public init(mesh: ViewportMesh, renderOrigin: SIMD3<Double>? = nil) {
         let bounds = mesh.bounds
         // Bounds center keeps rebased coordinates symmetric and small. The
         // camera keeps world coordinates; the origin is reapplied per frame.
-        let origin = bounds?.center ?? .zero
-        renderOrigin = origin
+        let origin = renderOrigin ?? bounds?.center ?? .zero
+        self.renderOrigin = origin
         sceneRadius = bounds?.radius ?? 1
         self.bounds = bounds
 
