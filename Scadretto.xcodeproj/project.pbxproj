@@ -10,6 +10,7 @@
 		074318A108FA4B47D97BF8D8 /* editor-bom-crlf.scad in Resources */ = {isa = PBXBuildFile; fileRef = E8E477BFBAF95B1641A1F784 /* editor-bom-crlf.scad */; };
 		0BCBF4FDB930EBE4CD854632 /* ScadrettoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC5FDCF42FE991552F3F3E1B /* ScadrettoUITests.swift */; };
 		1BD9F8B3CB8555DD73B2F12A /* ScadrettoSyntax in Frameworks */ = {isa = PBXBuildFile; productRef = BCD167B455E3C7D983C91905 /* ScadrettoSyntax */; };
+		40F9B0835DA56AE1C81ADCD3 /* ScadrettoDocumentBase.m in Sources */ = {isa = PBXBuildFile; fileRef = CC7169339397A5290B227212 /* ScadrettoDocumentBase.m */; };
 		69926DA9DECD33CC429B2E09 /* ScadrettoCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0D6AEED0CB0DC0C3D2A11CFC /* ScadrettoCore */; };
 		7510EDA39840F4E6811C4D6B /* SourceWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F3D6412F155EB359337E727 /* SourceWindowController.swift */; };
 		B3BAEE938B3DE7BEAC1FB1EE /* ScadrettoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */; };
@@ -29,11 +30,13 @@
 
 /* Begin PBXFileReference section */
 		0DCE9ABD2847FE35D7D90660 /* ScadrettoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ScadrettoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3A5B00664D3FEE649417C49A /* ScadrettoDocumentBase.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ScadrettoDocumentBase.h; sourceTree = "<group>"; };
 		3F3D6412F155EB359337E727 /* SourceWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceWindowController.swift; sourceTree = "<group>"; };
 		6BB55BAD86B153C539296444 /* ScadrettoDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScadrettoDocument.swift; sourceTree = "<group>"; };
 		73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScadrettoApp.swift; sourceTree = "<group>"; };
 		884C485CF77F5109F0C48E35 /* editor-bom-crlf-edited.scad */ = {isa = PBXFileReference; path = "editor-bom-crlf-edited.scad"; sourceTree = "<group>"; };
 		A95057B6AF7BE264494E7378 /* ScadrettoKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ScadrettoKit; path = Packages/ScadrettoKit; sourceTree = SOURCE_ROOT; };
+		CC7169339397A5290B227212 /* ScadrettoDocumentBase.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ScadrettoDocumentBase.m; sourceTree = "<group>"; };
 		E8E477BFBAF95B1641A1F784 /* editor-bom-crlf.scad */ = {isa = PBXFileReference; path = "editor-bom-crlf.scad"; sourceTree = "<group>"; };
 		EC5FDCF42FE991552F3F3E1B /* ScadrettoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScadrettoUITests.swift; sourceTree = "<group>"; };
 		FB4D77D56B49D6D963EB85C0 /* Scadretto.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Scadretto.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -66,6 +69,8 @@
 			children = (
 				73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */,
 				6BB55BAD86B153C539296444 /* ScadrettoDocument.swift */,
+				3A5B00664D3FEE649417C49A /* ScadrettoDocumentBase.h */,
+				CC7169339397A5290B227212 /* ScadrettoDocumentBase.m */,
 				3F3D6412F155EB359337E727 /* SourceWindowController.swift */,
 			);
 			path = App;
@@ -211,6 +216,7 @@
 			files = (
 				B3BAEE938B3DE7BEAC1FB1EE /* ScadrettoApp.swift in Sources */,
 				F6C1EB529D983B5238B37644 /* ScadrettoDocument.swift in Sources */,
+				40F9B0835DA56AE1C81ADCD3 /* ScadrettoDocumentBase.m in Sources */,
 				7510EDA39840F4E6811C4D6B /* SourceWindowController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -283,6 +289,7 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lkm.Scadretto;
 				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = App/ScadrettoDocumentBase.h;
 			};
 			name = Debug;
 		};
@@ -428,6 +435,7 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lkm.Scadretto;
 				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = App/ScadrettoDocumentBase.h;
 			};
 			name = Release;
 		};

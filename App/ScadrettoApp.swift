@@ -1,6 +1,7 @@
 import AppKit
 
 @main
+@MainActor
 final class ScadrettoApp: NSObject, NSApplicationDelegate {
     static func main() {
         let application = NSApplication.shared

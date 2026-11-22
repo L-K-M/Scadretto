@@ -15,6 +15,8 @@ final class ScadrettoUITests: XCTestCase {
 
         let editor = open(url, in: app)
         XCTAssertTrue((editor.value as? String)?.contains("// 🔧 original") == true)
+        app.typeKey("s", modifierFlags: .command)
+        XCTAssertEqual(try Data(contentsOf: url), original)
         editor.click()
         editor.typeKey(.upArrow, modifierFlags: .command)
         editor.typeKey(.downArrow, modifierFlags: [])
@@ -29,6 +31,19 @@ final class ScadrettoUITests: XCTestCase {
         choose("Close", from: "File", in: app)
         let reopened = open(url, in: app)
         waitForText("size = 10; // keep this", in: reopened)
+        XCTAssertEqual(try Data(contentsOf: url), expected)
+
+        reopened.click()
+        reopened.typeKey(.upArrow, modifierFlags: .command)
+        reopened.typeText("// unsaved")
+        waitForText("// unsaved", in: reopened)
+        choose("Revert to Saved", from: "File", in: app)
+        let confirmation = app.buttons["Revert"].firstMatch
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        confirmation.click()
+        let savedText = "// 🔧 original\nsize = 10; // keep this\ncube(size);\n"
+        waitForText(savedText, in: reopened)
+        XCTAssertEqual(reopened.value as? String, savedText)
         XCTAssertEqual(try Data(contentsOf: url), expected)
     }
 
@@ -67,6 +82,24 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
+    func testInvalidUTF8ReportsOffsetWithoutOpeningDocument() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Invalid Encoding.scad")
+        let bytes = Data("// bad\n".utf8) + Data([0xFF])
+        try bytes.write(to: url)
+
+        submitOpenPanel(url, in: app)
+        let reason = app.staticTexts.matching(NSPredicate(format: "value CONTAINS %@", "at byte 7")).firstMatch
+        XCTAssertTrue(reason.waitForExistence(timeout: 8), "Expected the open error to include the invalid byte offset")
+        app.buttons["OK"].firstMatch.click()
+        XCTAssertFalse(sourceEditor(for: url, in: app).exists)
+        XCTAssertEqual(try Data(contentsOf: url), bytes)
+    }
+
+    @MainActor
     private func launch() -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -77,6 +110,14 @@ final class ScadrettoUITests: XCTestCase {
 
     @MainActor
     private func open(_ url: URL, in app: XCUIApplication) -> XCUIElement {
+        submitOpenPanel(url, in: app)
+        let editor = sourceEditor(for: url, in: app)
+        XCTAssertTrue(editor.waitForExistence(timeout: 8), "Expected the source editor for \(url.lastPathComponent)")
+        return editor
+    }
+
+    @MainActor
+    private func submitOpenPanel(_ url: URL, in app: XCUIApplication) {
         let panel = app.windows["Open"]
         if !panel.exists { app.typeKey("o", modifierFlags: .command) }
         XCTAssertTrue(panel.waitForExistence(timeout: 8), "Expected the system Open panel")
@@ -89,12 +130,13 @@ final class ScadrettoUITests: XCTestCase {
         let open = panel.buttons["Open"]
         XCTAssertTrue(open.waitForExistence(timeout: 8))
         open.click()
+    }
 
+    @MainActor
+    private func sourceEditor(for url: URL, in app: XCUIApplication) -> XCUIElement {
         let name = url.deletingPathExtension().lastPathComponent
         let window = app.windows.matching(NSPredicate(format: "title BEGINSWITH %@", name)).firstMatch
-        let editor = window.textViews["sourceEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 8), "Expected the source editor for \(url.lastPathComponent)")
-        return editor
+        return window.textViews["sourceEditor"]
     }
 
     @MainActor

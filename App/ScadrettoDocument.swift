@@ -12,7 +12,7 @@ private struct DocumentIO: Sendable {
 
 @MainActor
 @objc(ScadrettoDocument)
-final class ScadrettoDocument: NSDocument {
+final class ScadrettoDocument: ScadrettoDocumentBase {
     private nonisolated let io = OSAllocatedUnfairLock(initialState: DocumentIO())
     private lazy var source = SourceDocument(buffer: try! SourceBuffer())
     private weak var editor: SourceWindowController?
@@ -30,7 +30,16 @@ final class ScadrettoDocument: NSDocument {
     override class func canConcurrentlyReadDocuments(ofType typeName: String) -> Bool { true }
 
     override nonisolated func read(from data: Data, ofType typeName: String) throws {
-        let loaded = try SourceBuffer(bytes: data)
+        let loaded: SourceBuffer
+        do {
+            loaded = try SourceBuffer(bytes: data)
+        } catch let error as SourceError {
+            // AppKit supplies the file name in its open error and displays the
+            // failure reason below it.
+            throw CocoaError(.fileReadInapplicableStringEncoding, userInfo: [
+                NSLocalizedFailureReasonErrorKey: error.localizedDescription,
+            ])
+        }
         io.withLock { $0.pendingRead = loaded }
     }
 
@@ -159,10 +168,13 @@ final class ScadrettoDocument: NSDocument {
                 }
             }
             manager.registerUndo(withTarget: self) { target in
-                do {
-                    try target.commit(inverted, label: label, selection: previousSelection)
-                } catch {
-                    target.presentError(error)
+                // This manager is replayed by the main-actor document actions.
+                MainActor.assumeIsolated {
+                    do {
+                        try target.commit(inverted, label: label, selection: previousSelection)
+                    } catch {
+                        target.presentError(error)
+                    }
                 }
             }
             manager.setActionName(label)

@@ -46,6 +46,15 @@ private func fixture(_ name: String) throws -> Data {
     let lastLine = try buffer.textEdit(range: NSRange(location: final.location, length: 0), replacement: "\n")
     #expect(lastLine.replacement == Data("\n".utf8))
     #expect(buffer.lineNumber(atUTF16Offset: final.location) == 4)
+
+    let unicodeLines = try SourceBuffer(bytes: Data("first\u{2028}second\u{2029}last".utf8))
+    #expect(unicodeLines.displayText == "first\nsecond\nlast")
+    for (offset, separator) in [(0, "\u{2028}"), (6, "\u{2029}"), (13, "\u{2029}")] {
+        let edit = try unicodeLines.textEdit(range: NSRange(location: offset, length: 0), replacement: "\r\n")
+        #expect(edit.replacement == Data(separator.utf8))
+        let changed = try unicodeLines.applying([edit])
+        #expect(try changed.buffer.applying(changed.inverse).buffer == unicodeLines)
+    }
 }
 
 @Test func invalidEncodingsHaveAnOffset() throws {
@@ -76,6 +85,13 @@ private func fixture(_ name: String) throws -> Data {
     #expect(throws: SourceError.overlappingEdits) {
         try buffer.applying([edits[0], edits[0]])
     }
+
+    let noChange = try buffer.applying([
+        edits[0],
+        .init(range: 1..<2, expected: Data("a".utf8), replacement: Data("aa".utf8)),
+    ])
+    #expect(noChange.buffer == buffer)
+    #expect(noChange.inverse.isEmpty)
 }
 
 @Test func undoCanSeparateNaturallyJoinedNewlines() throws {

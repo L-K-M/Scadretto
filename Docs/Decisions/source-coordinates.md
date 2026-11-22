@@ -57,14 +57,21 @@ a geometry worker is busy will be measured in M5.
 ## Native document verification
 
 On the same M4 Max Mac and toolchain, the native `Scadretto` scheme ran
-two UI tests on a logged-in desktop. The system Open panel opened
-`editor-bom-crlf.scad`. After keyboard replacement of `9` with `10`, File
-→ Save wrote exactly the bytes of `editor-bom-crlf-edited.scad`. File →
-Close and a second Open displayed `10`, and the byte comparison still
-passed. The second test used Edit → Undo and Redo on separate Alpha and
-Beta documents, then confirmed each document retained its original disk
-contents. Opening a file exercises AppKit's concurrent document creation
-and read callbacks. The editable model is created and updated on main.
+three UI tests on a logged-in desktop. The system Open panel opened
+`editor-bom-crlf.scad`. Saving immediately preserved the original bytes.
+After keyboard replacement of `9` with `10`, File → Save wrote exactly
+the bytes of `editor-bom-crlf-edited.scad`. File → Close and a second Open
+displayed `10`, and the byte comparison still passed. File → Revert to
+Saved discarded a subsequent unsaved edit and restored the saved text.
+
+Another test used Edit → Undo and Redo on separate Alpha and Beta
+documents, then confirmed each document retained its original disk
+contents. The invalid UTF-8 test verified that the system error panel
+names the first bad byte and that no editor opens for the invalid file.
+Opening a file exercises AppKit's concurrent document creation and read
+callbacks. A small Objective-C base initializer preserves that AppKit
+entry point on Swift 6 toolchains. The editable model is created and
+updated on main.
 
 ```sh
 swift test --package-path Packages/ScadrettoKit
@@ -72,7 +79,7 @@ Scripts/build.sh --debug
 xcodebuild -project Scadretto.xcodeproj -scheme Scadretto \
   -destination 'platform=macOS,arch=arm64' -parallel-testing-enabled NO \
   -derivedDataPath "$PWD/.build/m1/DerivedData" \
-  -resultBundlePath "$PWD/.build/m1/native-07.xcresult" \
+  -resultBundlePath "$PWD/.build/m1/native-12.xcresult" \
   CODE_SIGN_IDENTITY='Apple Development' test
 ```
 

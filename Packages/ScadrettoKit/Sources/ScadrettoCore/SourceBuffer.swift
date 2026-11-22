@@ -43,12 +43,16 @@ public struct SourceBuffer: Equatable, Sendable {
         case lf
         case crlf
         case cr
+        case unicodeLine
+        case unicodeParagraph
 
         var bytes: [UInt8] {
             switch self {
             case .lf: [0x0A]
             case .crlf: [0x0D, 0x0A]
             case .cr: [0x0D]
+            case .unicodeLine: [0xE2, 0x80, 0xA8]
+            case .unicodeParagraph: [0xE2, 0x80, 0xA9]
             }
         }
     }
@@ -176,6 +180,7 @@ public struct SourceBuffer: Equatable, Sendable {
         for edit in checked.reversed() {
             changed.replaceSubrange(edit.range, with: edit.replacement)
         }
+        guard changed != bytes else { return (self, []) }
 
         let result = try SourceBuffer(bytes: changed)
         var shift = 0
@@ -258,7 +263,7 @@ public struct SourceBuffer: Equatable, Sendable {
             return (1, .cr)
         case 0x0A: return (1, .lf)
         case 0xE2 where length == 3 && raw[index + 1] == 0x80 && (0xA8...0xA9).contains(raw[index + 2]):
-            return (3, .lf)
+            return (3, raw[index + 2] == 0xA8 ? .unicodeLine : .unicodeParagraph)
         default: return nil
         }
     }
