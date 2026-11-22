@@ -1,6 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
+if [[ $# != 0 ]]; then
+    if [[ $# != 2 || $1 != --saved-plate ]]; then
+        echo 'Usage: Scripts/verify-engine [--saved-plate FILE]' >&2
+        exit 2
+    fi
+    saved_plate="$(cd -- "$(dirname -- "$2")" && pwd -P)/$(basename -- "$2")"
+    set -- --saved-plate "$saved_plate"
+fi
+
 # shellcheck source=Engine/build-common.sh
 source "$(dirname "$0")/../Engine/build-common.sh"
 engine_tools
@@ -55,4 +64,4 @@ python3 Tests/Engine/verify_spike.py "$reference/bin/openscad" "$worker/bin/scad
 python3 -B Tests/Engine/verify_v1.py --worker "$worker/bin/scadretto-engine" \
     --reference "$reference/bin/openscad" --oracle "$reference/bin/solid-difference" \
     --resources "$worker/Resources" --fixtures Tests/Fixtures --goldens Engine/protocol/golden \
-    --evidence "$evidence/v1" | tee "$evidence/verify-v1.log"
+    --evidence "$evidence/v1" "$@" | tee "$evidence/verify-v1.log"

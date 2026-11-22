@@ -34,12 +34,18 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     private let filter = NSPopUpButton()
     private let diagnosticMenu = NSPopUpButton()
     private let consoleHeading = NSTextField(labelWithString: "Evaluation Console")
+    private let candidateList = NSPopUpButton()
+    let inspector = DiameterInspector()
     private var roots: [Item] = []
+    private var byID: [UInt32: Item] = [:]
+    private var candidates: [UInt32] = []
     private var result: EvaluationResult?
     private var messages: [ConsoleRow] = []
     private var current = false
+    private var selectingOccurrence = false
 
     var onReveal: ((UInt32, WireSpan?, EvaluationResult) -> Void)?
+    var onOccurrence: ((UInt32) -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -85,7 +91,12 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         let instancesHeading = NSTextField(labelWithString: "Instances")
         instancesHeading.font = .boldSystemFont(ofSize: NSFont.smallSystemFontSize)
         consoleHeading.font = instancesHeading.font
-        let panel = NSStackView(views: [instancesHeading, outlineScroll, consoleHeading,
+        candidateList.setAccessibilityIdentifier("candidateList")
+        candidateList.setAccessibilityLabel("Matching surface instances")
+        candidateList.target = self
+        candidateList.action = #selector(chooseCandidate)
+        candidateList.isHidden = true
+        let panel = NSStackView(views: [instancesHeading, outlineScroll, candidateList, inspector, consoleHeading,
                                        diagnosticMenu, filter, consoleScroll])
         panel.orientation = .vertical
         panel.alignment = .leading
@@ -102,6 +113,8 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
             consoleScroll.widthAnchor.constraint(equalTo: panel.widthAnchor),
             consoleScroll.heightAnchor.constraint(equalTo: outlineScroll.heightAnchor, multiplier: 0.65),
             diagnosticMenu.widthAnchor.constraint(lessThanOrEqualTo: panel.widthAnchor),
+            candidateList.widthAnchor.constraint(lessThanOrEqualTo: panel.widthAnchor),
+            inspector.widthAnchor.constraint(lessThanOrEqualTo: panel.widthAnchor),
             filter.widthAnchor.constraint(lessThanOrEqualTo: panel.widthAnchor),
         ])
         setCurrent(false)
@@ -116,7 +129,7 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         for operation in operations {
             for child in operation.children { roles[child.instanceID] = child.role }
         }
-        var byID: [UInt32: Item] = [:]
+        byID = [:]
         roots = []
         for instance in instances {
             let item = Item(instance: instance, role: roles[instance.id])
@@ -143,6 +156,7 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
             }
         }
         instanceOutline.deselectAll(nil)
+        showCandidates([])
 
         messages = result.console.map {
             ConsoleRow(text: $0.text, group: $0.group, fileID: $0.fileID ?? $0.span?.fileID, span: $0.span)
@@ -161,6 +175,56 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         instanceOutline.isEnabled = isCurrent
         consoleHeading.stringValue = !isCurrent && result != nil ? "Evaluation Console · Out of Date" : "Evaluation Console"
         diagnosticMenu.isEnabled = isCurrent && !(result?.diagnostics.isEmpty ?? true)
+        candidateList.isEnabled = isCurrent
+        if !isCurrent { inspector.disableEditing() }
+    }
+
+    func showCandidates(_ ids: [UInt32]) {
+        candidates = ids
+        candidateList.removeAllItems()
+        candidateList.isHidden = candidates.isEmpty
+        guard !candidates.isEmpty else { return }
+        candidateList.addItem(withTitle: "Choose a matching surface")
+        for id in candidates {
+            let title = byID[id]?.title ?? "Instance \(id)"
+            candidateList.addItem(withTitle: "\(title) · \(id)")
+        }
+        candidateList.selectItem(at: 0)
+    }
+
+    @objc private func chooseCandidate() {
+        let index = candidateList.indexOfSelectedItem - 1
+        guard current, candidates.indices.contains(index) else { return }
+        let id = candidates[index]
+        showCandidates([])
+        selectOccurrence(id)
+        onOccurrence?(id)
+    }
+
+    func selectOccurrence(_ id: UInt32?) {
+        selectingOccurrence = true
+        defer { selectingOccurrence = false }
+        guard let id, let item = byID[id] else {
+            instanceOutline.deselectAll(nil)
+            return
+        }
+        var ancestors: [Item] = []
+        var parent = item.instance.parent
+        while let id = parent, let item = byID[id] {
+            ancestors.append(item)
+            parent = item.instance.parent
+        }
+        for parent in ancestors.reversed() { instanceOutline.expandItem(parent) }
+        let row = instanceOutline.row(forItem: item)
+        guard row >= 0 else { return }
+        instanceOutline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        instanceOutline.scrollRowToVisible(row)
+    }
+
+    func outlineViewSelectionDidChange(_ notification: Notification) {
+        guard !selectingOccurrence, let id = selectedInstance?.id else { return }
+        showCandidates([])
+        onOccurrence?(id)
     }
 
     private func rebuildDiagnostics() {
@@ -237,5 +301,104 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     @objc func revealOccurrence() {
         guard let result, let span = selectedInstance?.span else { return }
         onReveal?(span.fileID, span, result)
+    }
+}
+
+struct DiameterInspection {
+    let title: String
+    var binding = ""
+    var scope = ""
+    var value: Double?
+    var writable = false
+    var detail = ""
+}
+
+@MainActor
+final class DiameterInspector: NSStackView, NSTextFieldDelegate {
+    private let title = NSTextField(labelWithString: "")
+    private let binding = NSTextField(wrappingLabelWithString: "")
+    private let scope = NSTextField(wrappingLabelWithString: "")
+    private let field = NSTextField()
+    private let fieldRow = NSStackView()
+    private let detail = NSTextField(wrappingLabelWithString: "")
+    private var inspection: DiameterInspection?
+
+    var onCommit: ((String) -> Void)?
+
+    init() {
+        super.init(frame: .zero)
+        orientation = .vertical
+        alignment = .leading
+        spacing = 4
+        setAccessibilityIdentifier("inspector")
+        setAccessibilityLabel("Property inspector")
+        title.font = .boldSystemFont(ofSize: NSFont.smallSystemFontSize)
+        title.lineBreakMode = .byTruncatingTail
+        title.setAccessibilityIdentifier("inspectorSelection")
+        binding.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        scope.setAccessibilityIdentifier("targetScope")
+        detail.textColor = .secondaryLabelColor
+        detail.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        detail.setAccessibilityIdentifier("editStatus")
+
+        fieldRow.orientation = .horizontal
+        fieldRow.alignment = .firstBaseline
+        let dimension = NSTextField(labelWithString: "Diameter")
+        fieldRow.addArrangedSubview(dimension)
+        field.target = self
+        field.action = #selector(commit)
+        field.delegate = self
+        field.setAccessibilityIdentifier("diameterField")
+        field.setAccessibilityLabel("Diameter in model units")
+        field.widthAnchor.constraint(equalToConstant: 72).isActive = true
+        fieldRow.addArrangedSubview(field)
+        for view in [title, binding, scope, fieldRow, detail] {
+            addArrangedSubview(view)
+            view.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor).isActive = true
+        }
+        show(nil)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func show(_ inspection: DiameterInspection?) {
+        self.inspection = inspection
+        isHidden = inspection == nil
+        guard let inspection else { return }
+        for (label, text) in [(title, inspection.title), (binding, inspection.binding),
+                              (scope, inspection.scope), (detail, inspection.detail)] {
+            label.stringValue = text
+            label.toolTip = text
+            label.isHidden = text.isEmpty
+        }
+        fieldRow.isHidden = inspection.value == nil
+        field.stringValue = inspection.value.map(Self.number) ?? ""
+        field.isEnabled = inspection.writable
+    }
+
+    func disableEditing() { field.isEnabled = false }
+
+    func showPreview(_ diameter: Double?) {
+        if let diameter, let initial = inspection?.value {
+            detail.stringValue = "Preview · \(Self.number(initial)) → \(Self.number(diameter))"
+            detail.isHidden = false
+        } else {
+            showMessage(inspection?.detail ?? "")
+        }
+    }
+
+    func showMessage(_ text: String) {
+        detail.stringValue = text
+        detail.isHidden = text.isEmpty
+    }
+
+    func controlTextDidBeginEditing(_ notification: Notification) {
+        (notification.userInfo?["NSFieldEditor"] as? NSTextView)?.allowsUndo = false
+    }
+
+    @objc private func commit() { onCommit?(field.stringValue) }
+
+    private static func number(_ value: Double) -> String {
+        value.formatted(.number.grouping(.never).precision(.significantDigits(1...12)))
     }
 }
