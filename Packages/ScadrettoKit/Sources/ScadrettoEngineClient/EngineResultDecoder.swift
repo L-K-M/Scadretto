@@ -448,6 +448,7 @@ public struct ResultDecoder: Sendable {
             }
         }
 
+        let instanceIDs = Set(worlds.keys)
         var operands: [SceneSnapshot.Operand] = []
         if !operandRecords.isEmpty {
             let payload = try readPayload(directoryFD: directoryFD, name: Self.operandPayloadName)
@@ -456,7 +457,7 @@ public struct ResultDecoder: Sendable {
                     id: record.id,
                     mesh: try decodeMesh(
                         record.mesh, payload: payload, expectedPath: Self.operandPayloadName,
-                        instanceIDs: Set(worlds.keys)
+                        instanceIDs: instanceIDs
                     )
                 )
             }
@@ -470,7 +471,7 @@ public struct ResultDecoder: Sendable {
             let payload = try readPayload(directoryFD: directoryFD, name: Self.meshPayloadName)
             mesh = try decodeMesh(
                 meshDescriptor, payload: payload, expectedPath: Self.meshPayloadName,
-                instanceIDs: Set(worlds.keys)
+                instanceIDs: instanceIDs
             )
         }
 

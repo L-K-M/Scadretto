@@ -307,9 +307,9 @@ private func writeManifest(_ manifest: [String: Any], to job: URL) throws {
         "span": ["fileID": 0, "start": 5, "end": 9],
         "repeatCount": 0,
     ]]
-    failure.removeValue(forKey: "instances")
-    failure.removeValue(forKey: "operations")
-    failure.removeValue(forKey: "dependencyEdges")
+    failure["instances"] = [Any]()
+    failure["operations"] = [Any]()
+    failure["dependencyEdges"] = [Any]()
     try writeManifest(failure, to: job)
     let failureOutcome = try ResultDecoder().decode(
         jobDirectory: job, request: request, termination: .exited(1)
@@ -461,31 +461,29 @@ private func writeManifest(_ manifest: [String: Any], to job: URL) throws {
 
     // Bad magic.
     var manifest = try validManifest(request: request)
-    let (_, meshDescriptor) = makePayload(
+    let (completeHeader, meshDescriptor) = makePayload(
         path: "mesh.bin", vertices: [], indices: [], owners: nil,
         bounds: ([0, 0, 0], [0, 0, 0])
     )
     manifest["mesh"] = meshDescriptor
-    try Data("NOTMESH!".utf8).write(to: job.appending(path: "mesh.bin"))
+    let badMagic = Data("NOTMESH!".utf8) + completeHeader.dropFirst(8)
+    try badMagic.write(to: job.appending(path: "mesh.bin"))
     try writeManifest(manifest, to: job)
-    #expect(throws: EngineError.self) {
+    #expect(throws: EngineError.payloadMalformed(name: "mesh.bin", detail: "bad magic or version")) {
         try ResultDecoder().decode(jobDirectory: job, request: request, termination: .exited(0))
     }
 
     // Index outside the vertex range.
-    let (goodData, _) = makePayload(
+    let (badIndex, badIndexDescriptor) = makePayload(
         path: "mesh.bin",
         vertices: [SIMD3(0, 0, 0), SIMD3(1, 0, 0), SIMD3(0, 1, 0)],
-        indices: [0, 1, 2], owners: nil
+        indices: [0, 1, 3], owners: nil
     )
-    var outOfRangeDescriptor = meshDescriptor
-    outOfRangeDescriptor["vertexCount"] = 0
-    outOfRangeDescriptor["indexCount"] = 3
     var outOfRange = try validManifest(request: request)
-    outOfRange["mesh"] = outOfRangeDescriptor
-    try goodData.write(to: job.appending(path: "mesh.bin"))
+    outOfRange["mesh"] = badIndexDescriptor
+    try badIndex.write(to: job.appending(path: "mesh.bin"))
     try writeManifest(outOfRange, to: job)
-    #expect(throws: EngineError.self) {
+    #expect(throws: EngineError.validationFailed("mesh.bin index 2 is out of range")) {
         try ResultDecoder().decode(jobDirectory: job, request: request, termination: .exited(0))
     }
 
@@ -503,8 +501,9 @@ private func writeManifest(_ manifest: [String: Any], to job: URL) throws {
         ],
     ]
     cycle["operations"] = [["instanceID": 1, "children": [["instanceID": 0, "role": "positive"]]]]
+    cycle["dependencyEdges"] = [Any]()
     try writeManifest(cycle, to: job)
-    #expect(throws: EngineError.self) {
+    #expect(throws: EngineError.validationFailed("instance 0 parent 1 is missing or follows it")) {
         try ResultDecoder().decode(jobDirectory: job, request: request, termination: .exited(0))
     }
 
@@ -554,4 +553,35 @@ private func writeManifest(_ manifest: [String: Any], to job: URL) throws {
     #expect(throws: EngineError.self) {
         try ResultDecoder().decode(jobDirectory: missing, request: request, termination: .exited(0))
     }
+}
+
+@Test func followsLookupIntoNewDirectory() throws {
+    let key = EvaluationKey(documentID: UUID(), sourceRevision: 1, dependencyGeneration: 0,
+                            resolutionDigest: workerSHA, optionsDigest: workerSHA, workerBuild: workerSHA)
+    let root = try makeJobDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let newLibrary = root.appending(path: "new-library", directoryHint: .isDirectory)
+    let preferred = newLibrary.appending(path: "part.scad")
+    let fallback = root.appending(path: "fallback.scad")
+    try Data("cube(2);".utf8).write(to: fallback)
+    let result = EvaluationResult(
+        requestID: fixedRequestID, key: key, workerBuild: workerSHA,
+        files: [], diagnostics: [], console: [], droppedConsoleMessages: 0,
+        dependencyEdges: [], lookups: [LookupRecord(
+            requestingFileID: nil, name: "part.scad", candidates: [preferred.path, fallback.path],
+            winner: fallback.path
+        )], scene: nil
+    )
+    let changes = DispatchSemaphore(value: 0)
+    let watch = DependencyWatch(result: result) { changes.signal() }
+    try #require(watch.isCurrent())
+
+    try FileManager.default.createDirectory(at: newLibrary, withIntermediateDirectories: false)
+    try #require(changes.wait(timeout: .now() + .seconds(2)) == .success)
+    try #require(watch.isCurrent())
+    while changes.wait(timeout: .now()) == .success {}
+
+    try Data("sphere(2);".utf8).write(to: preferred)
+    try #require(changes.wait(timeout: .now() + .seconds(2)) == .success)
+    #expect(!watch.isCurrent())
 }
