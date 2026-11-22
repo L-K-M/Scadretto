@@ -1,0 +1,20 @@
+{
+  "backend": "manifold",
+  "expectedWorkerBuild": "0000000000000000000000000000000000000000000000000000000000000000",
+  "key": {
+    "dependencyGeneration": 0,
+    "documentID": "00000000-0000-0000-0000-000000000001",
+    "optionsDigest": "da0a93af914f387d4d4a01184a986d4be2a718ecff6788fef58816486cd7d140",
+    "resolutionDigest": "58e7290f3c47738441364ebd981c0cd0db600dc9980074368621fafc921af180",
+    "sourceRevision": 1,
+    "workerBuild": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "libraryRoots": [],
+  "logicalPath": "/ScadrettoGolden/plate.scad",
+  "preview": false,
+  "protocolVersion": 1,
+  "requestID": "00000000-0000-0000-0000-000000000002",
+  "resourceRoots": [],
+  "snapshot": "main.scad",
+  "sourceSHA256": "136c95090096979a91024b7f1e6325f4f09fdca421880d6ffee447ac6c095235"
+}

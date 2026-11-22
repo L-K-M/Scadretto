@@ -8,6 +8,8 @@ let package = Package(
     products: [
         .library(name: "ScadrettoCore", targets: ["ScadrettoCore"]),
         .library(name: "ScadrettoSyntax", targets: ["ScadrettoSyntax"]),
+        .library(name: "ScadrettoEngineClient", targets: ["ScadrettoEngineClient"]),
+        .library(name: "ScadrettoViewport", targets: ["ScadrettoViewport"]),
     ],
     dependencies: [
         .package(url: "https://github.com/tree-sitter/tree-sitter.git", revision: "7f534862c3ec939c3a6ee147f7600ef5c1bf900f"),
@@ -25,5 +27,9 @@ let package = Package(
         ),
         .testTarget(name: "ScadrettoCoreTests", dependencies: ["ScadrettoCore"]),
         .testTarget(name: "ScadrettoSyntaxTests", dependencies: ["ScadrettoSyntax", "ScadrettoCore"]),
+        .target(name: "ScadrettoEngineClient", dependencies: ["ScadrettoCore"]),
+        .testTarget(name: "ScadrettoEngineClientTests", dependencies: ["ScadrettoEngineClient", "ScadrettoCore"]),
+        .target(name: "ScadrettoViewport"),
+        .testTarget(name: "ScadrettoViewportTests", dependencies: ["ScadrettoViewport"]),
     ]
 )
