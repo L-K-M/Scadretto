@@ -80,3 +80,45 @@ invalid manifests, and an inserted move lost its selection. Each regression
 failed before its fix. A later mutation check of the worker showed that
 guides chosen by property name or equal value could point the wrong way.
 Their tests compare each guide with reevaluation, and failed first.
+
+## Native verification
+
+The Apple M4 Max development machine ran macOS 27.0.1 (26A434) with Xcode
+27.2 (27B52) and SDK 27.2, on a 1920 × 1080 display at backing scale 1.
+The app bundled worker SHA-256
+`60a9b08a19a8c3326286d84c6f3f525adf63fc4d369fbfa4f771928bd7f4332e`.
+
+```sh
+xcodebuild -project Scadretto.xcodeproj -scheme Scadretto \
+  -destination 'platform=macOS,arch=arm64' -parallel-testing-enabled NO \
+  -derivedDataPath "$PWD/.build/m4/DerivedData" \
+  -resultBundlePath "$PWD/.build/m4/ui-suite-06.xcresult" \
+  CODE_SIGN_IDENTITY='Apple Development' test
+Scripts/verify-engine --saved-plate .build/m4/ui-suite-06-attachments/saved-plate.scad
+```
+
+The run split that `test` action into `build-for-testing` and
+`test-without-building`. All 10 UI tests passed in 397 seconds. They drive
+the real app through the Open panel, mouse picks and drags, the inspector,
+menus, save and reopen.
+
+Walkthrough steps 1 to 5 saved a plate that differs from the fixture only
+in `hole_d = 5;` and `count = 5;`. The unmodified reference rendered it
+with five bores and a symmetric difference of 0.000245 from the worker.
+Steps 6 and 7 dragged pitch to 22, cancelled a drag with Escape while the
+button was held, recovered from a syntax error and typed pitch at
+iteration zero. The saved file differs only in `pitch = 22;`. Its cutters
+are at 15, 37, 59 and 81, and it differs from the reference by 0.000177.
+
+Earlier runs failed, and their recordings gave these causes:
+
+- A failed test left its windows and fixture folders to the next one.
+  Tests now launch without restored windows and clean up on failure.
+- Other applications on the shared test Mac took the focus or put a dialog
+  over Scadretto. The suite needs an uncontested screen.
+- One Undo menu click had no effect and no cause was found. Six repeats
+  of that test and the final suite passed.
+
+Not exercised natively: selecting an enclosed shape through the outline,
+a drag guide of another occurrence, a comma-decimal system locale, a
+Retina display and macOS 14.
