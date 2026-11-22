@@ -54,6 +54,20 @@ manifest limit, the worker omits them, sets `propertiesOmitted`, and
 publishes the scene as inspect-only. The plate loop kept property detail
 at 5,000 holes and lost it at 6,500.
 
+The scene trace keeps its traversal on the heap. When it recursed once
+per node, this patch crashed at 2,850 nested modules, which main still
+rendered. Both crashed at 2,900, and the unmodified reference rendered
+them. The worker and reference now both render that fixture at 6,000
+levels and both stop at 8,000 on OpenSCAD's recursion guard. The two
+builds reach that guard at slightly different depths. With a `union` at
+each level the worker still rendered 4,000 levels, where the reference
+reported recursion.
+
+One very long expression can still overflow OpenSCAD's recursive
+evaluator, which that guard does not cover. A chain of additions crashed
+this worker at 47,500 terms and main's at 47,600. The reference rendered
+64,000 and crashed at 80,000. A crash ends only that worker job.
+
 ## Worker verification
 
 ```sh
@@ -65,8 +79,8 @@ The Apple M4 Max development machine ran macOS 27.0.1 (26A434) with Xcode
 27.2 (27B52), SDK 27.2 and CMake 4.4.5. The OpenSCAD and Manifold revisions
 remain the ones recorded in [the engine spike](engine-spike.md).
 The worker SHA-256 was
-`3dde403401f4b24e646431091ca5ef9a1251f4da3d057d3c6f2d6c8c23080f38`.
-Raw records are in `.build/engine/verification.QCOm5Mno/v1/`.
+`d3cc8aaafb07275cbcd2dabddc15f22ab7f08cde63812701870572bc7b1be438`.
+Raw records are in `.build/engine/verification.AvIZx3st/v1/`.
 
 The v1 verifier exercised real positional and named slots, an ignored
 radius, a superseded height, an unbound ninth argument, two-component
@@ -89,12 +103,17 @@ earlier builds of the patch, which peaked at 285 to 331 MiB.
 A later run through the Swift decoder found `null` inputs for built-in
 defaults, which both goldens avoided by setting `$fn`. The verifier now
 rejects a spanless input in every job, and failed on that worker first.
+The nested-module case renders 4,000 levels and failed with signal 11 on
+the recursive traversal first.
 
 ## Cost against the worker without property records
 
-A differential run on 14 programs compared this worker with the one on
-main at `3f27e0f`. `mesh.bin` and `operands.bin` were byte-identical in
-each case. Both workers accepted 7,500 holes and rejected 8,500.
+A differential run on 14 programs compared worker `3dde4034`, the build
+before the traversal fix, with the one on main at `3f27e0f`. `mesh.bin`
+and `operands.bin` were byte-identical in each case. Both workers
+accepted 7,500 holes and rejected 8,500. The traversal fix left results
+and payloads identical on 20 programs in both protocols. Build identity
+and timings were excluded from that comparison.
 
 | Program | Peak memory | Manifest |
 | --- | --- | --- |

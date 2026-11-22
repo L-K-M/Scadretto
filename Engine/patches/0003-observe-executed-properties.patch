@@ -1,4 +1,4 @@
-From cdfca3ff2ff37b35363c0bbf5c06be0a0bc309c5 Mon Sep 17 00:00:00 2001
+From f514f26495f1117af604fe5147015f4b5983d9ed Mon Sep 17 00:00:00 2001
 From: Scadretto <scadretto@users.noreply.github.com>
 Date: Sun, 22 Nov 2026 12:11:48 +0100
 Subject: [PATCH] Observe executed properties and pitch inputs
@@ -9,8 +9,8 @@ Subject: [PATCH] Observe executed properties and pitch inputs
  src/core/Expression.cc     | 111 ++++++--
  src/core/Parameters.cc     |  42 ++-
  src/core/Parameters.h      |   6 +-
- src/core/ScadrettoTrace.cc | 514 ++++++++++++++++++++++++++++++++++++-
- src/core/ScadrettoTrace.h  |  60 +++++
+ src/core/ScadrettoTrace.cc | 549 ++++++++++++++++++++++++++++++++++++-
+ src/core/ScadrettoTrace.h  |  60 ++++
  src/core/ScopeContext.cc   |  16 +-
  src/core/ScopeContext.h    |   1 +
  src/core/TransformNode.cc  |  14 +
@@ -19,7 +19,7 @@ Subject: [PATCH] Observe executed properties and pitch inputs
  src/core/control.cc        |   1 +
  src/core/node.h            |   2 +
  src/core/primitives.cc     |  54 +++-
- 15 files changed, 791 insertions(+), 50 deletions(-)
+ 15 files changed, 825 insertions(+), 51 deletions(-)
 
 diff --git a/src/core/Arguments.cc b/src/core/Arguments.cc
 index 28a2cbe..5d64f42 100644
@@ -385,7 +385,7 @@ index 3199b2d..e205c58 100644
    bool valid(const std::string& name, const Value& value, Value::Type type);
    std::string caller = "";
 diff --git a/src/core/ScadrettoTrace.cc b/src/core/ScadrettoTrace.cc
-index 72b6580..0e4e358 100644
+index 72b6580..a532073 100644
 --- a/src/core/ScadrettoTrace.cc
 +++ b/src/core/ScadrettoTrace.cc
 @@ -14,7 +14,11 @@
@@ -554,9 +554,10 @@ index 72b6580..0e4e358 100644
 +
  std::string readFile(const fs::path& path, std::size_t limit)
  {
-@@ -300,6 +441,161 @@ struct SceneTrace {
+@@ -300,8 +441,198 @@ struct SceneTrace {
    }
  
+-  void visit(const AbstractNode& node, json parent, const Transform3d& parentWorld,
 +  struct Occurrence {
 +    const AbstractNode *node;
 +    std::optional<std::size_t> parent;
@@ -711,26 +712,63 @@ index 72b6580..0e4e358 100644
 +    }
 +  }
 +
-   void visit(const AbstractNode& node, json parent, const Transform3d& parentWorld,
--             std::map<std::string, double> iteration)
-+             std::map<std::string, double> iteration, bool stableFrame = true, unsigned loops = 0,
-+             std::optional<std::size_t> parentIndex = std::nullopt, bool knownFrame = true)
++  // What a recorded node hands down to its children.
++  struct Scope {
++    const AbstractNode *node;
++    Transform3d world;
++    std::map<std::string, double> iteration;
++    std::size_t index;
++    bool stableFrame;
++    unsigned loops;
++    bool knownFrame;
++    std::size_t nextChild = 0;
++  };
++
++  // Module recursion can nest deeper than one native frame per node allows.
++  void visit(const AbstractNode& root, json parent, const Transform3d& parentWorld,
+              std::map<std::string, double> iteration)
    {
-     if (node.modinst && node.modinst->isBackground()) return;
-@@ -339,4 +635,5 @@ struct SceneTrace {
+-    if (node.modinst && node.modinst->isBackground()) return;
++    std::vector<Scope> open;
++    if (auto scope = record(root, std::move(parent), parentWorld, std::move(iteration))) {
++      open.push_back(std::move(*scope));
++    }
++    while (!open.empty()) {
++      auto& scope = open.back();
++      if (scope.nextChild == scope.node->children.size()) {
++        open.pop_back();
++        continue;
++      }
++
++      const auto& child = *scope.node->children[scope.nextChild++];
++      auto entered = record(child, scope.node->index(), scope.world, scope.iteration, scope.stableFrame,
++                            scope.loops, scope.index, scope.knownFrame);
++      if (entered) open.push_back(std::move(*entered));
++    }
++  }
++
++  std::optional<Scope> record(const AbstractNode& node, json parent, const Transform3d& parentWorld,
++                              std::map<std::string, double> iteration, bool stableFrame = true,
++                              unsigned loops = 0, std::optional<std::size_t> parentIndex = std::nullopt,
++                              bool knownFrame = true)
++  {
++    if (node.modinst && node.modinst->isBackground()) return std::nullopt;
+     if (v1() && instances.size() == maxInstances) {
+       throw std::runtime_error("The model exceeds the instance tracing limit");
+@@ -339,4 +670,5 @@ struct SceneTrace {
                                       {"property", binding->name}});
          }
 +        if (branching(*binding)) break;
        }
        diameter = {{"value", node.scadrettoDiameterValue}, {"chain", std::move(chain)}};
-@@ -347,4 +644,6 @@ struct SceneTrace {
+@@ -347,4 +679,6 @@ struct SceneTrace {
                           {"iteration", iteration}, {"local", matrix(local)}, {"world", matrix(world)},
                           {"operand", operand}, {"diameter", diameter}});
 +    const auto index = occurrences.size();
 +    occurrences.push_back({&node, parentIndex, index + 1, knownFrame, stableFrame && loops == 1});
  
      if (v1() && (dynamic_cast<const CsgOpNode *>(&node) ||
-@@ -360,5 +659,17 @@ struct SceneTrace {
+@@ -360,5 +694,15 @@ struct SceneTrace {
      }
  
 -    for (const auto& child : node.children) visit(*child, node.index(), world, iteration);
@@ -743,13 +781,11 @@ index 72b6580..0e4e358 100644
 +                             dynamic_cast<const ListNode *>(&node) || dynamic_cast<const CsgOpNode *>(&node) ||
 +                             dynamic_cast<const ColorNode *>(&node) || dynamic_cast<const RenderNode *>(&node) ||
 +                             dynamic_cast<const AbstractIntersectionNode *>(&node);
-+    for (const auto& child : node.children) {
-+      visit(*child, node.index(), world, iteration, stableFrame && transparent,
-+            loops + unsigned(node.scadrettoRangeLoop), index, knownFrame && affineFrame);
-+    }
++    return Scope{&node, world, std::move(iteration), index, stableFrame && transparent,
++                 loops + unsigned(node.scadrettoRangeLoop), knownFrame && affineFrame};
    }
  };
-@@ -369,5 +680,16 @@ void writeResult(const fs::path& directory, const json& result)
+@@ -369,5 +713,16 @@ void writeResult(const fs::path& directory, const json& result)
    std::ofstream output(partial, std::ios::binary | std::ios::trunc);
    output.exceptions(std::ios::badbit | std::ios::failbit);
 -  const auto serialized = result.dump(-1, ' ', false, json::error_handler_t::replace);
@@ -767,7 +803,7 @@ index 72b6580..0e4e358 100644
 +  }
    if (result.contains("protocolVersion") && serialized.size() >= maxManifestBytes) {
      throw std::runtime_error("The result manifest exceeds its size limit");
-@@ -548,5 +870,6 @@ int runJobV1(const json& request, const fs::path& directory)
+@@ -548,5 +903,6 @@ int runJobV1(const json& request, const fs::path& directory)
            : "The model exceeds the dependency tracing limits";
          result["mesh"] = nullptr;
 -        for (const auto field : {"operands", "instances", "operations", "dependencyEdges"}) {
@@ -775,7 +811,7 @@ index 72b6580..0e4e358 100644
 +                                 "propertyDefinitions", "argumentLists"}) {
            result[field] = json::array();
          }
-@@ -695,6 +1018,9 @@ int runJobV1(const json& request, const fs::path& directory)
+@@ -695,6 +1051,9 @@ int runJobV1(const json& request, const fs::path& directory)
        SceneTrace trace{source, tree, evaluator, &operandPayload};
        trace.visit(*root, nullptr, Transform3d::Identity(), {});
 +      trace.attachDetails();
@@ -785,7 +821,7 @@ index 72b6580..0e4e358 100644
 +      result["argumentLists"] = std::move(trace.argumentLists);
        result["operands"] = std::move(trace.operands);
        result["operations"] = std::move(trace.operations);
-@@ -791,10 +1117,184 @@ int runJobM0(const std::string& requestPath, const fs::path& directory)
+@@ -791,10 +1150,184 @@ int runJobM0(const std::string& requestPath, const fs::path& directory)
  }  // namespace
  
 +bool scadrettoTracing()

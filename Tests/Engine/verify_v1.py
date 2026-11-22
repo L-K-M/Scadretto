@@ -23,6 +23,7 @@ HEADER = b"SCADMESH" + struct.pack("<II", 1, 0)
 LARGE_LOOP_HOLES = 3_000
 # Deep enough that recursive release of one chain overflows an 8 MiB stack.
 TAIL_RECURSION_DEPTH = 200_000
+NESTED_MODULE_DEPTH = 4000  # The reference CLI renders this within its stack.
 # main's worker peaks at 54 MiB here. Retained element chains took it past 900 MiB.
 COMPUTED_LIST_LENGTH = 500_000
 COMPUTED_LIST_PEAK_BYTES = 256 * 1024 * 1024
@@ -648,6 +649,26 @@ def check_long_provenance(args, environment, build):
     print(f"{TAIL_RECURSION_DEPTH} linked evaluations released their provenance safely")
 
 
+def check_nested_modules(args, environment, build):
+    program = ("module m(n, d) { if (n > 0) m(n - 1, d); else cylinder(h = 2, d = d, $fn = 8); }\n"
+               "m(%d, 4);\n")
+    meshes = {}
+    for depth in (1, NESTED_MODULE_DEPTH):
+        source = (program % depth).encode("utf-8")
+        job = args.evidence / f"nested-modules-{depth}"
+        result = run_job(args.worker, job, source,
+                         request_for(source, args.evidence / "nested-modules.scad", build), environment)
+        check(result["detail"] == "rendered", f"{depth} nested modules lost the model")
+        records = result["instances"]
+        cylinder = next(record for record in records if record["name"] == "cylinder")
+        check(sum(record["name"] == "m" for record in records) == depth + 1
+              and cylinder["diameter"]["value"] == 4,
+              f"{depth} nested modules lost their trace")
+        meshes[depth] = mesh_signature(job, result["mesh"])
+    check(meshes[1] == meshes[NESTED_MODULE_DEPTH], "Nesting changed the modeled geometry")
+    print(f"{NESTED_MODULE_DEPTH} nested modules kept their geometry and trace")
+
+
 def check_computed_list_memory(args, environment, build):
     source = ("function f(x) = x * 2 + 1;\nv = [for (i = [0:%d]) f(i)];\ncube(1 + len(v) / 500000);\n"
               % (COMPUTED_LIST_LENGTH - 1)).encode("utf-8")
@@ -692,6 +713,7 @@ def main():
     check_large_loop(args, environment, build)
     check_builtin_defaults(args, environment, build)
     check_long_provenance(args, environment, build)
+    check_nested_modules(args, environment, build)
     check_computed_list_memory(args, environment, build)
     check_lifetime_pipe(args, environment, build)
     if args.saved_plate is not None:
