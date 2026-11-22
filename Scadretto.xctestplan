@@ -1,0 +1,23 @@
+{
+  "configurations": [
+    {
+      "id": "C51FCB09-C490-4EC9-A0B4-DA824CE05DB8",
+      "name": "Default",
+      "options": {}
+    }
+  ],
+  "defaultOptions": {
+    "codeCoverage": false
+  },
+  "testTargets": [
+    {
+      "parallelizable": false,
+      "target": {
+        "containerPath": "container:Scadretto.xcodeproj",
+        "identifier": "6F7517F2DC8C157F9C945A0A",
+        "name": "ScadrettoUITests"
+      }
+    }
+  ],
+  "version": 1
+}

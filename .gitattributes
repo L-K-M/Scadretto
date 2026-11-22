@@ -4,3 +4,7 @@ Tests/Fixtures/** -text
 
 # Preserve the single-space context lines of upstream patches.
 Engine/patches/*.patch whitespace=-blank-at-eol
+Tests/Fixtures/editor-bom-crlf*.scad whitespace=cr-at-eol
+Tests/Fixtures/invalid-utf8.scad binary
+Tests/Fixtures/truncated-utf8.scad binary
+Tests/Fixtures/utf16-bom.scad binary

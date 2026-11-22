@@ -1,0 +1,22 @@
+{
+  "originHash" : "b362c8fc17c0dc3123bdb1b4f9de8747a5751aed193fc99789e3aab8a4d47fc6",
+  "pins" : [
+    {
+      "identity" : "tree-sitter",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tree-sitter/tree-sitter.git",
+      "state" : {
+        "revision" : "7f534862c3ec939c3a6ee147f7600ef5c1bf900f"
+      }
+    },
+    {
+      "identity" : "tree-sitter-openscad",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/openscad/tree-sitter-openscad.git",
+      "state" : {
+        "revision" : "4c36a4fb569688c97cfa28090031e039a6079244"
+      }
+    }
+  ],
+  "version" : 3
+}
