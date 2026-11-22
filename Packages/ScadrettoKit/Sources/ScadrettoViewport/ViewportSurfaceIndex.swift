@@ -226,8 +226,8 @@ public struct ViewportSurfaceIndex: Sendable {
                               lo: Int, hi: Int, depth: Int) -> Int {
         var lower = primitives[lo].bounds.min
         var upper = primitives[lo].bounds.max
-        var centerLo = lower
-        var centerHi = upper
+        var centerLo = primitives[lo].bounds.center
+        var centerHi = centerLo
         for i in lo + 1..<hi {
             let bounds = primitives[i].bounds
             lower = simd_min(lower, bounds.min)

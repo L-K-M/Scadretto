@@ -17,7 +17,9 @@ One native run reported presentation time zero for the first frame containing
 the diameter grip. The viewport resubmitted the same current scene and mapping,
 and the next callback confirmed presentation before the grip accepted a press.
 Changing the camera or projection cancels an active drag. A new drag waits
-until the corresponding frame and grip have been presented.
+until the corresponding frame and grip have been presented. A click waits
+for the current camera frame as well. Numeric entry requires the current
+scene to have been presented and can continue during camera movements.
 
 The client resolves the worker's request-local file ID against the result
 file table and verifies the main snapshot's identity, digest and byte length.
@@ -49,12 +51,12 @@ Scripts/build.sh --debug
 xcodebuild -project Scadretto.xcodeproj -scheme Scadretto \
   -destination 'platform=macOS,arch=arm64' -parallel-testing-enabled NO \
   -derivedDataPath "$PWD/.build/m3/DerivedData" \
-  -resultBundlePath "$PWD/.build/m3/native-suite-02.xcresult" \
+  -resultBundlePath "$PWD/.build/m3/native-suite-05.xcresult" \
   CODE_SIGN_IDENTITY='Apple Development' test
 Scripts/verify-engine --saved-plate '.build/m3/Native Saved Mounting Plate.scad'
 ```
 
-The 48 package tests also passed from outside the checkout. The plate test
+The package tests also passed from outside the checkout. The plate test
 decoded the pinned golden and cast the horizontal ray
 from inside the third bore, and matched instance 13 at iteration 2. The
 binding produced bytes `[74,75)`, and the syntax tree confirmed the numeric
@@ -62,12 +64,13 @@ token there. An independent projection test moved the grip 0.5 along its
 local radius and produced diameter 5 with snapping off.
 
 The native tests selected the bore by a projected point on the actual
-shaded wall. The keyboard test preserved an equal `d = 4` in an unrelated
-call. The mouse test used native mouse-down, motion and release with a
-0.5-unit snap increment to reproduce the exact value on a display with
-finite input precision. It checked the single source edit, undo, redo,
-typing the fifth occurrence, save and reopen. The inspector showed five
-traced cutters after reevaluation and after selecting the reopened bore.
+shaded wall. Both dragging and keyboard entry preserved an equal `d = 4`
+in an unrelated call. The mouse test on the canonical fixture used native
+mouse-down, motion and release with a 0.5-unit snap increment to reproduce
+the exact value on a display with finite input precision. It checked the
+single source edit, undo, redo, typing the fifth occurrence, save and
+reopen. The inspector showed five traced cutters after reevaluation and
+after selecting the reopened bore.
 
 On a fresh test copy, a native drag with snapping off displayed a draft
 diameter of `5.00032103122`. Escape while the button was held removed the
@@ -85,6 +88,14 @@ changed the source to `hole_d = 5.00002242771;`. After the fix, the new view
 cleared the draft before release, Undo stayed disabled and the file matched
 the original bytes. The capture, event driver and comparisons are in
 `.build/m3/drag-projection/` and `.build/m3/stale-drag/`.
+
+A Metal-window probe loaded the worker's plate mesh and invoked the normal
+mouse event handlers immediately after changing the camera. Before the
+fix, this triggered a selection in the previous view. With the fix it
+triggered zero selections while the new camera frame was pending and
+one after confirmation. See `.build/m3/frame-review/`. A separate native
+resize from 608 × 638 to 808 × 758 points at backing scale 1 preserved the
+third-bore pick when the known wall point was projected into the new view.
 
 In a separate held drag, changing an included count from four to five
 replaced the scene and retained the selection. Mouse-up kept the diameter
@@ -113,4 +124,4 @@ The verifier measured five centers at X = 15, 35, 55, 75 and 95, worker
 volume `28211.89715802264`, reference volume `28211.897132616563` and
 symmetric difference `0.0002453918871208015`. The unmodified reference STL
 and comparison record are under
-`.build/engine/verification.kNkphkGn/v1/app-saved-plate/`.
+`.build/engine/verification.xe5ylJAo/v1/app-saved-plate/`.

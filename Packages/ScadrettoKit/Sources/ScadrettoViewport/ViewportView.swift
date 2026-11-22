@@ -131,7 +131,16 @@ public final class ViewportView: MTKView {
         }
     }
 
+    /// The current scene can be inspected while a new camera pose is drawing.
+    public var presentedSceneID: UUID? { frameOnCurrentDrawable?.sceneID }
+
     public var presentedFrame: PresentedFrame? {
+        guard let frame = frameOnCurrentDrawable, frame.transform.camera == camera,
+              frame.transform.isOrthographic == orthographic else { return nil }
+        return frame
+    }
+
+    private var frameOnCurrentDrawable: PresentedFrame? {
         guard !isSceneStale, let presentation, presentation.sceneID == sceneID,
               presentation.transform.viewSize == bounds.size,
               presentation.drawableSize == drawableSize,
@@ -250,8 +259,7 @@ public final class ViewportView: MTKView {
 
     private var presentationIsCurrent: Bool {
         guard let frame = presentedFrame else { return false }
-        return frame.transform.camera == camera && frame.transform.isOrthographic == orthographic
-            && frame.diameterHandle?.id == diameterHandle?.id
+        return frame.diameterHandle?.id == diameterHandle?.id
     }
 
     private func resetPresentationRetry() {

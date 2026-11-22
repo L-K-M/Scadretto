@@ -347,7 +347,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             }
             let literal = try DiameterLiteral(source: snapshot, span: target.span, numericToken: token.range,
                                               value: target.value)
-            guard workspace.viewport?.presentedFrame?.sceneID == result.requestID else {
+            guard workspace.viewport?.presentedSceneID == result.requestID else {
                 inspection.detail = "Waiting for this preview to appear."
                 inspector.show(inspection)
                 return
@@ -445,7 +445,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         guard let active = activeDiameter, active.requestID == sceneID,
               let result = workspace.result, result.requestID == sceneID, result.key == active.key,
               preview?.acceptsWriteBack(from: result) == true,
-              workspace.viewport?.presentedFrame?.sceneID == sceneID,
+              workspace.viewport?.presentedSceneID == sceneID,
               active.instanceID == featureSelection?.instanceID,
               handleID == nil || handleID == active.handle?.id else {
             inspector.showMessage(DiameterEditError.staleSource.localizedDescription)

@@ -227,7 +227,7 @@ final class ScadrettoUITests: XCTestCase {
 
     @MainActor
     func testKeyboardDiameterEditOnThirdBoreSurvivesSaveUndoRedoAndReopen() throws {
-        let app = launch()
+        let app = launch(arguments: ["-dragSnapIncrement", "0.5"])
         defer { app.terminate() }
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -249,10 +249,8 @@ final class ScadrettoUITests: XCTestCase {
 
         let viewport = app.descendants(matching: .any)["viewport"].firstMatch
         XCTAssertTrue(viewport.waitForExistence(timeout: 6))
-        XCTAssertGreaterThan(viewport.frame.width, 0)
-        XCTAssertGreaterThan(viewport.frame.height, 0)
 
-        selectThirdBore(in: viewport, app: app)
+        try selectThirdBore(in: viewport, app: app)
 
         XCTAssertEqual(app.staticTexts["targetScope"].firstMatch.value as? String, "Shared parameter · 4 cutters")
         let field = app.textFields["diameterField"].firstMatch
@@ -261,6 +259,17 @@ final class ScadrettoUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [writable], timeout: 8), .completed,
                        "The diameter field must enable once the literal is verified")
         XCTAssertEqual(field.value as? String, "4")
+
+        let (grip, outward) = diameterDragCoordinates(in: viewport)
+        grip.click(forDuration: 0.2, thenDragTo: outward)
+        waitForText("hole_d = 5;", in: editor)
+        XCTAssertEqual(editor.value as? String, editedText)
+        choose("Undo Change Diameter", from: "Edit", in: app)
+        waitForText("hole_d = 4;", in: editor)
+        XCTAssertEqual(editor.value as? String, originalText)
+        waitForText("Preview ready", in: status, timeout: 15)
+        let writableAfterUndo = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: field)
+        XCTAssertEqual(XCTWaiter.wait(for: [writableAfterUndo], timeout: 8), .completed)
 
         field.click()
         field.typeKey("a", modifierFlags: .command)
@@ -312,11 +321,10 @@ final class ScadrettoUITests: XCTestCase {
         choose("Save", from: "File", in: app)
         XCTAssertEqual(try Data(contentsOf: url), original)
 
-        selectThirdBore(in: viewport, app: app)
+        try selectThirdBore(in: viewport, app: app)
         waitForText("Shared parameter · 4 cutters", in: app.staticTexts["targetScope"].firstMatch)
         waitForText("4", in: field)
-        let grip = viewport.coordinate(withNormalizedOffset: CGVector(dx: 283.52062 / 608, dy: 303.54250 / 638))
-        let outward = viewport.coordinate(withNormalizedOffset: CGVector(dx: 282.11575 / 608, dy: 302.67948 / 638))
+        let (grip, outward) = diameterDragCoordinates(in: viewport)
         grip.click()
         XCTAssertEqual(editor.value as? String, originalText)
         XCTAssertEqual(field.value as? String, "4")
@@ -368,7 +376,7 @@ final class ScadrettoUITests: XCTestCase {
         waitForText("Preview ready · 1312 triangles", in: status, timeout: 15)
         XCTAssertEqual(reopened.value as? String, finalText)
         XCTAssertEqual(try Data(contentsOf: url), saved)
-        selectThirdBore(in: viewport, app: app, afterDiameterEdit: true)
+        try selectThirdBore(in: viewport, app: app, afterDiameterEdit: true)
         waitForText("Shared parameter · 5 cutters", in: app.staticTexts["targetScope"].firstMatch)
         XCTAssertEqual(field.value as? String, "5")
         let screenshot = XCTAttachment(screenshot: viewport.screenshot())
@@ -377,12 +385,19 @@ final class ScadrettoUITests: XCTestCase {
         add(screenshot)
     }
 
+    private static let plateViewportSize = CGSize(width: 608, height: 638)
+
     @MainActor
-    private func selectThirdBore(in viewport: XCUIElement, app: XCUIApplication, afterDiameterEdit: Bool = false) {
+    private func selectThirdBore(in viewport: XCUIElement, app: XCUIApplication, afterDiameterEdit: Bool = false) throws {
         // Projected centroids of final triangles 352 (original) and 307
         // (saved five-bore variant) in the initial 608 × 638 viewport.
+        let size = viewport.frame.size
+        let expected = Self.plateViewportSize
+        let matchesViewport = abs(size.width - expected.width) <= 1 && abs(size.height - expected.height) <= 1
+        _ = try XCTUnwrap(matchesViewport ? size : nil,
+                          "The bore ray requires a 608 × 638 point viewport. Measured \(size).")
         let point = afterDiameterEdit ? CGPoint(x: 280.75186, y: 303.55458) : CGPoint(x: 283.52664, y: 303.54620)
-        let bore = viewport.coordinate(withNormalizedOffset: CGVector(dx: point.x / 608, dy: point.y / 638))
+        let bore = plateCoordinate(point, in: viewport)
         let selection = app.staticTexts["inspectorSelection"].firstMatch
         for _ in 0..<8 {
             bore.click()
@@ -393,6 +408,18 @@ final class ScadrettoUITests: XCTestCase {
             if XCTWaiter.wait(for: [matched], timeout: 1.5) == .completed { return }
         }
         XCTFail("Clicking the third bore must select its instance in viewport \(viewport.frame)")
+    }
+
+    @MainActor
+    private func diameterDragCoordinates(in viewport: XCUIElement) -> (XCUICoordinate, XCUICoordinate) {
+        (plateCoordinate(CGPoint(x: 283.52062, y: 303.54250), in: viewport),
+         plateCoordinate(CGPoint(x: 282.11575, y: 302.67948), in: viewport))
+    }
+
+    @MainActor
+    private func plateCoordinate(_ point: CGPoint, in viewport: XCUIElement) -> XCUICoordinate {
+        let size = Self.plateViewportSize
+        return viewport.coordinate(withNormalizedOffset: CGVector(dx: point.x / size.width, dy: point.y / size.height))
     }
 
     @MainActor

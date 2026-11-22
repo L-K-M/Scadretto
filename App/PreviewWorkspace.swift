@@ -130,7 +130,7 @@ final class PreviewWorkspace {
 
     private func updateFrameStatus() {
         guard let renderedStatus else { return }
-        if geometry != nil, let viewport, viewport.presentedFrame?.sceneID != result?.requestID {
+        if geometry != nil, let viewport, viewport.presentedSceneID != result?.requestID {
             displayStatus("Presenting preview…")
         } else {
             displayStatus(renderedStatus)

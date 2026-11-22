@@ -234,6 +234,39 @@ final class ViewportSurfaceIndexTests: XCTestCase {
             min: SIMD3(-1, -1, -1), max: SIMD3(11, 11, 1))).count, 200)
     }
 
+    // MARK: Build heuristic
+
+    /// Node count of the built BVH, read through reflection so the tree can
+    /// stay private. A build that found no split axis is a single root leaf.
+    private func nodeCount(of index: ViewportSurfaceIndex) -> Int? {
+        Mirror(reflecting: index).children.first { $0.label == "nodes" }
+            .map { Mirror(reflecting: $0.value).children.count }
+    }
+
+    func testCoincidentBoundsCentersDoNotSplit() throws {
+        // Six nested scalings of one triangle about its bounds center. The
+        // power-of-two scales keep every step exact, so each primitive's
+        // bounds center is bitwise (0.5, 0.5, 0.5): the split heuristic sees
+        // a zero center extent and must stop at one leaf.
+        let a = SIMD3(1.0, 0, 0), b = SIMD3(0, 1.0, 0), c = SIMD3(0, 0, 1.0)
+        let center = SIMD3(0.5, 0.5, 0.5)
+        var positions: [SIMD3<Double>] = []
+        var indices: [UInt32] = []
+        for scale in [0.5, 1.0, 2.0, 4.0, 8.0, 16.0] {
+            let base = UInt32(positions.count)
+            positions += [a, b, c].map { center + scale * ($0 - center) }
+            indices += [base, base + 1, base + 2]
+        }
+        let index = try XCTUnwrap(ViewportSurfaceIndex(
+            mesh: ViewportMesh(positions: positions, indices: indices)))
+
+        // All six triangles exist, so the leaf holds the whole range.
+        let all = index.triangles(overlapping: ViewportBounds(
+            min: SIMD3(-8, -8, -8), max: SIMD3(9, 9, 9)))
+        XCTAssertEqual(all.map(\.index), [0, 1, 2, 3, 4, 5])
+        XCTAssertEqual(nodeCount(of: index), 1)
+    }
+
     // MARK: Budget and empty input
 
     func testInitRejectsEmptyInvalidAndOverBudgetMeshes() {
