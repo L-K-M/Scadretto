@@ -28,6 +28,9 @@ makes a binding complete and a drag safe.
 - A handle appears only without a drag blocker: iteration zero, an unproved
   impact or dependent frame, an untraced placement, or one expression
   applied twice on a path. Numeric entry stays, with the reason.
+- A drag guide follows only another occurrence that the worker verified for
+  the same literal, along that occurrence's own axis and scale. Other
+  affected uses, such as `-d` or `2 * d`, are highlighted without a guide.
 - Scope counts rendered operands. A set the worker cannot prove complete
   reads "at least N, other uses unknown".
 - A selection follows its call path through edits. A wrapper written since
@@ -74,4 +77,6 @@ Tests with real worker results and a review of its traces exposed three
 defects that hand-written traces and the goldens had hidden. Offsets were
 never offered for a formula such as `wall/2`, built-in defaults produced
 invalid manifests, and an inserted move lost its selection. Each regression
-failed before its fix.
+failed before its fix. A later mutation check of the worker showed that
+guides chosen by property name or equal value could point the wrong way.
+Their tests compare each guide with reevaluation, and failed first.

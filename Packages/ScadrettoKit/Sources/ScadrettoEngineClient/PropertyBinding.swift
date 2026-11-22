@@ -58,7 +58,7 @@ extension EvaluationResult {
 
     /// A scoped wrapper must cover the entire terminal token. Equal values,
     /// an inner operand of arithmetic, and implicit defaults supply no target.
-    private static func propertyOrigin(_ property: PropertyRecord)
+    fileprivate static func propertyOrigin(_ property: PropertyRecord)
         -> (span: WireSpan, scope: PropertyBindingTarget.Scope)? {
         let directLinks = ["parameter", "argument", "assignment", "lookup", "element", "default"]
         guard property.chain.dropLast().allSatisfy({ directLinks.contains($0.kind) }),
@@ -69,5 +69,12 @@ extension EvaluationResult {
         case "argument", "element": return (span, .callSite)
         default: return nil
         }
+    }
+}
+
+extension PropertyRecord {
+    /// The literal that writing this property would replace, in any file.
+    public var literalOrigin: WireSpan? {
+        EvaluationResult.propertyOrigin(self)?.span
     }
 }

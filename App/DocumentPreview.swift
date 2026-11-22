@@ -107,10 +107,11 @@ struct PreviewGeometry: Sendable {
                                     value: value, valuePerUnit: valuePerUnit)
     }
 
-    func moveGuide(for frame: InstanceRecord, axis: ModelAxis, localUnitsPerValue: Double) -> ViewportLinearGuide? {
+    func moveGuide(for frame: InstanceRecord, localUnitsPerValue: SIMD3<Double>) -> ViewportLinearGuide? {
         let transform = Self.matrix(frame.world)
         guard let origin = extents[frame.id]?.center, transform.isInvertibleFrame else { return nil }
-        return ViewportLinearGuide(anchor: origin, worldUnitsPerValue: Self.axis(axis, of: transform) * localUnitsPerValue)
+        return ViewportLinearGuide(anchor: origin,
+                                   worldUnitsPerValue: Self.xyz(transform * SIMD4(localUnitsPerValue, 0)))
     }
 
     func sizeHandle(for instanceID: UInt32, property: PropertyRecord,

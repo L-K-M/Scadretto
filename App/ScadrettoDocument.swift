@@ -407,15 +407,18 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             var guidesTruncated = false
             switch handle {
             case .diameter(let radial):
-                // The radial preview describes consumers that share this displayed diameter.
-                let cutters = plan.affected.filter { instances[$0]?.diameter?.value == choice.value }
+                let cutters = choice.previewRims(affected: plan.affected, instances: instances)
                 guidesTruncated = cutters.count > Self.guideLimit
                 let guides = cutters.prefix(Self.guideLimit).compactMap { workspace.geometry?.guide(for: $0) }
                 workspace.viewport?.showDiameter(handle: radial, guides: guides)
             case .linear(let linear):
-                guidesTruncated = plan.affected.count > Self.guideLimit
-                let guides = moveGuides(for: choice, affected: plan.affected, instances: instances,
-                                        geometry: workspace.geometry)
+                let motions = choice.previewMotions(affected: plan.affected, instances: instances)
+                guidesTruncated = motions.count > Self.guideLimit
+                let guides = motions.prefix(Self.guideLimit).compactMap { motion in
+                    instances[motion.instance].flatMap {
+                        workspace.geometry?.moveGuide(for: $0, localUnitsPerValue: motion.localUnitsPerValue)
+                    }
+                }
                 workspace.viewport?.showLinear(handle: linear, guides: guides)
             case nil:
                 workspace.viewport?.showLinear(handle: nil, guides: [])
@@ -485,26 +488,6 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         case .prefix(let owner, let axis):
             return geometry.moveHandle(shape: selection.instanceID, in: owner, axis: axis, value: 0)
                 .map(ViewportEditHandle.linear)
-        }
-    }
-
-    private func moveGuides(for choice: PropertyChoice, affected: [UInt32], instances: [UInt32: InstanceRecord],
-                            geometry: PreviewGeometry?) -> [ViewportLinearGuide] {
-        guard let geometry else { return [] }
-        return affected.prefix(Self.guideLimit).compactMap { id in
-            guard let frame = instances[id] else { return nil }
-            switch choice.action {
-            case .value(_, let property), .offset(_, let property):
-                guard let match = frame.properties?.first(where: {
-                    $0.semantic == property.semantic && $0.formal == property.formal
-                }) else { return nil }
-                if let pitch = match.pitch {
-                    return geometry.moveGuide(for: frame, axis: .x, localUnitsPerValue: pitch.iteration)
-                }
-                return match.semantic.translateAxis.flatMap { geometry.moveGuide(for: frame, axis: $0, localUnitsPerValue: 1) }
-            case .prefix(_, let axis):
-                return geometry.moveGuide(for: frame, axis: axis, localUnitsPerValue: 1)
-            }
         }
     }
 

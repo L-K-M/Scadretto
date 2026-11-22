@@ -493,6 +493,55 @@ struct LiveWorkerTests {
         await session.close()
     }
 
+    /// A guide is a promise: its occurrence moves that far along that axis.
+    @Test(arguments: [
+        ("s = 4;\ntranslate([s, 0, 0]) cube(1);\ntranslate([-s, 0, 0]) cube(1);\n", "cube", "Translate X", 1),
+        ("s = 4;\ntranslate([s, 0, 0]) cube(1);\ntranslate([2 * s, 0, 0]) cube(1);\n", "cube", "Translate X", 1),
+        ("s = 4;\ntranslate([s, 0, 0]) cube(1);\ntranslate([0, s, 0]) cube(1);\n", "cube", "Translate X", 2),
+        ("s = 2;\nsphere(r = s, $fn = 8);\ntranslate([s, 0, 0]) cube(1);\n", "sphere", "Diameter", 1),
+        // Iteration zero stays put, so it has no guide.
+        ("x0 = 1;\np = 5;\nfor (i = [0 : 3]) translate([x0 + i * p, 0, 0]) cube(1);\n", "cube", "Pitch", 3),
+    ]) @MainActor
+    func everyMotionGuideMatchesReevaluation(source: String, name: String, title: String, guided: Int) async throws {
+        let session = try Session(source)
+        let before = try await session.evaluate()
+        let pick = (name: name, ordinal: title == "Pitch" ? 2 : 0)
+        let choice = try session.choice(title, on: session.instance(pick, in: before), in: before)
+        let plan = try await session.plan(title, at: pick, in: before)
+        let old = try #require(before.scene).instances
+        let motions = choice.previewMotions(affected: plan.affected,
+                                            instances: Dictionary(uniqueKeysWithValues: old.map { ($0.id, $0) }))
+        _ = try session.apply(plan, value: try #require(choice.value) + 2)
+        let new = try #require(try await session.evaluate().scene).instances
+        #expect(motions.count == guided)
+        for motion in motions {
+            let index = try #require(old.firstIndex { $0.id == motion.instance })
+            for axis in ModelAxis.allCases {
+                let shown = 2 * motion.localUnitsPerValue[axis.index]
+                let moved = new[index].local[12 + axis.index] - old[index].local[12 + axis.index]
+                #expect(abs(moved - shown) < 1e-9, "\(axis.rawValue) of instance \(motion.instance)")
+            }
+        }
+        await session.close()
+    }
+
+    @Test(arguments: [
+        ("s = 4;\ncylinder(h = 2, d = s);\ntranslate([9, 0, 0]) cylinder(h = s, d = 4);\n", [true, false]),
+        ("s = 2;\ncylinder(h = 2, r = s);\ntranslate([9, 0, 0]) cylinder(h = 3, r = s);\n", [true, true]),
+        ("s = 4;\ncylinder(h = 2, d = s);\ntranslate([9, 0, 0]) cylinder(h = 3, r = s);\n", [true, false]),
+    ]) @MainActor
+    func aRimIsShownOnlyWhereItsDiameterFollows(source: String, shown: [Bool]) async throws {
+        let session = try Session(source)
+        let result = try await session.evaluate()
+        let choice = try session.choice("Diameter", on: session.instance(("cylinder", 0), in: result), in: result)
+        let plan = try await session.plan("Diameter", at: ("cylinder", 0), in: result)
+        let instances = try #require(result.scene).instances
+        let rims = choice.previewRims(affected: plan.affected,
+                                      instances: Dictionary(uniqueKeysWithValues: instances.map { ($0.id, $0) }))
+        #expect(instances.filter { $0.name == "cylinder" }.map { rims.contains($0.id) } == shown)
+        await session.close()
+    }
+
     @Test @MainActor func nestedDifferenceWallsResolveToTheirOwnOperand() async throws {
         let session = try Session("""
         difference() {
