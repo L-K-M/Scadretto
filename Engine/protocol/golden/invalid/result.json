@@ -1,0 +1,51 @@
+{
+  "buildSHA": "0000000000000000000000000000000000000000000000000000000000000000",
+  "console": [
+    {
+      "fileID": 0,
+      "group": "ERROR",
+      "text": "ERROR: Parser error: syntax error in file invalid.scad, line 1"
+    }
+  ],
+  "dependencyEdges": [],
+  "detail": "modelError",
+  "diagnostics": [
+    {
+      "fileID": 0,
+      "message": "ERROR: Parser error: syntax error in file invalid.scad, line 1",
+      "severity": "error"
+    },
+    {
+      "message": "Could not parse source snapshot",
+      "severity": "error"
+    }
+  ],
+  "droppedConsoleMessages": 0,
+  "error": "Could not parse source snapshot",
+  "files": [
+    {
+      "byteLength": 7,
+      "id": 0,
+      "kind": "main",
+      "logicalPath": "/ScadrettoGolden/invalid.scad",
+      "sha256": "2d7e74101e9d3ae5bff155063f17ec8461b821e69da800e2d540c9c7abb377df",
+      "writable": true
+    }
+  ],
+  "instances": [],
+  "key": {
+    "dependencyGeneration": 0,
+    "documentID": "00000000-0000-0000-0000-000000000001",
+    "optionsDigest": "da0a93af914f387d4d4a01184a986d4be2a718ecff6788fef58816486cd7d140",
+    "resolutionDigest": "f6cd94bb0160af0485404a4806b2c286f28ea0361b1138e93427330e170e7be1",
+    "sourceRevision": 1,
+    "workerBuild": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "lookups": [],
+  "mesh": null,
+  "operands": [],
+  "operations": [],
+  "protocolVersion": 1,
+  "requestID": "00000000-0000-0000-0000-000000000002",
+  "status": "error"
+}

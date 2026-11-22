@@ -1,0 +1,1652 @@
+From 2bdf11d1300a0da8362d939072fa52eb69c866de Mon Sep 17 00:00:00 2001
+From: Scadretto <scadretto@users.noreply.github.com>
+Date: Sun, 22 Nov 2026 03:14:50 +0100
+Subject: [PATCH] Expose versioned worker jobs and dependencies
+
+Publish validated binary geometry and source-scoped execution
+records over private job files. Observe the actual inputs chosen
+by OpenSCAD while leaving the base evaluation unchanged.
+---
+ CMakeLists.txt                    |   2 +-
+ src/FontCache.cc                  |  10 +
+ src/core/ImportNode.cc            |  12 +-
+ src/core/ScadrettoDependencies.cc | 447 ++++++++++++++++++++++
+ src/core/ScadrettoDependencies.h  |  97 +++++
+ src/core/ScadrettoTrace.cc        | 601 ++++++++++++++++++++++++++++--
+ src/core/SourceFile.cc            |   6 +-
+ src/core/SourceFileCache.cc       |   9 +-
+ src/core/SurfaceNode.cc           |   3 +
+ src/core/builtin_functions.cc     |   2 +
+ src/core/lexer.l                  |  14 +-
+ src/core/parsersettings.cc        |  16 +-
+ src/core/parsersettings.h         |   8 +-
+ src/io/dxfdim.cc                  |   5 +
+ 14 files changed, 1187 insertions(+), 45 deletions(-)
+ create mode 100644 src/core/ScadrettoDependencies.cc
+ create mode 100644 src/core/ScadrettoDependencies.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 44c7397..5026d84 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1639,7 +1639,7 @@ if (SORT_BUILD)
+ endif()
+ 
+ target_sources(OpenSCADLibInternal PUBLIC ${RESOURCE_FILES})
+-target_sources(OpenSCADLibInternal PRIVATE ${Sources} src/core/ScadrettoTrace.cc)
++target_sources(OpenSCADLibInternal PRIVATE ${Sources} src/core/ScadrettoTrace.cc src/core/ScadrettoDependencies.cc)
+ find_program(SHELL_EXE NAMES sh bash $ENV{SHELL})
+ add_custom_command(TARGET OpenSCADExe POST_BUILD
+     COMMAND "${SHELL_EXE}"
+diff --git a/src/FontCache.cc b/src/FontCache.cc
+index 1eb079e..a091269 100644
+--- a/src/FontCache.cc
++++ b/src/FontCache.cc
+@@ -46,6 +46,7 @@
+ #include FT_TRUETYPE_IDS_H
+ 
+ #include "core/AST.h"
++#include "core/ScadrettoDependencies.h"
+ #include "platform/PlatformUtils.h"
+ #include "utils/printutils.h"
+ #include "utils/version_helper.h"
+@@ -137,6 +138,11 @@ FontCache::FontCache()
+   this->init_ok = false;
+   this->library = nullptr;
+ 
++  // Serialize first-time fontconfig setup across concurrent Scadretto v1
++  // workers. The guard is empty outside worker mode, and lazy construction
++  // keeps jobs without text() from waiting on it.
++  const auto fontcacheLock = scadretto::lockFontcacheInit();
++
+   // If we've got a bundled fonts.conf, initialize fontconfig with our own config
+   // by overriding the built-in fontconfig path.
+   // For system installs and dev environments, we leave this alone
+@@ -437,6 +443,10 @@ FontFacePtr FontCache::find_face_fontconfig(const std::string& font) const
+ 
+   FT_Face ftFace;
+   const FT_Error error = FT_New_Face(this->library, (const char *)file_value, font_index, &ftFace);
++  if (!error) {
++    scadretto::observeFile(reinterpret_cast<const char *>(file_value),
++                           scadretto::DependencyKind::Font);
++  }
+ 
+   FcPatternDestroy(pattern);
+   FcPatternDestroy(match);
+diff --git a/src/core/ImportNode.cc b/src/core/ImportNode.cc
+index c762976..8c3095f 100644
+--- a/src/core/ImportNode.cc
++++ b/src/core/ImportNode.cc
+@@ -51,6 +51,7 @@
+ #include "core/Builtins.h"
+ #include "core/Children.h"
+ #include "core/ModuleInstantiation.h"
++#include "core/ScadrettoDependencies.h"
+ #include "core/Parameters.h"
+ #include "core/module.h"
+ #include "geometry/Polygon2d.h"
+@@ -71,17 +72,20 @@ static std::shared_ptr<AbstractNode> do_import(const ModuleInstantiation *inst,
+ 
+   const auto& v = parameters["file"];
+   std::string filename;
++  std::string rawFilename;
+   if (v.isDefined()) {
+-    filename = lookup_file(v.isUndefined() ? "" : v.toString(),
+-                           inst->location().filePath().parent_path().string());
++    rawFilename = v.isUndefined() ? "" : v.toString();
++    filename = lookup_file(rawFilename, inst->location().filePath().parent_path().string());
+   } else {
+     const auto& filename_val = parameters["filename"];
+     if (!filename_val.isUndefined()) {
+       LOG(message_group::Deprecated, "filename= is deprecated. Please use file=");
+     }
+-    filename = lookup_file(filename_val.isUndefined() ? "" : filename_val.toString(),
+-                           inst->location().filePath().parent_path().string());
++    rawFilename = filename_val.isUndefined() ? "" : filename_val.toString();
++    filename = lookup_file(rawFilename, inst->location().filePath().parent_path().string());
+   }
++  scadretto::observeAsset(inst->location().filePath(), rawFilename, filename,
++                          scadretto::DependencyKind::Import);
+   if (!filename.empty()) handle_dep(filename);
+   ImportType actualtype = type;
+   if (actualtype == ImportType::UNKNOWN) {
+diff --git a/src/core/ScadrettoDependencies.cc b/src/core/ScadrettoDependencies.cc
+new file mode 100644
+index 0000000..7597d98
+--- /dev/null
++++ b/src/core/ScadrettoDependencies.cc
+@@ -0,0 +1,447 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++#include "core/ScadrettoDependencies.h"
++
++#include <cstdint>
++#include <cstdio>
++#include <fstream>
++#include <mutex>
++#include <unordered_map>
++#include <utility>
++
++#include <openssl/evp.h>
++
++#ifndef _WIN32
++#include <sys/file.h>
++#include <unistd.h>
++#endif
++
++#include "io/fileutils.h"
++
++using nlohmann::json;
++
++namespace {
++
++constexpr std::size_t maxDependencyFiles = 2048;
++constexpr std::size_t maxDependencyLookups = 4096;
++constexpr std::size_t maxLookupCandidates = 256;
++constexpr std::size_t maxPathBytes = 4096;
++constexpr std::size_t maxNameBytes = 1024;
++// Files larger than this keep a record but get no digest or span index.
++constexpr std::uintmax_t maxDigestBytes = 512ULL * 1024 * 1024;
++// Line indices are capped so span lookups stay bounded in memory.
++constexpr std::size_t maxIndexedLines = 2'000'000;
++
++struct DependencyFile {
++  std::string logicalPath;
++  std::string resolvedPath;  // empty while the file is not on disk
++  std::string sha256;        // empty when bytes are unknown
++  std::uint64_t byteLength = 0;
++  bool hasBytes = false;
++  std::string kind;
++  bool writable = false;
++  std::vector<std::uint64_t> lineStarts;  // empty => no span index
++};
++
++struct DependencyLookup {
++  std::string requestingPath;
++  std::string name;
++  std::vector<std::string> candidates;
++  std::string winner;
++};
++
++bool enabled = false;
++std::mutex dependenciesMutex;
++std::vector<DependencyFile> trackedFiles;
++std::unordered_map<std::string, std::size_t> trackedFileKeys;
++std::vector<DependencyLookup> trackedLookups;
++std::size_t droppedFiles = 0;
++std::size_t droppedLookups = 0;
++
++std::string bounded(const std::string& value, std::size_t limit)
++{
++  return value.size() <= limit ? value : value.substr(0, limit);
++}
++
++std::string boundedPath(const std::string& path)
++{
++  return bounded(path, maxPathBytes);
++}
++
++std::string pathKey(const fs::path& path)
++{
++  std::error_code error;
++  const fs::path canonical = fs::weakly_canonical(path, error);
++  const fs::path& normalized = error ? path.lexically_normal() : canonical;
++  return normalized.generic_string();
++}
++
++const char *kindName(scadretto::DependencyKind kind)
++{
++  switch (kind) {
++  case scadretto::DependencyKind::Main:     return "main";
++  case scadretto::DependencyKind::Include:  return "include";
++  case scadretto::DependencyKind::Use:      return "use";
++  case scadretto::DependencyKind::Import:   return "import";
++  case scadretto::DependencyKind::Surface:  return "surface";
++  case scadretto::DependencyKind::Dxf:      return "dxf";
++  case scadretto::DependencyKind::Font:     return "font";
++  }
++  return "unknown";
++}
++
++constexpr std::size_t sha256Bytes = 32;
++
++std::string hexDigest(const unsigned char *digest)
++{
++  static const char hex[] = "0123456789abcdef";
++  std::string out(2 * sha256Bytes, '0');
++  for (std::size_t i = 0; i < sha256Bytes; ++i) {
++    out[2 * i] = hex[digest[i] >> 4];
++    out[2 * i + 1] = hex[digest[i] & 0xf];
++  }
++  return out;
++}
++
++struct Sha256 {
++  EVP_MD_CTX *context = EVP_MD_CTX_new();
++  ~Sha256() { EVP_MD_CTX_free(context); }
++  Sha256() { EVP_DigestInit_ex(context, EVP_sha256(), nullptr); }
++  void update(const char *data, std::size_t size) { EVP_DigestUpdate(context, data, size); }
++  std::string final()
++  {
++    unsigned char digest[EVP_MAX_MD_SIZE];
++    unsigned int size = 0;
++    EVP_DigestFinal_ex(context, digest, &size);
++    return hexDigest(digest);
++  }
++};
++
++// Byte offsets of each line start in the raw file bytes, including a BOM.
++// The pin's lexer reports one-based byte columns, so no decoding is needed.
++struct SpanIndex {
++  std::vector<std::uint64_t> lineStarts{0};
++  bool complete = true;
++  std::uint64_t consumed = 0;
++
++  void feed(const char *data, std::size_t size)
++  {
++    if (!complete) return;
++    for (std::size_t i = 0; i < size; ++i) {
++      if (data[i] == '\n') lineStarts.push_back(consumed + i + 1);
++    }
++    consumed += size;
++    if (lineStarts.size() > maxIndexedLines) {
++      lineStarts.clear();
++      complete = false;
++    }
++  }
++};
++
++// Streams a file for its digest and span index. Reads every readable byte so
++// the digest covers the file the parser saw, BOM included.
++void digestOnDisk(DependencyFile& record, const fs::path& path)
++{
++  std::error_code error;
++  const auto size = fs::file_size(path, error);
++  if (error || size > maxDigestBytes) return;
++  std::ifstream stream(path, std::ios::binary);
++  if (!stream) return;
++
++  Sha256 sha;
++  SpanIndex index;
++  std::uint64_t remaining = size;
++  std::vector<char> chunk(std::min<std::uint64_t>(size, 1 << 20));
++  while (remaining > 0 && stream) {
++    const auto count = static_cast<std::size_t>(
++      std::min<std::uint64_t>(remaining, chunk.size()));
++    stream.read(chunk.data(), count);
++    const auto got = static_cast<std::size_t>(stream.gcount());
++    if (got == 0) break;
++    sha.update(chunk.data(), got);
++    index.feed(chunk.data(), got);
++    remaining -= got;
++  }
++  if (remaining != 0) return;  // truncated or unreadable: no digest
++
++  record.sha256 = sha.final();
++  record.byteLength = size;
++  record.hasBytes = true;
++  if (index.complete) record.lineStarts = std::move(index.lineStarts);
++}
++
++void digestBuffer(DependencyFile& record, const std::string& bytes)
++{
++  if (bytes.size() > maxDigestBytes) return;
++  Sha256 sha;
++  sha.update(bytes.data(), bytes.size());
++  SpanIndex index;
++  index.feed(bytes.data(), bytes.size());
++  record.sha256 = sha.final();
++  record.byteLength = bytes.size();
++  record.hasBytes = true;
++  if (index.complete) record.lineStarts = std::move(index.lineStarts);
++}
++
++void resolveOnDisk(DependencyFile& record, std::size_t id, const fs::path& path)
++{
++  std::error_code error;
++  if (!fs::exists(path, error) || error) return;
++  const fs::path canonical = fs::canonical(path, error);
++  if (error) return;
++  record.resolvedPath = boundedPath(fs_generic_string(canonical));
++  trackedFileKeys[canonical.generic_string()] = id;
++#ifndef _WIN32
++  record.writable = ::access(record.resolvedPath.c_str(), W_OK) == 0;
++#endif
++}
++
++DependencyFile& fileRecord(const std::string& path, scadretto::DependencyKind kind)
++{
++  const std::string key = pathKey(fs::path(path));
++  if (const auto found = trackedFileKeys.find(key); found != trackedFileKeys.end()) {
++    auto& record = trackedFiles[found->second];
++    if (record.resolvedPath.empty()) resolveOnDisk(record, found->second, fs::path(path));
++    return record;
++  }
++  if (trackedFiles.size() >= maxDependencyFiles) {
++    ++droppedFiles;
++    // Records past the bound share a slot that is never serialized.
++    static DependencyFile overflow;
++    return overflow;
++  }
++  const auto id = trackedFiles.size();
++  auto& record = trackedFiles.emplace_back();
++  trackedFileKeys.emplace(key, id);
++  record.logicalPath = boundedPath(fs::path(path).generic_string());
++  record.kind = kindName(kind);
++  resolveOnDisk(record, id, fs::path(path));
++  return record;
++}
++
++constexpr std::size_t npos = std::string::npos;
++
++std::size_t lookupFileIndex(const std::string& path)
++{
++  const auto found = trackedFileKeys.find(pathKey(fs::path(path)));
++  return found == trackedFileKeys.end() ? npos : found->second;
++}
++
++json offsets(const DependencyFile& record, const Location& location)
++{
++  const auto offset = [&record](int line, int column, std::uint64_t& out) {
++    if (line < 1 || column < 1 || static_cast<std::uint64_t>(line) > record.lineStarts.size()) {
++      return false;
++    }
++    const auto start = record.lineStarts[line - 1];
++    const auto end = static_cast<std::uint64_t>(line) < record.lineStarts.size()
++                       ? record.lineStarts[line]
++                       : record.byteLength;
++    if (static_cast<std::uint64_t>(column - 1) > end - start) return false;
++    out = start + static_cast<std::uint64_t>(column - 1);
++    return true;
++  };
++  std::uint64_t start, end;
++  if (!offset(location.firstLine(), location.firstColumn(), start) ||
++      !offset(location.lastLine(), location.lastColumn(), end) || start > end) {
++    return nullptr;
++  }
++  return {{"start", start}, {"end", end}};
++}
++
++}  // namespace
++
++namespace scadretto {
++
++void beginDependencies()
++{
++  const std::lock_guard<std::mutex> lock(dependenciesMutex);
++  trackedFiles.clear();
++  trackedFileKeys.clear();
++  trackedLookups.clear();
++  droppedFiles = 0;
++  droppedLookups = 0;
++  enabled = true;
++}
++
++void endDependencies()
++{
++  const std::lock_guard<std::mutex> lock(dependenciesMutex);
++  enabled = false;
++}
++
++bool dependenciesEnabled()
++{
++  const std::lock_guard<std::mutex> lock(dependenciesMutex);
++  return enabled;
++}
++
++void observeFile(const std::string& path, DependencyKind kind)
++{
++  if (path.empty()) return;
++  try {
++    const std::lock_guard<std::mutex> lock(dependenciesMutex);
++    if (!enabled) return;
++    auto& record = fileRecord(path, kind);
++    if (record.resolvedPath.empty() || record.hasBytes) return;
++    digestOnDisk(record, fs::path(record.resolvedPath));
++  } catch (...) {
++  }
++}
++
++void observeFileBytes(const std::string& path, DependencyKind kind,
++                      const std::string& bytes)
++{
++  if (path.empty()) return;
++  try {
++    const std::lock_guard<std::mutex> lock(dependenciesMutex);
++    if (!enabled) return;
++    auto& record = fileRecord(path, kind);
++    digestBuffer(record, bytes);
++  } catch (...) {
++  }
++}
++
++void observeLookup(const std::string& requestingFile, const std::string& name,
++                   const std::vector<std::string>& candidates, const std::string& winner)
++{
++  try {
++    const std::lock_guard<std::mutex> lock(dependenciesMutex);
++    if (!enabled) return;
++    if (trackedLookups.size() >= maxDependencyLookups) {
++      ++droppedLookups;
++      return;
++    }
++    auto& record = trackedLookups.emplace_back();
++    record.requestingPath = boundedPath(requestingFile);
++    record.name = bounded(name, maxNameBytes);
++    for (const auto& candidate : candidates) {
++      if (record.candidates.size() >= maxLookupCandidates) break;
++      record.candidates.push_back(boundedPath(candidate));
++    }
++    record.winner = boundedPath(winner);
++  } catch (...) {
++  }
++}
++
++void observeAsset(const fs::path& requestingFile, const std::string& name,
++                  const std::string& resolved, DependencyKind kind)
++{
++  try {
++    std::string winner;
++    if (!resolved.empty()) {
++      std::error_code error;
++      const fs::path candidate(resolved);
++      if (fs::exists(candidate, error) && !error && !fs::is_directory(candidate, error) && !error) {
++        winner = resolved;
++      }
++    }
++    observeLookup(requestingFile.empty() ? "" : fs_generic_string(requestingFile), name,
++                  resolved.empty() ? std::vector<std::string>{} : std::vector<std::string>{resolved},
++                  winner);
++    if (!resolved.empty()) observeFile(resolved, kind);
++  } catch (...) {
++  }
++}
++
++json dependencyFiles()
++{
++  const std::lock_guard<std::mutex> lock(dependenciesMutex);
++  json files = json::array();
++  for (std::size_t i = 0; i < trackedFiles.size(); ++i) {
++    const auto& record = trackedFiles[i];
++    if (!record.hasBytes || record.sha256.empty()) continue;
++    json file{{"id", i + 1},
++              {"logicalPath", record.logicalPath},
++              {"kind", record.kind},
++              {"writable", false}};
++    if (!record.resolvedPath.empty()) file["resolvedPath"] = record.resolvedPath;
++    if (!record.sha256.empty()) file["sha256"] = record.sha256;
++    if (record.hasBytes) file["byteLength"] = record.byteLength;
++    files.push_back(std::move(file));
++  }
++  return files;
++}
++
++json dependencyLookups()
++{
++  const std::lock_guard<std::mutex> lock(dependenciesMutex);
++  json lookups = json::array();
++  for (const auto& record : trackedLookups) {
++    json lookup{{"name", record.name}, {"candidates", record.candidates}};
++    if (!record.requestingPath.empty()) {
++      lookup["requestingPath"] = record.requestingPath;
++      if (const auto index = lookupFileIndex(record.requestingPath);
++          index != npos && trackedFiles[index].hasBytes && !trackedFiles[index].sha256.empty()) {
++        lookup["requestingFileID"] = index + 1;
++      }
++    }
++    if (!record.winner.empty() && !record.candidates.empty()) {
++      lookup["winner"] = record.candidates.back();
++      std::error_code error;
++      const auto canonical = fs::canonical(fs::path(record.winner), error);
++      if (!error) lookup["resolvedWinner"] = fs_generic_string(canonical);
++    }
++    lookups.push_back(std::move(lookup));
++  }
++  return lookups;
++}
++
++json dependencySpan(const Location& location)
++{
++  try {
++    const std::lock_guard<std::mutex> lock(dependenciesMutex);
++    if (location.isNone()) return nullptr;
++    const auto index = lookupFileIndex(location.filePath().generic_string());
++    if (index == npos) return nullptr;
++    const auto& record = trackedFiles[index];
++    if (record.lineStarts.empty() || !record.hasBytes) return nullptr;
++    json span = offsets(record, location);
++    if (span.is_null()) return nullptr;
++    span["fileID"] = index + 1;
++    return span;
++  } catch (...) {
++    return nullptr;
++  }
++}
++
++json dependencyOverflow()
++{
++  const std::lock_guard<std::mutex> lock(dependenciesMutex);
++  return {{"droppedFiles", droppedFiles}, {"droppedLookups", droppedLookups}};
++}
++
++void FontcacheLock::release()
++{
++#ifndef _WIN32
++  if (fd_ >= 0) {
++    ::flock(fd_, LOCK_UN);
++    ::close(fd_);
++    fd_ = -1;
++  }
++#endif
++}
++
++FontcacheLock lockFontcacheInit()
++{
++#ifdef _WIN32
++  return {};
++#else
++  try {
++    if (!dependenciesEnabled()) return {};
++    const auto cache = std::getenv("XDG_CACHE_HOME");
++    if (!cache || !*cache) return {};
++    const fs::path path = fs::path(cache) / "scadretto-fontconfig-v1.lock";
++    const int fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0600);
++    if (fd < 0) return {};
++    if (::flock(fd, LOCK_EX) != 0) {
++      ::close(fd);
++      return {};
++    }
++    return FontcacheLock(fd);
++  } catch (...) {
++    return {};
++  }
++#endif
++}
++
++}  // namespace scadretto
+diff --git a/src/core/ScadrettoDependencies.h b/src/core/ScadrettoDependencies.h
+new file mode 100644
+index 0000000..dee2b89
+--- /dev/null
++++ b/src/core/ScadrettoDependencies.h
+@@ -0,0 +1,97 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++#pragma once
++
++#include <string>
++#include <vector>
++
++#include "core/AST.h"
++#include "ext/json/json.hpp"
++
++// Dependency observation for the Scadretto worker (protocol v1).
++//
++// The worker calls scadretto::beginDependencies() before evaluating a job and
++// splices dependencyFiles()/dependencyLookups() into result.json afterwards.
++// Every observe*() function is a no-op while recording is disabled, never
++// throws, and never changes upstream behavior: hook sites only read values
++// upstream already computed.
++namespace scadretto {
++
++enum class DependencyKind { Main, Include, Use, Import, Surface, Dxf, Font };
++
++void beginDependencies();
++void endDependencies();
++bool dependenciesEnabled();
++
++// Records one consumed (or attempted, when unresolved) file. path is the
++// absolute path upstream resolved or tried; when the file is readable its raw
++// bytes - BOM included - are streamed for the digest and the span index.
++// Repeated calls for the same file update the first record; the first kind
++// wins.
++void observeFile(const std::string& path, DependencyKind kind);
++
++// Same as observeFile, using the byte buffer upstream already holds instead of
++// re-reading the file. bytes are the raw consumed file bytes before any lexer
++// adaptation (no appended parser suffix).
++void observeFileBytes(const std::string& path, DependencyKind kind,
++                      const std::string& bytes);
++
++// Records one ordered lookup: the file containing the reference (empty when
++// unknown), the name as written, every absolute candidate probed up to and
++// including the winner, and the winning path or empty when nothing resolved.
++void observeLookup(const std::string& requestingFile, const std::string& name,
++                   const std::vector<std::string>& candidates, const std::string& winner);
++
++// Convenience for the lookup_file() call sites (import, surface, dxf, json
++// import): records a single-candidate lookup for the resolved absolute path -
++// winner only when it exists and is not a directory - then observes the file
++// itself, including a record for the unresolved path when one is known.
++void observeAsset(const fs::path& requestingFile, const std::string& name,
++                  const std::string& resolved, DependencyKind kind);
++
++// Protocol v1 "files" records; ids start at 1 (0 is the main file).
++nlohmann::json dependencyFiles();
++
++// Protocol v1 "lookups" records in observation order. requestingFileID is set
++// only when the requesting file is itself a tracked dependency; requestingPath
++// always carries the requesting file so the caller can map it.
++nlohmann::json dependencyLookups();
++
++// {fileID, start, end} byte span in the original file bytes (BOM included),
++// or null when the location is untracked, unindexed or out of range.
++nlohmann::json dependencySpan(const Location& location);
++
++// {"droppedFiles", "droppedLookups"} counts of records skipped by the bounds.
++nlohmann::json dependencyOverflow();
++
++// RAII guard serializing fontconfig/freetype initialization across concurrent
++// v1 workers. FontCache::FontCache takes it for the duration of its
++// constructor; because the cache is created lazily, jobs without text() never
++// wait on it. Holds no descriptor (and does nothing) while recording is
++// disabled or on platforms without flock().
++class FontcacheLock {
++public:
++  FontcacheLock() = default;
++  explicit FontcacheLock(int fd) : fd_(fd) {}
++  FontcacheLock(const FontcacheLock&) = delete;
++  FontcacheLock& operator=(const FontcacheLock&) = delete;
++  FontcacheLock(FontcacheLock&& rhs) noexcept : fd_(rhs.fd_) { rhs.fd_ = -1; }
++  FontcacheLock& operator=(FontcacheLock&& rhs) noexcept
++  {
++    if (this != &rhs) {
++      release();
++      fd_ = rhs.fd_;
++      rhs.fd_ = -1;
++    }
++    return *this;
++  }
++  ~FontcacheLock() { release(); }
++
++private:
++  void release();
++
++  int fd_ = -1;
++};
++
++[[nodiscard]] FontcacheLock lockFontcacheInit();
++
++}  // namespace scadretto
+diff --git a/src/core/ScadrettoTrace.cc b/src/core/ScadrettoTrace.cc
+index b029e03..3dc0cdd 100644
+--- a/src/core/ScadrettoTrace.cc
++++ b/src/core/ScadrettoTrace.cc
+@@ -1,27 +1,41 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ #include "core/ScadrettoTrace.h"
+ 
++#include <algorithm>
++#include <array>
++#include <cerrno>
++#include <climits>
+ #include <cmath>
++#include <cstdlib>
++#include <cstring>
+ #include <fstream>
+ #include <iomanip>
+ #include <iterator>
+ #include <map>
++#include <optional>
+ #include <sstream>
+ #include <stdexcept>
++#include <thread>
+ #include <vector>
+ 
++#include <mach-o/dyld.h>
+ #include <openssl/sha.h>
++#include <unistd.h>
+ 
+ #include "core/Assignment.h"
+ #include "core/BuiltinContext.h"
++#include "core/CgalAdvNode.h"
+ #include "core/Context.h"
++#include "core/CsgOpNode.h"
+ #include "core/EvaluationSession.h"
+ #include "core/ModuleInstantiation.h"
+ #include "core/RenderVariables.h"
++#include "core/ScadrettoDependencies.h"
+ #include "core/SourceFile.h"
+ #include "core/TransformNode.h"
+ #include "core/Tree.h"
+ #include "core/Value.h"
++#include "core/enums.h"
+ #include "core/parsersettings.h"
+ #include "ext/json/json.hpp"
+ #include "geometry/GeometryEvaluator.h"
+@@ -38,6 +52,12 @@ constexpr auto maxSourceBytes = 16 * 1024 * 1024;
+ constexpr auto maxRequestBytes = 64 * 1024;
+ constexpr auto maxMessages = 256;
+ constexpr auto maxMessageBytes = 4096;
++constexpr auto maxManifestBytes = 16 * 1024 * 1024;
++constexpr auto maxPayloadBytes = 256ULL * 1024 * 1024;
++constexpr auto maxInstances = 65536;
++constexpr auto maxExecutableBytes = 512ULL * 1024 * 1024;
++constexpr uint32_t meshPayloadVersion = 1;
++constexpr unsigned mainFileID = 0;
+ 
+ std::string readFile(const fs::path& path, std::size_t limit)
+ {
+@@ -60,6 +80,36 @@ std::string digest(const std::string& text)
+   return hex.str();
+ }
+ 
++std::string executableDigest()
++{
++  uint32_t size = 0;
++  _NSGetExecutablePath(nullptr, &size);
++  std::vector<char> buffer(size);
++  if (_NSGetExecutablePath(buffer.data(), &size) != 0) {
++    throw std::runtime_error("Cannot locate worker executable");
++  }
++  char resolved[PATH_MAX];
++  const fs::path path = realpath(buffer.data(), resolved) ? fs::path(resolved)
++                                                          : fs::path(buffer.data());
++  return digest(readFile(path, maxExecutableBytes));
++}
++
++// Protocol v1 context hashing: each field contributes its decimal UTF-8 byte
++// length, an ASCII colon, then its exact UTF-8 bytes.
++void contextField(std::string& blob, const std::string& field)
++{
++  blob += std::to_string(field.size());
++  blob += ':';
++  blob += field;
++}
++
++std::string contextDigest(const std::vector<std::string>& fields)
++{
++  std::string blob;
++  for (const auto& field : fields) contextField(blob, field);
++  return digest(blob);
++}
++
+ struct MainSource {
+   fs::path logicalPath;
+   std::string bytes;
+@@ -75,10 +125,9 @@ struct MainSource {
+     }
+   }
+ 
+-  json span(const Location& loc) const
++  // The pin's lexer reports one-based byte columns and exclusive end locations.
++  std::pair<std::size_t, std::size_t> offsets(const Location& loc) const
+   {
+-    // The pin's lexer reports one-based byte columns and exclusive end locations.
+-    if (loc.isNone() || loc.filePath() != logicalPath) return nullptr;
+     const auto offset = [this](int line, int column) {
+       if (line < 1 || column < 1 || std::size_t(line) > lines.size()) {
+         throw std::out_of_range("source location");
+@@ -88,15 +137,40 @@ struct MainSource {
+       if (std::size_t(column - 1) > end - start) throw std::out_of_range("source column");
+       return start + std::size_t(column - 1);
+     };
++    return {offset(loc.firstLine(), loc.firstColumn()),
++            offset(loc.lastLine(), loc.lastColumn())};
++  }
++
++  bool owns(const Location& loc) const
++  {
++    return !loc.isNone() && loc.filePath() == logicalPath;
++  }
++
++  // Byte span in the original file bytes, BOM included, or null.
++  json span(const Location& loc) const
++  {
++    if (!owns(loc)) return nullptr;
+     try {
+-      auto start = offset(loc.firstLine(), loc.firstColumn());
+-      auto end = offset(loc.lastLine(), loc.lastColumn());
++      auto [start, end] = offsets(loc);
+       if (start <= end) return {{"file", logicalPath.string()}, {"start", start}, {"end", end}};
+     } catch (const std::out_of_range&) {
+       // No span for parser locations in the synthetic end-of-input newline.
+     }
+     return nullptr;
+   }
++
++  // Protocol v1 span: file ID 0 names the main file.
++  json spanV1(const Location& loc) const
++  {
++    if (!owns(loc)) return nullptr;
++    try {
++      auto [start, end] = offsets(loc);
++      if (start <= end) return {{"fileID", mainFileID}, {"start", start}, {"end", end}};
++    } catch (const std::out_of_range&) {
++      // No span for parser locations in the synthetic end-of-input newline.
++    }
++    return nullptr;
++  }
+ };
+ 
+ json packMesh(const std::shared_ptr<const Geometry>& geometry)
+@@ -123,19 +197,115 @@ json matrix(const Transform3d& transform)
+   return std::vector<double>(values.data(), values.data() + 16);
+ }
+ 
++// Streams one protocol v1 binary payload: the SCADMESH header followed by
++// packed little-endian Float64 vertex triples and UInt32 triangle indices.
++// Host byte order is little-endian on every supported macOS architecture.
++struct MeshPayload {
++  std::ofstream stream;
++  const char *name;
++  uint64_t offset = 16;
++
++  MeshPayload(const fs::path& path, const char *name) : name(name)
++  {
++    char header[16] = {};
++    std::memcpy(header, "SCADMESH", 8);
++    const uint32_t version = meshPayloadVersion;
++    std::memcpy(header + 8, &version, sizeof version);
++    stream.open(path, std::ios::binary | std::ios::trunc);
++    stream.exceptions(std::ios::badbit | std::ios::failbit);
++    stream.write(header, sizeof header);
++  }
++
++  json append(const std::shared_ptr<const Geometry>& geometry)
++  {
++    const auto polygonMesh = PolySetUtils::getGeometryAsPolySet(geometry);
++    if (!polygonMesh || polygonMesh->isEmpty()) return nullptr;
++    auto triangulation = !polygonMesh->isTriangular() ? PolySetUtils::tessellate_faces(*polygonMesh)
++                                                      : nullptr;
++    const auto& mesh = triangulation ? *triangulation : *polygonMesh;
++
++    std::array<double, 3> minimum{HUGE_VAL, HUGE_VAL, HUGE_VAL};
++    std::array<double, 3> maximum{-HUGE_VAL, -HUGE_VAL, -HUGE_VAL};
++    if (mesh.vertices.size() > (maxPayloadBytes - offset) / 24 ||
++        mesh.indices.size() > (maxPayloadBytes - offset - mesh.vertices.size() * 24) / 12) {
++      throw std::runtime_error("Geometry exceeds the binary payload limit");
++    }
++    const auto vertexOffset = offset;
++    for (const auto& v : mesh.vertices) {
++      const std::array<double, 3> position{v.x(), v.y(), v.z()};
++      for (auto axis = 0; axis < 3; ++axis) {
++        if (!std::isfinite(position[axis])) throw std::runtime_error("Unsupported nonfinite mesh coordinate");
++        minimum[axis] = std::min(minimum[axis], position[axis]);
++        maximum[axis] = std::max(maximum[axis], position[axis]);
++      }
++      stream.write(reinterpret_cast<const char *>(position.data()), 24);
++    }
++    offset += mesh.vertices.size() * 24;
++
++    const auto indexOffset = offset;
++    uint64_t indexCount = 0;
++    for (const auto& face : mesh.indices) {
++      if (face.size() != 3) throw std::runtime_error("Expected a triangulated mesh");
++      std::array<uint32_t, 3> triangle{static_cast<uint32_t>(face[0]),
++                                       static_cast<uint32_t>(face[1]),
++                                       static_cast<uint32_t>(face[2])};
++      stream.write(reinterpret_cast<const char *>(triangle.data()), 12);
++      indexCount += 3;
++    }
++    offset += indexCount * 4;
++
++    return {{"path", name},
++            {"vertexOffset", vertexOffset},
++            {"vertexCount", mesh.vertices.size()},
++            {"vertexStride", 24},
++            {"positionType", "float64"},
++            {"indexOffset", indexOffset},
++            {"indexCount", indexCount},
++            {"indexStride", 4},
++            {"indexType", "uint32"},
++            {"winding", "ccw"},
++            {"bounds", {{"min", minimum}, {"max", maximum}}}};
++  }
++};
++
+ struct SceneTrace {
+   const MainSource& source;
+   const Tree& tree;
+   GeometryEvaluator& evaluator;
++  MeshPayload *operandPayload = nullptr;
+   json instances = json::array();
+   json operands = json::array();
++  json operations = json::array();
++  json dependencyEdges = json::array();
+   // Tree's geometry cache key is independent of occurrence identity and source binding.
+   std::map<std::string, std::size_t> operandIDs;
+ 
++  bool v1() const { return operandPayload != nullptr; }
++  json span(const Location& loc) const
++  {
++    if (!v1()) return source.span(loc);
++    return source.owns(loc) ? source.spanV1(loc) : scadretto::dependencySpan(loc);
++  }
++
++  const char *role(const AbstractNode& node, std::size_t index) const
++  {
++    if (auto operation = dynamic_cast<const CsgOpNode *>(&node)) {
++      switch (operation->type) {
++      case OpenSCADOperator::INTERSECTION: return "intersection";
++      case OpenSCADOperator::DIFFERENCE:   return index == 0 ? "positive" : "subtracted";
++      default:                             break;
++      }
++    }
++    return "positive";
++  }
++
+   void visit(const AbstractNode& node, json parent, const Transform3d& parentWorld,
+              std::map<std::string, double> iteration)
+   {
+     if (node.modinst && node.modinst->isBackground()) return;
++    if (v1() && instances.size() == maxInstances) {
++      throw std::runtime_error("The model exceeds the instance tracing limit");
++    }
+     for (const auto& [name, value] : node.scadrettoIteration) iteration[name] = value;
+     Transform3d local = Transform3d::Identity();
+     if (auto transform = dynamic_cast<const TransformNode *>(&node)) local = transform->matrix;
+@@ -149,7 +319,8 @@ struct SceneTrace {
+         auto geometry = evaluator.evaluateGeometry(node, true);
+         if (geometry && geometry->getDimension() == 3 && !geometry->isEmpty()) {
+           auto id = operands.size();
+-          operands.push_back(packMesh(geometry));
++          operands.push_back(v1() ? json{{"id", id}, {"mesh", operandPayload->append(geometry)}}
++                                  : packMesh(geometry));
+           operandIDs.emplace(std::move(key), id);
+           operand = id;
+         }
+@@ -160,16 +331,34 @@ struct SceneTrace {
+     if (node.scadrettoDiameter) {
+       json chain = json::array();
+       for (auto binding = node.scadrettoDiameter; binding; binding = binding->previous) {
+-        chain.push_back({{"kind", binding->kind}, {"name", binding->name},
+-                         {"span", source.span(binding->location)}});
++        const auto bindingSpan = span(binding->location);
++        chain.push_back({{"kind", binding->kind}, {"name", binding->name}, {"span", bindingSpan}});
++        if (v1() && !bindingSpan.is_null()) {
++          dependencyEdges.push_back({{"span", bindingSpan},
++                                     {"instanceID", node.index()},
++                                     {"property", binding->name}});
++        }
+       }
+       diameter = {{"value", node.scadrettoDiameterValue}, {"chain", std::move(chain)}};
+     }
+     instances.push_back({{"id", node.index()}, {"parent", parent},
+                          {"name", node.modinst ? node.modinst->name() : node.name()},
+-                         {"span", node.modinst ? source.span(node.modinst->location()) : json(nullptr)},
++                         {"span", node.modinst ? span(node.modinst->location()) : json(nullptr)},
+                          {"iteration", iteration}, {"local", matrix(local)}, {"world", matrix(world)},
+                          {"operand", operand}, {"diameter", diameter}});
++
++    if (v1() && (dynamic_cast<const CsgOpNode *>(&node) ||
++                 dynamic_cast<const CgalAdvNode *>(&node))) {
++      json children = json::array();
++      std::size_t index = 0;
++      for (const auto& child : node.children) {
++        if (child->modinst && child->modinst->isBackground()) continue;
++        children.push_back({{"instanceID", child->index()}, {"role", role(node, index)}});
++        ++index;
++      }
++      operations.push_back({{"instanceID", node.index()}, {"children", std::move(children)}});
++    }
++
+     for (const auto& child : node.children) visit(*child, node.index(), world, iteration);
+   }
+ };
+@@ -179,39 +368,352 @@ void writeResult(const fs::path& directory, const json& result)
+   const auto partial = directory / "result.tmp";
+   std::ofstream output(partial, std::ios::binary | std::ios::trunc);
+   output.exceptions(std::ios::badbit | std::ios::failbit);
+-  output << result.dump(-1, ' ', false, json::error_handler_t::replace) << '\n';
++  const auto serialized = result.dump(-1, ' ', false, json::error_handler_t::replace);
++  if (result.contains("protocolVersion") && serialized.size() >= maxManifestBytes) {
++    throw std::runtime_error("The result manifest exceeds its size limit");
++  }
++  output << serialized << '\n';
+   output.close();
+   fs::rename(partial, directory / "result.json");
+ }
+-}  // namespace
+ 
+-void scadrettoMark(Value& value, const std::string& kind, const std::string& name,
+-                   const Location& location)
++const char *severity(message_group group)
+ {
+-  if (!traceEnabled || value.type() != Value::Type::NUMBER) return;
+-  value.scadrettoBinding = std::make_shared<ScadrettoBinding>(
+-    ScadrettoBinding{kind, name, location, value.scadrettoBinding});
++  switch (group) {
++  case message_group::Error:
++  case message_group::UI_Error:
++  case message_group::Export_Error:
++  case message_group::Parser_Error:  return "error";
++  case message_group::Warning:
++  case message_group::UI_Warning:
++  case message_group::Font_Warning:
++  case message_group::Export_Warning: return "warning";
++  case message_group::Deprecated:    return "deprecated";
++  default:                           return "unknown";
++  }
+ }
+ 
+-void scadrettoRecordIteration(AbstractNode& loop, std::size_t firstChild,
+-                              const std::vector<std::shared_ptr<Assignment>>& arguments,
+-                              const std::shared_ptr<const Context>& iterationContext)
++struct JobMessages {
++  struct Entry {
++    std::string text;
++    message_group group;
++    Location loc;
++  };
++  std::vector<Entry> messages;
++  std::size_t dropped = 0;
++
++  static void capture(const Message& message, void *data)
++  {
++    auto& capture = *static_cast<JobMessages *>(data);
++    if (capture.messages.size() == maxMessages - 1) {
++      ++capture.dropped;
++      return;
++    }
++    auto text = message.str();
++    if (text.size() > maxMessageBytes) {
++      constexpr std::string_view suffix = " [truncated]";
++      auto end = maxMessageBytes - suffix.size();
++      while (end > 0 && (static_cast<unsigned char>(text[end]) & 0xc0) == 0x80) --end;
++      text.resize(end);
++      text += suffix;
++    }
++    capture.messages.push_back({std::move(text), message.group, message.loc});
++  }
++
++  void attach(json& result, const MainSource *source) const
++  {
++    json console = json::array();
++    json diagnostics = json::array();
++    for (const auto& message : messages) {
++      const auto& text = message.text;
++      json record{{"group", getGroupName(message.group)}, {"text", text}};
++      json fileID;
++      json messageSpan;
++      if (source && source->owns(message.loc)) {
++        fileID = mainFileID;
++        messageSpan = source->spanV1(message.loc);
++      } else {
++        messageSpan = scadretto::dependencySpan(message.loc);
++        if (!messageSpan.is_null()) fileID = messageSpan["fileID"];
++      }
++      if (!fileID.is_null()) record["fileID"] = fileID;
++      if (!messageSpan.is_null()) record["span"] = messageSpan;
++      console.push_back(record);
++      if (message.group == message_group::Echo || message.group == message_group::Trace) continue;
++
++      json diagnostic{{"severity", severity(message.group)}, {"message", text}};
++      if (!fileID.is_null()) diagnostic["fileID"] = fileID;
++      if (!messageSpan.is_null()) diagnostic["span"] = messageSpan;
++      if (!diagnostics.empty() && diagnostics.back()["severity"] == diagnostic["severity"] &&
++          diagnostics.back()["message"] == diagnostic["message"] &&
++          diagnostics.back().value("fileID", json()) == fileID &&
++          diagnostics.back().value("span", json()) == messageSpan) {
++        diagnostics.back()["repeatCount"] = diagnostics.back().value("repeatCount", 0) + 1;
++      } else {
++        diagnostics.push_back(std::move(diagnostic));
++      }
++    }
++    result["console"] = std::move(console);
++    result["diagnostics"] = std::move(diagnostics);
++    result["droppedConsoleMessages"] = dropped;
++  }
++};
++
++std::vector<std::string> stringArray(const json& request, const char *field)
+ {
+-  if (!traceEnabled || firstChild == loop.children.size()) return;
+-  std::map<std::string, double> bindings;
+-  for (const auto& arg : arguments) {
+-    const auto& name = arg->getName();
+-    const auto& value = iterationContext->lookup_variable(name, arg->location());
+-    if (value.type() == Value::Type::NUMBER) bindings[name] = value.toDouble();
++  std::vector<std::string> values;
++  for (const auto& entry : request.at(field)) {
++    if (!entry.is_string() || !fs::path(entry.get<std::string>()).is_absolute()) {
++      throw std::runtime_error(std::string("Job field ") + field + " needs absolute paths");
++    }
++    values.push_back(entry.get<std::string>());
+   }
+-  for (auto i = firstChild; i < loop.children.size(); ++i) {
+-    loop.children[i]->scadrettoIteration = bindings;
++  return values;
++}
++
++std::string stringField(const json& object, const char *field)
++{
++  if (!object.contains(field) || !object.at(field).is_string()) {
++    throw std::runtime_error(std::string("Job field ") + field + " must be a string");
+   }
++  return object.at(field).get<std::string>();
+ }
+ 
+-int scadrettoRunJob(const std::string& requestPath)
++bool isUnsignedField(const json& object, const char *field)
++{
++  return object.contains(field) && object.at(field).is_number_unsigned();
++}
++
++// Runs a protocol v1 job. The result echoes protocolVersion, requestID and
++// key, reports the actual executable digest as buildSHA, and keeps binary
++// payloads and result.json inside the private job directory.
++int runJobV1(const json& request, const fs::path& directory)
++{
++  // stdin is the parent's lifetime pipe; exit promptly once it closes.
++  std::thread([] {
++    std::array<char, 4096> buffer;
++    while (true) {
++      const auto count = ::read(STDIN_FILENO, buffer.data(), buffer.size());
++      if (count > 0 || (count < 0 && errno == EINTR)) continue;
++      std::_Exit(1);
++    }
++  }).detach();
++
++  json result = {{"protocolVersion", 1},
++                 {"status", "error"},
++                 {"detail", "internalError"},
++                 {"requestID", request.value("requestID", json())},
++                 {"key", request.value("key", json())},
++                 {"files", json::array()},
++                 {"diagnostics", json::array()},
++                 {"console", json::array()},
++                 {"droppedConsoleMessages", 0},
++                 {"mesh", nullptr},
++                 {"operands", json::array()},
++                 {"instances", json::array()},
++                 {"operations", json::array()},
++                 {"dependencyEdges", json::array()},
++                 {"lookups", json::array()}};
++
++  JobMessages messages;
++  set_output_handler(&JobMessages::capture, nullptr, &messages);
++  std::optional<MainSource> mainSource;
++
++  const auto finish = [&]() -> int {
++    traceEnabled = false;
++    set_output_handler(nullptr, nullptr, nullptr);
++    messages.attach(result, mainSource ? &*mainSource : nullptr);
++    for (auto& file : scadretto::dependencyFiles()) result["files"].push_back(std::move(file));
++    result["lookups"] = scadretto::dependencyLookups();
++    for (auto& lookup : result["lookups"]) {
++      if (mainSource && lookup.value("requestingPath", std::string()) == mainSource->logicalPath.string()) {
++        lookup["requestingFileID"] = mainFileID;
++      }
++    }
++    const auto overflow = scadretto::dependencyOverflow();
++    scadretto::endDependencies();
++    if (result["status"] == "ok") {
++      const auto missing = std::find_if(result["lookups"].begin(), result["lookups"].end(), [](const json& lookup) {
++        return !lookup.contains("winner") && !lookup.at("candidates").empty();
++      });
++      if (missing != result["lookups"].end() || overflow["droppedFiles"] != 0 || overflow["droppedLookups"] != 0) {
++        result["status"] = "error";
++        result["detail"] = "modelError";
++        result["error"] = missing != result["lookups"].end()
++          ? "Could not resolve " + missing->at("name").get<std::string>()
++          : "The model exceeds the dependency tracing limits";
++        result["mesh"] = nullptr;
++        for (const auto field : {"operands", "instances", "operations", "dependencyEdges"}) {
++          result[field] = json::array();
++        }
++      }
++    }
++    // Model failures carry a diagnostic even when upstream stayed silent.
++    if (result["status"] == "error" &&
++        (result["detail"] == "modelError" || result["detail"] == "unsupportedDimension")) {
++      const auto error = result.value("error", std::string());
++      auto& diagnostics = result["diagnostics"];
++      const auto found = std::any_of(diagnostics.begin(), diagnostics.end(), [&](const json& d) {
++        return d.value("severity", std::string()) == "error" &&
++               d.value("message", std::string()) == error;
++      });
++      if (!found) diagnostics.push_back({{"severity", "error"}, {"message", error}});
++    }
++    try {
++      writeResult(directory, result);
++    } catch (const std::exception& error) {
++      LOG(message_group::Error, "Could not write Scadretto job result: %1$s", error.what());
++      return 2;
++    }
++    return result["status"] == "ok" ? 0 : 1;
++  };
++  const auto fail = [&](const char *detail, const std::string& error) -> int {
++    result["status"] = "error";
++    result["detail"] = detail;
++    result["error"] = error;
++    return finish();
++  };
++
++  try {
++    result["buildSHA"] = executableDigest();
++  } catch (const std::exception& error) {
++    return fail("internalError", error.what());
++  }
++
++  try {
++    if (!request.contains("protocolVersion") ||
++        !request.at("protocolVersion").is_number_integer() ||
++        request.at("protocolVersion").get<int>() != 1) {
++      throw std::runtime_error("Job protocolVersion must be integer 1");
++    }
++    if (!request.at("requestID").is_string()) {
++      throw std::runtime_error("Job requestID must be a string");
++    }
++    const auto& key = request.at("key");
++    if (!key.is_object() || !key.value("documentID", json()).is_string() ||
++        !isUnsignedField(key, "sourceRevision") || !isUnsignedField(key, "dependencyGeneration") ||
++        !key.value("resolutionDigest", json()).is_string() ||
++        !key.value("optionsDigest", json()).is_string() ||
++        !key.value("workerBuild", json()).is_string()) {
++      throw std::runtime_error("Job key is incomplete");
++    }
++    const auto logicalPathString = stringField(request, "logicalPath");
++    const fs::path logicalPath(logicalPathString);
++    if (!logicalPath.is_absolute() || request.at("snapshot") != "main.scad") {
++      throw std::runtime_error("Job needs an absolute logical source path and main.scad snapshot");
++    }
++    std::string untitledBase;
++    if (request.contains("untitledBaseDirectory") &&
++        !request.at("untitledBaseDirectory").is_null()) {
++      untitledBase = stringField(request, "untitledBaseDirectory");
++      if (!fs::path(untitledBase).is_absolute()) {
++        throw std::runtime_error("Job untitledBaseDirectory must be absolute");
++      }
++    }
++    const auto libraryRoots = stringArray(request, "libraryRoots");
++    const auto resourceRoots = stringArray(request, "resourceRoots");
++    const auto backend = stringField(request, "backend");
++    if (backend != "manifold" || !request.at("preview").is_boolean() ||
++        request.at("preview").get<bool>()) {
++      throw std::runtime_error("Job needs backend manifold and preview false");
++    }
++    const auto expectedBuild = stringField(request, "expectedWorkerBuild");
++    if (key.at("workerBuild") != expectedBuild) {
++      throw std::runtime_error("Job key workerBuild does not match expectedWorkerBuild");
++    }
++    if (result["buildSHA"] != expectedBuild) {
++      return fail("buildMismatch", "Worker executable digest does not match expectedWorkerBuild");
++    }
++
++    std::vector<std::string> resolution{"resolution-v1", logicalPathString, untitledBase,
++                                        std::to_string(libraryRoots.size())};
++    resolution.insert(resolution.end(), libraryRoots.begin(), libraryRoots.end());
++    resolution.push_back(std::to_string(resourceRoots.size()));
++    resolution.insert(resolution.end(), resourceRoots.begin(), resourceRoots.end());
++    if (contextDigest(resolution) != key.at("resolutionDigest").get<std::string>()) {
++      throw std::runtime_error("Job resolutionDigest does not match request fields");
++    }
++    if (contextDigest({"options-v1", backend, "false"}) != key.at("optionsDigest").get<std::string>()) {
++      throw std::runtime_error("Job optionsDigest does not match request fields");
++    }
++
++    const auto& source = mainSource.emplace(logicalPath, readFile(directory / "main.scad", maxSourceBytes));
++    const auto sourceSHA = digest(source.bytes);
++    if (sourceSHA != stringField(request, "sourceSHA256")) {
++      throw std::runtime_error("Job sourceSHA256 does not match main.scad snapshot");
++    }
++    result["files"] = {{{"id", mainFileID},
++                        {"logicalPath", logicalPathString},
++                        {"sha256", sourceSHA},
++                        {"byteLength", source.bytes.size()},
++                        {"kind", "main"},
++                        {"writable", true}}};
++
++    scadretto::beginDependencies();
++    traceEnabled = true;
++    if (!resourceRoots.empty()) {
++      const auto fontConfig = fs::path(resourceRoots.front()) / "fonts" / "fonts.conf";
++      ::setenv("FONTCONFIG_FILE", fontConfig.c_str(), 1);
++    }
++    const auto constructionDirectory =
++      untitledBase.empty() ? logicalPath.parent_path() : fs::path(untitledBase);
++    EvaluationSession session(constructionDirectory.string());
++    ContextHandle<BuiltinContext> builtins{Context::create<BuiltinContext>(&session)};
++    RenderVariables{.preview = false, .time = 0, .camera = Camera{}}.applyToContext(builtins);
++    for (const auto& library : libraryRoots) add_librarydir(library);
++    fs::current_path(constructionDirectory);
++
++    MeshPayload meshPayload(directory / "mesh.bin", "mesh.bin");
++    MeshPayload operandPayload(directory / "operands.bin", "operands.bin");
++
++    SourceFile *parsed = nullptr;
++    const auto path = logicalPath.string();
++    std::unique_ptr<SourceFile> file;
++    try {
++      const auto ok = parse(parsed, source.bytes + "\n", path, path, false);
++      file.reset(parsed);
++      if (!ok || !file) throw std::runtime_error("Could not parse source snapshot");
++      file->handleDependencies();
++
++      AbstractNode::resetIndexCounter();
++      std::shared_ptr<const FileContext> fileContext;
++      auto absoluteRoot = file->instantiate(*builtins, &fileContext);
++      auto root = find_root_tag(absoluteRoot);
++      if (!root) root = absoluteRoot;
++
++      Tree tree(root, constructionDirectory.string());
++      GeometryEvaluator evaluator(tree);
++      const auto geometry = evaluator.evaluateGeometry(*root, true);
++      if (geometry && geometry->getDimension() != 3 && !geometry->isEmpty()) {
++        return fail("unsupportedDimension", "Top-level geometry is not three-dimensional");
++      }
++      if (geometry && !geometry->isEmpty()) {
++        result["mesh"] = meshPayload.append(geometry);
++      }
++      SceneTrace trace{source, tree, evaluator, &operandPayload};
++      trace.visit(*root, nullptr, Transform3d::Identity(), {});
++      result["instances"] = std::move(trace.instances);
++      result["operands"] = std::move(trace.operands);
++      result["operations"] = std::move(trace.operations);
++      result["dependencyEdges"] = std::move(trace.dependencyEdges);
++      result["detail"] = result["mesh"].is_null() ? "empty" : "rendered";
++      result["status"] = "ok";
++    } catch (const std::ios_base::failure& error) {
++      return fail("internalError", error.what());
++    } catch (const std::exception& error) {
++      return fail("modelError", error.what());
++    }
++  } catch (const std::ios_base::failure& error) {
++    return fail("internalError", error.what());
++  } catch (const std::exception& error) {
++    return fail("protocolMismatch", error.what());
++  }
++
++  return finish();
++}
++
++int runJobM0(const std::string& requestPath, const fs::path& directory)
+ {
+-  const auto directory = fs::absolute(requestPath).parent_path();
+   json result = {{"status", "error"}};
+   json console = json::array();
+   set_output_handler([](const Message& message, void *data) {
+@@ -283,3 +785,44 @@ int scadrettoRunJob(const std::string& requestPath)
+   }
+   return result["status"] == "ok" ? 0 : 1;
+ }
++}  // namespace
++
++void scadrettoMark(Value& value, const std::string& kind, const std::string& name,
++                   const Location& location)
++{
++  if (!traceEnabled || value.type() != Value::Type::NUMBER) return;
++  value.scadrettoBinding = std::make_shared<ScadrettoBinding>(
++    ScadrettoBinding{kind, name, location, value.scadrettoBinding});
++}
++
++void scadrettoRecordIteration(AbstractNode& loop, std::size_t firstChild,
++                              const std::vector<std::shared_ptr<Assignment>>& arguments,
++                              const std::shared_ptr<const Context>& iterationContext)
++{
++  if (!traceEnabled || firstChild == loop.children.size()) return;
++  std::map<std::string, double> bindings;
++  for (const auto& arg : arguments) {
++    const auto& name = arg->getName();
++    const auto& value = iterationContext->lookup_variable(name, arg->location());
++    if (value.type() == Value::Type::NUMBER) bindings[name] = value.toDouble();
++  }
++  for (auto i = firstChild; i < loop.children.size(); ++i) {
++    loop.children[i]->scadrettoIteration = bindings;
++  }
++}
++
++int scadrettoRunJob(const std::string& requestPath)
++{
++  const auto directory = fs::absolute(requestPath).parent_path();
++  json request;
++  try {
++    request = json::parse(readFile(requestPath, maxRequestBytes));
++  } catch (const std::exception&) {
++    // The M0 branch below re-reads the request and reports the same error.
++    request = json();
++  }
++  if (request.is_object() && request.contains("protocolVersion")) {
++    return runJobV1(request, directory);
++  }
++  return runJobM0(requestPath, directory);
++}
+diff --git a/src/core/SourceFile.cc b/src/core/SourceFile.cc
+index 56a7e88..fb09be4 100644
+--- a/src/core/SourceFile.cc
++++ b/src/core/SourceFile.cc
+@@ -39,6 +39,7 @@
+ #include "core/AST.h"
+ #include "core/Context.h"
+ #include "core/EvaluationSession.h"
++#include "core/ScadrettoDependencies.h"
+ #include "core/ScopeContext.h"
+ #include "core/SourceFileCache.h"
+ #include "core/StatCache.h"
+@@ -147,7 +148,10 @@ time_t SourceFile::handleDependencies(bool is_root)
+ 
+     // Get an absolute filename for the module
+     if (!fs_is_absolute(filename)) {
+-      auto fullpath = find_valid_path(this->path, filename);
++      std::vector<std::string> candidates;
++      auto fullpath = find_valid_path(this->path, filename, nullptr, &candidates);
++      scadretto::observeLookup(this->getFullpath(), filename, candidates,
++                               fullpath.empty() ? "" : fs_generic_string(fullpath));
+       if (!fullpath.empty()) {
+         auto newfilename = fs_generic_string(fullpath);
+         updates.emplace_back(filename, newfilename);
+diff --git a/src/core/SourceFileCache.cc b/src/core/SourceFileCache.cc
+index 40ab7d6..b5c0182 100644
+--- a/src/core/SourceFileCache.cc
++++ b/src/core/SourceFileCache.cc
+@@ -8,8 +8,10 @@
+ #include <ctime>
+ #include <filesystem>
+ #include <fstream>
++#include <iterator>
+ #include <string>
+ 
++#include "core/ScadrettoDependencies.h"
+ #include "core/SourceFile.h"
+ #include "core/StatCache.h"
+ #include "openscad.h"
+@@ -45,6 +47,8 @@ std::time_t SourceFileCache::process(const std::string& mainFile, const std::str
+   // during processing, that would be really bad.
+   if (file && file->isHandlingDependencies()) return 0;
+ 
++  scadretto::observeFile(filename, scadretto::DependencyKind::Use);
++
+   // Create cache ID
+   struct stat st;
+   bool valid = (StatCache::stat(filename, st) == 0);
+@@ -105,7 +109,10 @@ std::time_t SourceFileCache::process(const std::string& mainFile, const std::str
+         LOG(message_group::Warning, "Can't open library file '%1$s'\n", filename);
+         return 0;
+       }
+-      text = STR(ifs.rdbuf(), "\n\x03\n", commandline_commands);
++      const std::string raw{std::istreambuf_iterator<char>(ifs),
++                            std::istreambuf_iterator<char>()};
++      scadretto::observeFileBytes(filename, scadretto::DependencyKind::Use, raw);
++      text = STR(raw, "\n\x03\n", commandline_commands);
+     }
+ 
+     print_messages_push();
+diff --git a/src/core/SurfaceNode.cc b/src/core/SurfaceNode.cc
+index 53e84a7..33d9fff 100644
+--- a/src/core/SurfaceNode.cc
++++ b/src/core/SurfaceNode.cc
+@@ -47,6 +47,7 @@
+ #include "core/Builtins.h"
+ #include "core/Children.h"
+ #include "core/ModuleInstantiation.h"
++#include "core/ScadrettoDependencies.h"
+ #include "core/Parameters.h"
+ #include "core/module.h"
+ #include "core/node.h"
+@@ -72,6 +73,8 @@ static std::shared_ptr<AbstractNode> builtin_surface(const ModuleInstantiation *
+   std::string fileval = parameters["file"].isUndefined() ? "" : parameters["file"].toString();
+   auto filename = lookup_file(fileval, inst->location().filePath().parent_path().string());
+   node->filename = filename;
++  scadretto::observeAsset(inst->location().filePath(), fileval, filename,
++                          scadretto::DependencyKind::Surface);
+   handle_dep(fs::path(filename).generic_string());
+ 
+   if (parameters["center"].type() == Value::Type::BOOL) {
+diff --git a/src/core/builtin_functions.cc b/src/core/builtin_functions.cc
+index 16313c9..9235571 100644
+--- a/src/core/builtin_functions.cc
++++ b/src/core/builtin_functions.cc
+@@ -45,6 +45,7 @@
+ #include "core/Expression.h"
+ #include "core/FreetypeRenderer.h"
+ #include "core/Parameters.h"
++#include "core/ScadrettoDependencies.h"
+ #include "core/UserModule.h"
+ #include "core/function.h"
+ #include "io/fileutils.h"
+@@ -1125,6 +1126,7 @@ Value builtin_import(Arguments arguments, const Location& loc)
+   std::string raw_filename = parameters.get("file", "");
+ 
+   std::string file = lookup_file(raw_filename, loc.filePath().parent_path().string());
++  scadretto::observeAsset(loc.filePath(), raw_filename, file, scadretto::DependencyKind::Import);
+   if (!file.empty()) handle_dep(file);
+ 
+   if (type.empty()) {
+diff --git a/src/core/lexer.l b/src/core/lexer.l
+index 9b72e00..a00bec2 100644
+--- a/src/core/lexer.l
++++ b/src/core/lexer.l
+@@ -31,6 +31,7 @@
+ %{
+ 
+ #include "handle_dep.h"
++#include "core/ScadrettoDependencies.h"
+ #include "core/str_utf8_wrapper.h"
+ #include "core/UnicodeIdentifier.h"
+ #include "utils/printutils.h"
+@@ -184,7 +185,11 @@ use[ \t\r\n]*"<"        { BEGIN(cond_use); LOCATION_COUNT_LINES(parserlloc, yyte
+ [^\t\r\n>]+             { filename = yytext; }
+  ">"                    {
+                             BEGIN(INITIAL);
+-                            fs::path fullpath = find_valid_path(sourcefile()->parent_path(), fs::path(filename), &openfilenames);
++                            std::vector<std::string> candidates;
++                            fs::path fullpath = find_valid_path(sourcefile()->parent_path(), fs::path(filename), &openfilenames, &candidates);
++                            scadretto::observeLookup(sourcefile() ? sourcefile()->generic_string() : "",
++                                                     filename, candidates,
++                                                     fullpath.empty() ? "" : fs_generic_string(fullpath));
+                             if (fullpath.empty()) {
+                             LOG(message_group::Warning,LOCATION(parserlloc),"","Can't open library '%1$s'.",filename);
+                                 check_mcad_missing(fs::path(filename));
+@@ -447,8 +452,13 @@ static void check_mcad_missing(const fs::path& localpath)
+ void includefile(const Location& loc)
+ {
+   fs::path localpath = fs::path(filepath) / filename;
+-  fs::path fullpath = find_valid_path(sourcefile()->parent_path(), localpath, &openfilenames);
++  std::vector<std::string> candidates;
++  fs::path fullpath = find_valid_path(sourcefile()->parent_path(), localpath, &openfilenames, &candidates);
++  scadretto::observeLookup(sourcefile() ? sourcefile()->generic_string() : "",
++                           localpath.generic_string(), candidates,
++                           fullpath.empty() ? "" : fs_generic_string(fullpath));
+   if (!fullpath.empty()) {
++    scadretto::observeFile(fs_generic_string(fullpath), scadretto::DependencyKind::Include);
+     rootfile->registerInclude(localpath.generic_string(), fs_generic_string(fullpath), lexer_is_main_file() ? loc : Location::NONE);
+   }
+   else {
+diff --git a/src/core/parsersettings.cc b/src/core/parsersettings.cc
+index b40e17c..6e0028f 100644
+--- a/src/core/parsersettings.cc
++++ b/src/core/parsersettings.cc
+@@ -30,10 +30,11 @@ const std::vector<std::string>& get_library_path()
+    Searces for the given file in library paths and returns the full path if found.
+    Returns an empty path if file cannot be found or filename is a directory.
+  */
+-fs::path search_libs(const fs::path& localpath)
++fs::path search_libs(const fs::path& localpath, std::vector<std::string> *tested)
+ {
+   for (const auto& dir : librarypath) {
+     fs::path usepath = fs::path(dir) / localpath;
++    if (tested) tested->push_back(fs_generic_string(usepath));
+     if (fs::exists(usepath) && !fs::is_directory(usepath)) {
+       return usepath.string();
+     }
+@@ -85,9 +86,11 @@ static bool check_valid(const fs::path& p, const std::vector<std::string> *openf
+    valid files could be found.
+  */
+ inline fs::path find_valid_path_(const fs::path& sourcepath, const fs::path& localpath,
+-                                 const std::vector<std::string> *openfilenames)
++                                 const std::vector<std::string> *openfilenames,
++                                 std::vector<std::string> *tested)
+ {
+   if (fs_is_absolute(localpath)) {
++    if (tested) tested->push_back(fs_generic_string(localpath));
+     if (check_valid(localpath, openfilenames)) {
+ #ifndef __EMSCRIPTEN__
+       return fs_canonical(localpath);
+@@ -97,21 +100,24 @@ inline fs::path find_valid_path_(const fs::path& sourcepath, const fs::path& loc
+     }
+   } else {
+     fs::path fpath = sourcepath / localpath;
++    if (tested) tested->push_back(fs_generic_string(fpath));
+ #ifndef __EMSCRIPTEN__
+     if (fs::exists(fpath)) fpath = fs_canonical(fpath);
+ #endif
+     if (check_valid(fpath, openfilenames)) return fpath;
+-    fpath = search_libs(localpath);
++    fpath = search_libs(localpath, tested);
+     if (!fpath.empty() && check_valid(fpath, openfilenames)) return fpath;
+   }
+   return {};
+ }
+ 
+ fs::path find_valid_path(const fs::path& sourcepath, const fs::path& localpath,
+-                         const std::vector<std::string> *openfilenames)
++                         const std::vector<std::string> *openfilenames,
++                         std::vector<std::string> *tested)
+ {
+   try {
+-    return {fs_generic_string(find_valid_path_(sourcepath, localpath, openfilenames))};
++    return {fs_generic_string(
++      find_valid_path_(sourcepath, localpath, openfilenames, tested))};
+   } catch (const fs::filesystem_error&) {
+     // A candidate that can't be inspected (e.g. permission denied on a parent directory) is
+     // treated like a missing file: all callers already handle an empty result as "not found".
+diff --git a/src/core/parsersettings.h b/src/core/parsersettings.h
+index 2565f6c..fec2089 100644
+--- a/src/core/parsersettings.h
++++ b/src/core/parsersettings.h
+@@ -14,9 +14,13 @@ extern int parser_error_pos;
+ void parser_init();
+ void add_librarydir(const std::string& libdir);
+ 
+-fs::path search_libs(const fs::path& localpath);
++fs::path search_libs(const fs::path& localpath,
++                     std::vector<std::string> *tested = nullptr);
++// When tested is not null, it receives the ordered absolute candidate paths
++// probed by the lookup, up to and including the winner.
+ fs::path find_valid_path(const fs::path& sourcepath, const fs::path& localpath,
+-                         const std::vector<std::string> *openfilenames = nullptr);
++                         const std::vector<std::string> *openfilenames = nullptr,
++                         std::vector<std::string> *tested = nullptr);
+ fs::path get_library_for_path(const fs::path& localpath);
+ 
+ const std::vector<std::string>& get_library_path();
+\ No newline at end of file
+diff --git a/src/io/dxfdim.cc b/src/io/dxfdim.cc
+index 765da50..1a1c868 100644
+--- a/src/io/dxfdim.cc
++++ b/src/io/dxfdim.cc
+@@ -39,6 +39,7 @@
+ #include "core/Builtins.h"
+ #include "core/CurveDiscretizer.h"
+ #include "core/Parameters.h"
++#include "core/ScadrettoDependencies.h"
+ #include "core/Value.h"
+ #include "core/function.h"
+ #include "handle_dep.h"
+@@ -62,6 +63,8 @@ static Value builtin_dxf_dim(Arguments arguments, const Location& loc)
+     rawFilename = parameters["file"].toString();
+     filename = lookup_file(rawFilename, loc.filePath().parent_path().string());
+   }
++  scadretto::observeAsset(loc.filePath(), rawFilename, filename,
++                          scadretto::DependencyKind::Dxf);
+   double xorigin = 0;
+   double yorigin = 0;
+   if (parameters.contains("origin")) {
+@@ -168,6 +171,8 @@ static Value builtin_dxf_cross(Arguments arguments, const Location& loc)
+     rawFilename = parameters["file"].toString();
+     filename = lookup_file(rawFilename, loc.filePath().parent_path().string());
+   }
++  scadretto::observeAsset(loc.filePath(), rawFilename, filename,
++                          scadretto::DependencyKind::Dxf);
+   double xorigin = 0;
+   double yorigin = 0;
+   if (parameters.contains("origin")) {
