@@ -91,7 +91,7 @@ final class ScadrettoUITests: XCTestCase {
         let status = app.staticTexts["renderStatus"].firstMatch
         waitForText("Preview ready", in: status, timeout: 15)
         waitForText("missing_parameter", in: status)
-        let initialTriangles = (status.value as? String)?.components(separatedBy: " · ").dropFirst().first
+        let initialTriangles = try triangleCount(in: status)
 
         let diagnostics = app.popUpButtons["modelDiagnostics"].firstMatch
         XCTAssertTrue(diagnostics.waitForExistence(timeout: 6))
@@ -102,7 +102,7 @@ final class ScadrettoUITests: XCTestCase {
         editor.typeText("0")
         waitForText("echo(\"preview:\", $preview, 0);", in: editor)
         waitForText("Preview ready", in: status, timeout: 15)
-        let finalTriangles = (status.value as? String)?.components(separatedBy: " · ").dropFirst().first
+        let finalTriangles = try triangleCount(in: status)
         XCTAssertEqual(initialTriangles, finalTriangles)
     }
 
@@ -241,6 +241,15 @@ final class ScadrettoUITests: XCTestCase {
         app.buttons["OK"].firstMatch.click()
         XCTAssertFalse(sourceEditor(for: url, in: app).exists)
         XCTAssertEqual(try Data(contentsOf: url), bytes)
+    }
+
+    @MainActor
+    private func triangleCount(in status: XCUIElement) throws -> Int {
+        let label = try XCTUnwrap(status.value as? String)
+        let count = try XCTUnwrap(label.components(separatedBy: " · ").dropFirst().first)
+        let suffix = " triangles"
+        XCTAssertTrue(count.hasSuffix(suffix), "Expected a triangle count in the render status")
+        return try XCTUnwrap(Int(count.dropLast(suffix.count)))
     }
 
     @MainActor

@@ -57,7 +57,8 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         addWindowController(controller)
         editor = controller
         controller.show(source.snapshot, selecting: NSRange(location: 0, length: 0))
-        let preview = DocumentPreview(engine: (NSApp.delegate as? ScadrettoApp)?.engineClient)
+        let app = NSApp.delegate as? ScadrettoApp
+        let preview = DocumentPreview(engine: app?.engineClient, startupError: app?.engineStartupError)
         self.preview = preview
         preview.onUpdate = { [weak controller] phase in controller?.previewWorkspace.update(phase) }
         controller.previewWorkspace.sidebar.onReveal = { [weak self] file, span, result in
@@ -236,6 +237,15 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     }
 
     override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if let menu = item as? NSMenuItem, let viewport = editor?.previewWorkspace.viewport {
+            switch menu.action {
+            case #selector(toggleOrthographic(_:)): menu.state = viewport.orthographic ? .on : .off
+            case #selector(toggleEdges(_:)): menu.state = viewport.showsEdges ? .on : .off
+            case #selector(toggleAxes(_:)): menu.state = viewport.showsAxes ? .on : .off
+            case #selector(toggleOrbitPan(_:)): menu.state = viewport.swapsOrbitAndPan ? .on : .off
+            default: break
+            }
+        }
         if item.action == #selector(revealSelectedInstance(_:)) {
             return editor?.previewWorkspace.sidebar.canRevealOccurrence == true
         }

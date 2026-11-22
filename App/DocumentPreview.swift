@@ -18,6 +18,7 @@ final class DocumentPreview {
     }
 
     private let engine: EngineClient?
+    private let startupError: String?
     private var input: Input?
     private var currentID: UUID?
     private var task: Task<Void, Never>?
@@ -33,8 +34,9 @@ final class DocumentPreview {
     private(set) var lastGood: EvaluationResult?
     private(set) var log = ""
 
-    init(engine: EngineClient?) {
+    init(engine: EngineClient?, startupError: String?) {
         self.engine = engine
+        self.startupError = startupError
     }
 
     func schedule(_ source: SourceSnapshot, fileURL: URL?, immediate: Bool) {
@@ -79,11 +81,12 @@ final class DocumentPreview {
         outcome = nil
         let id = UUID()
         currentID = id
-        onUpdate?(.evaluating)
         guard let engine else {
-            onUpdate?(.failure("The OpenSCAD preview service could not start."))
+            log = startupError ?? "The OpenSCAD preview service could not start."
+            onUpdate?(.failure(log))
             return
         }
+        onUpdate?(.evaluating)
 
         let generation = self.generation
         let roots = UserDefaults.standard.stringArray(forKey: "libraryRoots")?.map {

@@ -50,7 +50,7 @@ Scripts/build.sh --debug
 xcodebuild -project Scadretto.xcodeproj -scheme Scadretto \
   -destination 'platform=macOS,arch=arm64' -parallel-testing-enabled NO \
   -derivedDataPath "$PWD/.build/m2/DerivedData" \
-  -resultBundlePath "$PWD/.build/m2/native-09.xcresult" \
+  -resultBundlePath "$PWD/.build/m2/native-10.xcresult" \
   CODE_SIGN_IDENTITY='Apple Development' test
 ```
 
@@ -90,6 +90,11 @@ triangle to a zero-sized viewport. After a 640 × 480 layout the camera
 distance was `2902854.277` before the fix and `3.005` after it. A second
 resize preserved the distance. The probe linked the viewport sources with
 `swiftc -swift-version 6` and loaded the developer app's `default.metallib`.
+
+A Launch Services run on the developer app used the View menu's native
+accessibility checkmark. The menu reflected the saved Show Edges setting
+on launch. Turning Show Edges off from the viewport context menu cleared
+the checkmark in View. The copied plate remained byte-for-byte identical.
 
 A separate Launch Services run opened a temporary copy of the plate with
 `open -a` against the developer build. Cancelling the unsaved-quit dialog

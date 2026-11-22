@@ -174,8 +174,10 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
             editor.setSelectedRange(range)
             editor.scrollRangeToVisible(range)
         }
-        window?.makeKeyAndOrderFront(nil)
-        window?.makeFirstResponder(editor)
+        guard let window else { return }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(editor)
     }
 
     private func commitComposedText() {

@@ -6,6 +6,7 @@ import ScadrettoViewport
 @MainActor
 final class ScadrettoApp: NSObject, NSApplicationDelegate {
     private(set) var engineClient: EngineClient?
+    private(set) var engineStartupError: String?
 
     static func main() {
         let application = NSApplication.shared
@@ -18,8 +19,10 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSDocumentController.shared.autosavingDelay = 0
-        if let runtime = try? WorkerRuntime(bundle: .main) {
-            engineClient = EngineClient(runtime: runtime)
+        do {
+            engineClient = EngineClient(runtime: try WorkerRuntime(bundle: .main))
+        } catch {
+            engineStartupError = error.localizedDescription
         }
         NSApp.mainMenu = makeMainMenu()
     }
