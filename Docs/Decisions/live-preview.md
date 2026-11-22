@@ -47,7 +47,7 @@ Scripts/build.sh --debug
 xcodebuild -project Scadretto.xcodeproj -scheme Scadretto \
   -destination 'platform=macOS,arch=arm64' -parallel-testing-enabled NO \
   -derivedDataPath "$PWD/.build/m2/DerivedData" \
-  -resultBundlePath "$PWD/.build/m2/native-04.xcresult" \
+  -resultBundlePath "$PWD/.build/m2/native-06.xcresult" \
   CODE_SIGN_IDENTITY='Apple Development' test
 ```
 
@@ -69,7 +69,9 @@ captured frame records the five-bore result. The suite checks parser
 failure and recovery, the empty model, diagnostic navigation to
 `missing_parameter`, include deletion and recreation, and explicit preview
 cancel and retry. It also reruns the M1 source fidelity, encoding, undo and
-reopen tests.
+reopen tests. The viewport navigation test checks a Top view command, a
+mouse orbit, and the contextual menu from a motionless right click. The
+test display was 1,920 × 1,080 points at backing scale 1.
 
 A separate Launch Services run opened a temporary copy of the plate with
 `open -a` against the developer build. Cancelling the unsaved-quit dialog

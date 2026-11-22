@@ -2,6 +2,35 @@ import XCTest
 
 final class ScadrettoUITests: XCTestCase {
     @MainActor
+    func testViewportNavigationFromMenuAndMouse() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Navigation.scad")
+        try fixture("mounting-plate").write(to: url)
+        _ = open(url, in: app)
+        waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 15)
+
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        XCTAssertTrue(viewport.waitForExistence(timeout: 6))
+        let initial = viewport.screenshot().pngRepresentation
+        app.typeKey("1", modifierFlags: .command)
+        let top = viewport.screenshot().pngRepresentation
+        XCTAssertNotEqual(initial, top, "The Top view command must change the rendered frame")
+        let start = viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.22, dy: 0.22))
+        let end = viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.42, dy: 0.40))
+        start.click(forDuration: 0.1, thenDragTo: end)
+        XCTAssertNotEqual(top, viewport.screenshot().pngRepresentation, "A mouse orbit must change the rendered frame")
+
+        start.rightClick()
+        let frames = app.menuItems.matching(identifier: "Frame Model")
+        let visible = frames.allElementsBoundByIndex.first(where: \.isHittable)
+        XCTAssertNotNil(visible, "The motionless right click must open the viewport menu. \(app.debugDescription)")
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
+    @MainActor
     func testLiveMountingPlatePreviewRecoversAfterSyntaxError() throws {
         let app = launch()
         defer { app.terminate() }

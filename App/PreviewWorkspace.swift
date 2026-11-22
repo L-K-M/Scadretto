@@ -24,8 +24,17 @@ final class PreviewWorkspace {
             viewport.swapsOrbitAndPan = UserDefaults.standard.bool(forKey: "swapsOrbitAndPan")
             viewport.showsEdges = UserDefaults.standard.bool(forKey: "showsEdges")
             viewport.showsAxes = UserDefaults.standard.bool(forKey: "showsAxes")
+            viewport.setAccessibilityElement(true)
+            viewport.setAccessibilityRole(.group)
             viewport.setAccessibilityIdentifier("viewport")
             viewport.setAccessibilityLabel("OpenSCAD viewport")
+            let menu = NSMenu(title: "Viewport")
+            menu.addItem(withTitle: "Frame Model", action: #selector(ScadrettoDocument.frameModel(_:)), keyEquivalent: "")
+            menu.addItem(withTitle: "Orthographic Projection", action: #selector(ScadrettoDocument.toggleOrthographic(_:)),
+                         keyEquivalent: "")
+            menu.addItem(withTitle: "Show Edges", action: #selector(ScadrettoDocument.toggleEdges(_:)), keyEquivalent: "")
+            menu.addItem(withTitle: "Show Axes", action: #selector(ScadrettoDocument.toggleAxes(_:)), keyEquivalent: "")
+            viewport.menu = menu
             renderingView = viewport
             viewportError = nil
         } catch {

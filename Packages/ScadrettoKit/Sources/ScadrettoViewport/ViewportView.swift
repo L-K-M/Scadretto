@@ -92,7 +92,6 @@ public final class ViewportView: MTKView {
     private var hasAutoFramed = false
     private var mouseDownPoint: NSPoint?
     private var lastDragPoint: NSPoint?
-    private var rightDownEvent: NSEvent?
     private var activeButton = false
 
     /// View-pixel distance below which a press is a click, not a drag.
@@ -195,7 +194,6 @@ public final class ViewportView: MTKView {
     public override func rightMouseDown(with event: NSEvent) {
         // Held back from `super` so a right-drag pans; delivered on mouse-up
         // when the press turns out to be a motionless right-click.
-        rightDownEvent = event
         mouseDownPoint = viewPoint(for: event)
         lastDragPoint = mouseDownPoint
         activeButton = true
@@ -229,15 +227,10 @@ public final class ViewportView: MTKView {
         defer {
             mouseDownPoint = nil
             lastDragPoint = nil
-            rightDownEvent = nil
             activeButton = false
         }
-        guard let down = rightDownEvent,
-              dragDistance(event) < Self.dragThreshold else { return }
-        // Motionless right-click: replay through the default path so a context
-        // menu still opens as upstream offers.
-        super.rightMouseDown(with: down)
-        super.rightMouseUp(with: event)
+        guard let menu, dragDistance(event) < Self.dragThreshold else { return }
+        menu.popUp(positioning: nil, at: viewPoint(for: event), in: self)
     }
 
     public override func otherMouseUp(with event: NSEvent) {

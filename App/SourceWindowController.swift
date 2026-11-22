@@ -27,7 +27,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
             defer: false
         )
         super.init(window: window)
-        window.minSize = NSSize(width: 730, height: 390)
+        window.minSize = NSSize(width: 780, height: 390)
         window.center()
         configureEditor()
 
@@ -63,7 +63,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
             split.topAnchor.constraint(equalTo: content.topAnchor),
             split.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             split.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            scroll.widthAnchor.constraint(greaterThanOrEqualToConstant: 225),
+            scroll.widthAnchor.constraint(greaterThanOrEqualToConstant: 310),
             previewWorkspace.panel.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
             previewWorkspace.sidebar.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
             status.topAnchor.constraint(equalTo: split.bottomAnchor, constant: 5),
@@ -83,10 +83,11 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         guard !placedDividers else { return }
         window?.contentView?.layoutSubtreeIfNeeded()
         let width = split.bounds.width
-        guard width >= 730 else { return }
+        guard width >= 780 else { return }
         split.setPosition(width * 0.31, ofDividerAt: 0)
         split.setPosition(width - 240, ofDividerAt: 1)
         placedDividers = true
+        resetSourceScroll()
     }
 
     private func configureEditor() {
@@ -122,6 +123,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     }
 
     func show(_ snapshot: SourceSnapshot, selecting selection: NSRange) {
+        let firstView = self.snapshot == nil
         self.snapshot = snapshot
         mirroring = true
         if !editor.string.utf16.elementsEqual(snapshot.buffer.displayText.utf16) {
@@ -133,9 +135,15 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         let length = snapshot.buffer.utf16Length
         let location = min(selection.location, length)
         editor.setSelectedRange(NSRange(location: location, length: min(selection.length, length - location)))
+        if firstView { resetSourceScroll() }
         mirroring = false
         ruler?.needsDisplay = true
         scheduleSyntax(snapshot)
+    }
+
+    private func resetSourceScroll() {
+        scroll.contentView.scroll(to: .zero)
+        scroll.reflectScrolledClipView(scroll.contentView)
     }
 
     func textView(
