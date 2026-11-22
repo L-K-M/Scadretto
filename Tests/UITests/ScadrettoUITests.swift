@@ -210,14 +210,17 @@ final class ScadrettoUITests: XCTestCase {
         editor.typeText("// local ")
         waitForText("// local cube(1);", in: editor)
 
-        // Editors that keep backups move the file aside, then write a new one at its path.
+        // Another program moves the file aside and only later writes at its path. AppKit reports
+        // a path refilled within half a second as a change, and follows the move when it is later.
         try FileManager.default.moveItem(at: url, to: backup)
+        settle(3)
         try external.write(to: url)
-        let noticed = XCTestExpectation(description: "AppKit delivered the file move")
-        noticed.isInverted = true
-        XCTAssertEqual(XCTWaiter.wait(for: [noticed], timeout: 2), .completed)
+        settle(2)
 
         choose("Save", from: "File", in: app)
+        // AppKit's moved-document sheet offers Save, under the backup's name, as its default.
+        let acceptDefault = app.sheets.buttons["Save"].firstMatch
+        if acceptDefault.waitForExistence(timeout: 3) { acceptDefault.click() }
         let redirected = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             (try? Data(contentsOf: backup)) != original
         }, object: nil)
@@ -804,6 +807,14 @@ final class ScadrettoUITests: XCTestCase {
         let expectation = XCTNSPredicateExpectation(predicate: matches, object: element)
         XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: timeout), .completed,
                        "Expected “\(text)”, got \(element.value ?? "(no value)")", file: file, line: line)
+    }
+
+    /// File presenter notices arrive asynchronously and have no element to wait for.
+    @MainActor
+    private func settle(_ seconds: TimeInterval) {
+        let pause = XCTestExpectation(description: "File notices settle")
+        pause.isInverted = true
+        XCTAssertEqual(XCTWaiter.wait(for: [pause], timeout: seconds), .completed)
     }
 
     private func fixture(_ name: String) throws -> Data {
