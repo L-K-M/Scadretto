@@ -555,6 +555,241 @@ private func writeManifest(_ manifest: [String: Any], to job: URL) throws {
     }
 }
 
+private var detailSpan: [String: Any] { ["fileID": 0, "start": 5, "end": 6] }
+private var spanPastEnd: [String: Any] { ["fileID": 0, "start": 0, "end": 100] }
+
+private func propertyDefinition(
+    _ semantic: String, formal: String, status: String = "bound", multiplier: Double = 1,
+    centered: Bool = false, complete: Bool = false
+) -> [String: Any] {
+    ["semantic": semantic, "formal": formal, "status": status, "displayMultiplier": multiplier,
+     "centered": centered, "chain": [Any](), "inputs": [Any](), "impactComplete": complete]
+}
+
+/// An empty-scene manifest whose instances share M4 detail tables: definition
+/// span, every argument and property status, impact and a verified pitch.
+private func detailedManifest(request: EngineRequest) throws -> [String: Any] {
+    var manifest = try validManifest(request: request)
+    manifest["detail"] = "empty"
+    manifest["argumentLists"] = [[
+        ["name": "", "formal": "size", "status": "bound", "expression": detailSpan],
+        ["name": "size", "formal": "size", "status": "superseded", "expression": detailSpan],
+        ["name": "", "formal": "", "status": "unbound"],
+        ["name": "r", "formal": "r", "status": "ignored", "expression": NSNull()],
+    ]]
+    var size = propertyDefinition("cubeUniformSize", formal: "size", centered: true, complete: true)
+    size["expression"] = detailSpan
+    size["chain"] = [["kind": "parameter", "name": "size", "span": detailSpan]]
+    size["inputs"] = [detailSpan]
+    manifest["propertyDefinitions"] = [
+        size,
+        propertyDefinition("translateX", formal: "v", status: "computedVector", multiplier: 0.5),
+        propertyDefinition("moduleArgument", formal: "part", status: "default", multiplier: 2),
+        propertyDefinition("pitch", formal: "pitch", complete: true),
+    ]
+    var instances = try #require(manifest["instances"] as? [[String: Any]])
+    instances[0]["properties"] = [["definition": 0, "value": 7]]
+    instances[1]["definitionSpan"] = ["fileID": 0, "start": 0, "end": 8]
+    instances[1]["opaqueFrame"] = true
+    instances[1]["arguments"] = 0
+    instances[1]["properties"] = [
+        ["definition": 0, "value": 2],
+        ["definition": 1, "value": 1],
+        ["definition": 2, "value": 3],
+        ["definition": 3, "value": 4, "dragVerified": true, "pitch": ["iteration": 0]],
+    ]
+    manifest["instances"] = instances
+    return manifest
+}
+
+@Test @MainActor func decodesInstanceDetails() throws {
+    let request = try makeRequest()
+    let job = try makeJobDirectory()
+    defer { try? FileManager.default.removeItem(at: job) }
+
+    try writeManifest(try detailedManifest(request: request), to: job)
+    let outcome = try ResultDecoder().decode(
+        jobDirectory: job, request: request, termination: .exited(0)
+    )
+    guard case .empty(let result) = outcome else {
+        Issue.record("expected empty, got \(outcome)")
+        return
+    }
+    let scene = try #require(result.scene)
+    #expect(!scene.propertiesOmitted)
+    let span = WireSpan(fileID: 0, start: 5, end: 6)
+
+    // Occurrences share a definition and keep their own values.
+    let root = scene.instances[0]
+    #expect(root.definitionSpan == nil)
+    #expect(root.arguments == nil)
+    #expect(!root.opaqueFrame)
+    #expect(root.properties?.first?.value == 7)
+    #expect(root.properties?.first?.inputs == [span])
+
+    let cube = scene.instances[1]
+    #expect(cube.opaqueFrame)
+    #expect(cube.definitionSpan == WireSpan(fileID: 0, start: 0, end: 8))
+    #expect(cube.arguments == [
+        ArgumentRecord(name: "", formal: "size", status: .bound, expression: span),
+        ArgumentRecord(name: "size", formal: "size", status: .superseded, expression: span),
+        ArgumentRecord(name: "", formal: "", status: .unbound, expression: nil),
+        ArgumentRecord(name: "r", formal: "r", status: .ignored, expression: nil),
+    ])
+    #expect(cube.properties == [
+        PropertyRecord(
+            semantic: .cubeUniformSize, formal: "size", status: .bound, value: 2,
+            displayMultiplier: 1, centered: true, expression: span,
+            chain: [ChainLink(kind: "parameter", name: "size", span: span)],
+            inputs: [span], impactComplete: true, dragVerified: false, pitch: nil
+        ),
+        PropertyRecord(
+            semantic: .translateX, formal: "v", status: .computedVector, value: 1,
+            displayMultiplier: 0.5, centered: false, expression: nil, chain: [], pitch: nil
+        ),
+        PropertyRecord(
+            semantic: .moduleArgument, formal: "part", status: .`default`, value: 3,
+            displayMultiplier: 2, centered: false, expression: nil, chain: [], pitch: nil
+        ),
+        PropertyRecord(
+            semantic: .pitch, formal: "pitch", status: .bound, value: 4,
+            displayMultiplier: 1, centered: false, expression: nil, chain: [],
+            impactComplete: true, dragVerified: true, pitch: PropertyRecord.Pitch(iteration: 0)
+        ),
+    ])
+}
+
+@Test @MainActor func decodesSceneWithOmittedProperties() throws {
+    let request = try makeRequest()
+    let job = try makeJobDirectory()
+    defer { try? FileManager.default.removeItem(at: job) }
+
+    var manifest = try validManifest(request: request)
+    manifest["detail"] = "empty"
+    manifest["propertiesOmitted"] = true
+    try writeManifest(manifest, to: job)
+    guard case .empty(let result) = try ResultDecoder().decode(
+        jobDirectory: job, request: request, termination: .exited(0)
+    ) else {
+        Issue.record("expected empty")
+        return
+    }
+    let scene = try #require(result.scene)
+    #expect(scene.propertiesOmitted)
+    #expect(scene.instances.allSatisfy { $0.properties == nil })
+}
+
+@Test @MainActor func rejectsMalformedInstanceDetails() throws {
+    let request = try makeRequest()
+    let job = try makeJobDirectory()
+    defer { try? FileManager.default.removeItem(at: job) }
+
+    func decode(
+        limits: ResultDecoder.Limits = .init(),
+        _ change: (inout [[String: Any]], inout [[[String: Any]]], inout [[String: Any]]) -> Void
+    ) throws {
+        var manifest = try detailedManifest(request: request)
+        var definitions = try #require(manifest["propertyDefinitions"] as? [[String: Any]])
+        var lists = try #require(manifest["argumentLists"] as? [[[String: Any]]])
+        var instances = try #require(manifest["instances"] as? [[String: Any]])
+        change(&definitions, &lists, &instances)
+        manifest["propertyDefinitions"] = definitions
+        manifest["argumentLists"] = lists
+        manifest["instances"] = instances
+        try writeManifest(manifest, to: job)
+        _ = try ResultDecoder(limits: limits).decode(jobDirectory: job, request: request, termination: .exited(0))
+    }
+    func rewrite(_ instance: inout [String: Any], property index: Int, _ change: (inout [String: Any]) -> Void) {
+        guard var properties = instance["properties"] as? [[String: Any]] else { return }
+        change(&properties[index])
+        instance["properties"] = properties
+    }
+
+    #expect(throws: EngineError.limitExceeded("argument list 0")) {
+        try decode { _, lists, _ in
+            lists[0] = (0...128).map { ["name": "", "formal": "f\($0)", "status": "bound"] }
+        }
+    }
+    #expect(throws: EngineError.limitExceeded("instance 1 properties")) {
+        try decode { _, _, instances in
+            instances[1]["properties"] = Array(repeating: ["definition": 1, "value": 0], count: 65)
+        }
+    }
+
+    var limits = ResultDecoder.Limits()
+    limits.propertyChainLimit = 1
+    #expect(throws: EngineError.limitExceeded("property definition 0 chain")) {
+        try decode(limits: limits) { definitions, _, _ in
+            definitions[0]["chain"] = (0...1).map { ["kind": "lookup", "name": "n\($0)"] }
+        }
+    }
+    limits = ResultDecoder.Limits()
+    limits.propertyInputLimit = 1
+    #expect(throws: EngineError.limitExceeded("property definition 0 inputs")) {
+        try decode(limits: limits) { definitions, _, _ in
+            definitions[0]["inputs"] = [detailSpan, detailSpan]
+        }
+    }
+    #expect(throws: EngineError.validationFailed("property definition 0 has an illegal displayMultiplier")) {
+        try decode { definitions, _, _ in definitions[0]["displayMultiplier"] = 3 }
+    }
+
+    // Indexes must stay inside this result's tables.
+    for missing in [4, -1] {
+        #expect(throws: EngineError.validationFailed("instance 1 property 0 references a missing definition")) {
+            try decode { _, _, instances in
+                rewrite(&instances[1], property: 0) { $0["definition"] = missing }
+            }
+        }
+    }
+    #expect(throws: EngineError.validationFailed("instance 1 arguments reference a missing list")) {
+        try decode { _, _, instances in instances[1]["arguments"] = 1 }
+    }
+
+    #expect(throws: EngineError.validationFailed("instance 1 property 0 is not a pitch property but carries one")) {
+        try decode { _, _, instances in
+            rewrite(&instances[1], property: 0) { $0["pitch"] = ["iteration": 0] }
+        }
+    }
+    #expect(throws: EngineError.validationFailed("instance 1 property 3 lacks its pitch record")) {
+        try decode { _, _, instances in
+            rewrite(&instances[1], property: 3) { $0.removeValue(forKey: "pitch") }
+        }
+    }
+    #expect(throws: EngineError.validationFailed("instance 1 property 1 repeats cubeUniformSize for formal size")) {
+        try decode { _, _, instances in
+            rewrite(&instances[1], property: 1) { $0["definition"] = 0 }
+        }
+    }
+    #expect(throws: EngineError.validationFailed("instance 1 property 1 verifies a drag without complete impact")) {
+        try decode { _, _, instances in
+            rewrite(&instances[1], property: 1) { $0["dragVerified"] = true }
+        }
+    }
+
+    #expect(throws: EngineError.validationFailed("instance 1 definitionSpan span exceeds file 0 length")) {
+        try decode { _, _, instances in instances[1]["definitionSpan"] = spanPastEnd }
+    }
+    #expect(throws: EngineError.validationFailed("argument list 0 entry 0 span exceeds file 0 length")) {
+        try decode { _, lists, _ in lists[0][0]["expression"] = spanPastEnd }
+    }
+    #expect(throws: EngineError.validationFailed("property definition 0 span exceeds file 0 length")) {
+        try decode { definitions, _, _ in
+            definitions[0]["chain"] = [["kind": "parameter", "name": "size", "span": spanPastEnd]]
+        }
+    }
+    #expect(throws: EngineError.validationFailed("property definition 0 span exceeds file 0 length")) {
+        try decode { definitions, _, _ in definitions[0]["inputs"] = [spanPastEnd] }
+    }
+
+    #expect {
+        try decode { _, lists, _ in lists[0][0]["status"] = "bogus" }
+    } throws: { error in
+        guard case EngineError.manifestMalformed = error else { return false }
+        return true
+    }
+}
+
 @Test func followsLookupIntoNewDirectory() throws {
     let key = EvaluationKey(documentID: UUID(), sourceRevision: 1, dependencyGeneration: 0,
                             resolutionDigest: workerSHA, optionsDigest: workerSHA, workerBuild: workerSHA)

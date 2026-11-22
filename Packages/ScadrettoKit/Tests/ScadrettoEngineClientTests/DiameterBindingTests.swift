@@ -2,47 +2,16 @@ import Foundation
 import ScadrettoCore
 import ScadrettoEngineClient
 import ScadrettoSyntax
+import ScadrettoTestSupport
 import ScadrettoViewport
 import Testing
 import simd
 
 @Test @MainActor func plateBindingResolvesThirdCutterAndPlansCheckedPatch() async throws {
-    var repository = URL(fileURLWithPath: #filePath)
-    for _ in 0..<5 { repository.deleteLastPathComponent() }
-    let job = repository.appending(path: "Engine/protocol/golden/plate")
-    let source = repository.appending(path: "Tests/Fixtures/mounting-plate.scad")
-
-    // Decode the checked-in v1 plate result under its recorded identity.
-    let request = try JSONDecoder().decode(EngineRequest.self,
-                                           from: Data(contentsOf: job.appending(path: "request.json")))
-    let document = SourceDocument(buffer: try SourceBuffer(bytes: Data(contentsOf: source)))
-    let snapshot = document.snapshot
-    let outcome = try ResultDecoder().decode(jobDirectory: job, request: request,
-                                             termination: .exited(0),
-                                             sourceByteLength: UInt64(snapshot.buffer.bytes.count))
-
-    // Rebind only the snapshot identity fields so the decoded result keys this
-    // document's current snapshot; everything else stays the golden payload.
-    let decoded = outcome.result
-    let result = EvaluationResult(
-        requestID: decoded.requestID,
-        key: EvaluationKey(
-            documentID: snapshot.documentID,
-            sourceRevision: snapshot.revision,
-            dependencyGeneration: decoded.key.dependencyGeneration,
-            resolutionDigest: decoded.key.resolutionDigest,
-            optionsDigest: decoded.key.optionsDigest,
-            workerBuild: decoded.key.workerBuild
-        ),
-        workerBuild: decoded.workerBuild,
-        files: decoded.files,
-        diagnostics: decoded.diagnostics,
-        console: decoded.console,
-        droppedConsoleMessages: decoded.droppedConsoleMessages,
-        dependencyEdges: decoded.dependencyEdges,
-        lookups: decoded.lookups,
-        scene: decoded.scene
-    )
+    let plate = try await PlateGolden.load()
+    let document = plate.document
+    let snapshot = plate.snapshot
+    let result = plate.result
 
     // The original third cutter carries iteration i == 2 in the engine trace.
     let scene = try #require(result.scene)
@@ -74,17 +43,18 @@ import simd
     #expect(simd_dot(hit.hit.normal, ray.direction) < -0.99)
     let pickedID = try #require(hit.candidates.first)
 
-    let target = try result.diameterTarget(for: pickedID, in: snapshot)
+    let diameter = try #require(expected.properties?.first { $0.semantic == .cylinderDiameter })
+    let target = try result.target(for: diameter, on: pickedID, in: snapshot)
     #expect(target.span.bytes == 74..<75)
     #expect(target.span.fileID == snapshot.documentID)
     #expect(target.scope == .parameter("hole_d"))
-    #expect(target.value == 4)
-    #expect(target.affectedInstances == [7, 10, 13, 16])
+    #expect(target.authoredValue == 4)
+    #expect(Set(cutters.map(\.id)).isSubset(of: target.affectedInstances))
 
     let syntax = try await SyntaxParser().parse(snapshot)
     let token = try #require(syntax.ranges.first { $0.kind == .number && $0.range == target.span.bytes })
-    let literal = try DiameterLiteral(source: snapshot, span: target.span,
-                                      numericToken: token.range, value: target.value)
+    let literal = try ScalarLiteral(source: snapshot, span: target.span, numericToken: token.range,
+                                    authoredValue: target.authoredValue, constraint: .positive)
     let edit = try #require(try literal.edit(setting: 5, in: snapshot))
     #expect(edit == SourceEdit(range: 74..<75,
                                expected: Data("4".utf8), replacement: Data("5".utf8)))
@@ -96,10 +66,10 @@ import simd
                                   expected: Data("5".utf8), replacement: Data("4".utf8))])
 
     // Binding and literal both refuse the superseded snapshot.
-    #expect(throws: DiameterBindingError.staleSource) {
-        try result.diameterTarget(for: pickedID, in: document.snapshot)
+    #expect(throws: PropertyBindingError.staleSource) {
+        try result.target(for: diameter, on: pickedID, in: document.snapshot)
     }
-    #expect(throws: DiameterEditError.staleSource) {
+    #expect(throws: ScalarEditError.staleSource) {
         try literal.edit(setting: 6, in: document.snapshot)
     }
 }
@@ -108,10 +78,10 @@ import simd
     // Equal values at different byte ranges are independent checked targets.
     let document = SourceDocument(buffer: try SourceBuffer(bytes: Data("hole_d = 4;\npin_d = 4;\n".utf8)))
     let snapshot = document.snapshot
-    let first = try DiameterLiteral(source: snapshot, span: snapshot.span(for: 9..<10),
-                                    numericToken: 9..<10, value: 4)
-    let second = try DiameterLiteral(source: snapshot, span: snapshot.span(for: 20..<21),
-                                     numericToken: 20..<21, value: 4)
+    let first = try ScalarLiteral(source: snapshot, span: snapshot.span(for: 9..<10),
+                                  numericToken: 9..<10, authoredValue: 4, constraint: .positive)
+    let second = try ScalarLiteral(source: snapshot, span: snapshot.span(for: 20..<21),
+                                   numericToken: 20..<21, authoredValue: 4, constraint: .positive)
 
     let firstEdit = try #require(try first.edit(setting: 5, in: snapshot))
     let secondEdit = try #require(try second.edit(setting: 7, in: snapshot))
@@ -123,37 +93,4 @@ import simd
     // One transaction rewrites each token and preserves every other byte.
     try document.apply(document.transaction(edits: [firstEdit, secondEdit], label: "diameters"))
     #expect(document.buffer.bytes == Data("hole_d = 5;\npin_d = 7;\n".utf8))
-}
-
-@Test @MainActor func literalPlannerRejectsUnverifiedInvalidAndStale() throws {
-    let document = SourceDocument(buffer: try SourceBuffer(bytes: Data("hole_d = 4;\n".utf8)))
-    let snapshot = document.snapshot
-    let span = try snapshot.span(for: 9..<10)
-    let literal = try DiameterLiteral(source: snapshot, span: span, numericToken: 9..<10, value: 4)
-
-    // The token must spell the claimed value.
-    #expect(throws: DiameterEditError.unverifiedLiteral) {
-        try DiameterLiteral(source: snapshot, span: span, numericToken: 9..<10, value: 8)
-    }
-    // A span not minted by this snapshot cannot be verified.
-    let foreign = SourceSpan(fileID: UUID(), contentDigest: span.contentDigest, bytes: 9..<10)
-    #expect(throws: DiameterEditError.staleSource) {
-        try DiameterLiteral(source: snapshot, span: foreign, numericToken: 9..<10, value: 4)
-    }
-
-    // Only positive diameters may be written; the same value produces no edit.
-    #expect(throws: DiameterEditError.invalidDiameter) {
-        try literal.edit(setting: 0, in: snapshot)
-    }
-    #expect(throws: DiameterEditError.invalidDiameter) {
-        try literal.edit(setting: -2, in: snapshot)
-    }
-    #expect(try literal.edit(setting: 4, in: snapshot) == nil)
-
-    // A revision the literal did not capture is stale.
-    let edit = try #require(try literal.edit(setting: 5, in: snapshot))
-    try document.apply(document.transaction(edits: [edit], label: "diameter"))
-    #expect(throws: DiameterEditError.staleSource) {
-        try literal.edit(setting: 6, in: document.snapshot)
-    }
 }

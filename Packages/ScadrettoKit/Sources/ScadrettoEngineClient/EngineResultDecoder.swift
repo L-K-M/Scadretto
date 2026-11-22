@@ -26,6 +26,12 @@ public struct ResultDecoder: Sendable {
         public var lookupCandidateLimit = 1_024
         public var callPathLimit = 16_384
         public var diameterChainLimit = 16_384
+        public var argumentLimit = 128
+        public var argumentListLimit = 1_048_576
+        public var propertyLimit = 64
+        public var propertyDefinitionLimit = 1_048_576
+        public var propertyChainLimit = 256
+        public var propertyInputLimit = 64
         public var vertexLimit: UInt64 = 1 << 26
         public var indexLimit: UInt64 = 1 << 28
 
@@ -38,6 +44,7 @@ public struct ResultDecoder: Sendable {
     private static let payloadMagic = Array("SCADMESH".utf8)
     private static let matrixEpsilon = 1e-9
     private static let boundsEpsilon = 1e-12
+    private static let displayMultipliers: Set<Double> = [0.5, 1, 2]
 
     public let limits: Limits
 
@@ -65,6 +72,42 @@ public struct ResultDecoder: Sendable {
         let mesh: MeshDescriptor
     }
 
+    /// Property fields that every execution of a call site shares.
+    private struct PropertyDefinition: Decodable {
+        let semantic: PropertyRecord.Semantic
+        let formal: String
+        let status: PropertyRecord.Status
+        let displayMultiplier: Double
+        let centered: Bool
+        let expression: WireSpan?
+        let chain: [ChainLink]
+        let inputs: [WireSpan]
+        let impactComplete: Bool
+    }
+
+    private struct PropertyValue: Decodable {
+        let definition: Int
+        let value: Double
+        let dragVerified: Bool?
+        let pitch: PropertyRecord.Pitch?
+    }
+
+    private struct WireInstance: Decodable {
+        let id: UInt32
+        let parent: UInt32?
+        let name: String
+        let span: WireSpan?
+        let iteration: [String: Double]
+        let local: [Double]
+        let world: [Double]
+        let operand: UInt32?
+        let diameter: DiameterRecord?
+        let definitionSpan: WireSpan?
+        let arguments: Int?
+        let properties: [PropertyValue]?
+        let opaqueFrame: Bool?
+    }
+
     private struct Manifest: Decodable {
         let protocolVersion: Int
         let requestID: UUID
@@ -78,7 +121,10 @@ public struct ResultDecoder: Sendable {
         let droppedConsoleMessages: UInt64?
         let mesh: MeshDescriptor?
         let operands: [OperandRecord]?
-        let instances: [InstanceRecord]?
+        let instances: [WireInstance]?
+        let propertyDefinitions: [PropertyDefinition]?
+        let argumentLists: [[ArgumentRecord]]?
+        let propertiesOmitted: Bool?
         let operations: [OperationRecord]?
         let dependencyEdges: [DependencyEdge]?
         let lookups: [LookupRecord]?
@@ -128,9 +174,9 @@ public struct ResultDecoder: Sendable {
         // Error manifests carry dependencies and diagnostics observed before
         // failure but no trustworthy scene, so instance-level references are
         // not checked against a scene that cannot be published.
+        let instances = manifest.status == .ok ? try resolveInstances(manifest) : nil
         let tables = try decodeTables(
-            manifest: manifest, request: request, sourceByteLength: sourceByteLength,
-            instances: manifest.status == .ok ? manifest.instances ?? [] : nil
+            manifest: manifest, request: request, sourceByteLength: sourceByteLength, instances: instances
         )
         let makeResult = { (scene: SceneSnapshot?) in
             tables.result(
@@ -145,7 +191,8 @@ public struct ResultDecoder: Sendable {
                 throw EngineError.statusContradiction("rendered result has no mesh descriptor")
             }
             let scene = try decodeScene(
-                directoryFD: directoryFD, manifest: manifest, meshDescriptor: descriptor, tables: tables
+                directoryFD: directoryFD, manifest: manifest, instances: instances ?? [],
+                meshDescriptor: descriptor, tables: tables
             )
             return .rendered(makeResult(scene))
 
@@ -154,14 +201,16 @@ public struct ResultDecoder: Sendable {
                 throw EngineError.statusContradiction("empty result carries a mesh descriptor")
             }
             let scene = try decodeScene(
-                directoryFD: directoryFD, manifest: manifest, meshDescriptor: nil, tables: tables
+                directoryFD: directoryFD, manifest: manifest, instances: instances ?? [],
+                meshDescriptor: nil, tables: tables
             )
             return .empty(makeResult(scene))
 
         case (1, .error, .modelError), (1, .error, .unsupportedDimension):
             guard manifest.mesh == nil, manifest.operands?.isEmpty != false,
                   manifest.instances?.isEmpty != false, manifest.operations?.isEmpty != false,
-                  manifest.dependencyEdges?.isEmpty != false else {
+                  manifest.dependencyEdges?.isEmpty != false, manifest.propertyDefinitions?.isEmpty != false,
+                  manifest.argumentLists?.isEmpty != false else {
                 throw EngineError.statusContradiction("error manifest must not carry a scene")
             }
             let result = makeResult(nil)
@@ -346,21 +395,121 @@ public struct ResultDecoder: Sendable {
         )
     }
 
+    // MARK: - Shared details
+
+    /// Joins each occurrence to its shared definitions. Arrays taken from one
+    /// table entry share storage, so the join grows with the occurrence count.
+    private func resolveInstances(_ manifest: Manifest) throws -> [InstanceRecord] {
+        let wire = manifest.instances ?? []
+        let definitions = manifest.propertyDefinitions ?? []
+        let lists = manifest.argumentLists ?? []
+        try requireLimit(wire.count, limit: limits.instanceLimit, name: "instance")
+        try requireLimit(definitions.count, limit: limits.propertyDefinitionLimit, name: "propertyDefinition")
+        try requireLimit(lists.count, limit: limits.argumentListLimit, name: "argumentList")
+
+        return try wire.enumerated().map { index, instance in
+            let context = "instance \(index)"
+            if let list = instance.arguments, !lists.indices.contains(list) {
+                throw EngineError.validationFailed("\(context) arguments reference a missing list")
+            }
+            return InstanceRecord(
+                id: instance.id, parent: instance.parent, name: instance.name, span: instance.span,
+                iteration: instance.iteration, local: instance.local, world: instance.world,
+                operand: instance.operand, diameter: instance.diameter, definitionSpan: instance.definitionSpan,
+                arguments: instance.arguments.map { lists[$0] },
+                properties: try instance.properties.map {
+                    try resolveProperties($0, definitions: definitions, context: context)
+                },
+                opaqueFrame: instance.opaqueFrame ?? false
+            )
+        }
+    }
+
+    private func resolveProperties(
+        _ values: [PropertyValue],
+        definitions: [PropertyDefinition],
+        context: String
+    ) throws -> [PropertyRecord] {
+        try requireLimit(values.count, limit: limits.propertyLimit, name: "\(context) properties")
+        var declared: Set<PropertyKey> = []
+        return try values.enumerated().map { index, entry in
+            let context = "\(context) property \(index)"
+            guard definitions.indices.contains(entry.definition) else {
+                throw EngineError.validationFailed("\(context) references a missing definition")
+            }
+            let shared = definitions[entry.definition]
+            guard declared.insert(PropertyKey(semantic: shared.semantic, formal: shared.formal)).inserted else {
+                throw EngineError.validationFailed(
+                    "\(context) repeats \(shared.semantic.rawValue) for formal \(shared.formal)"
+                )
+            }
+            guard entry.value.isFinite else {
+                throw EngineError.validationFailed("\(context) value is not finite")
+            }
+            if shared.semantic == .pitch {
+                guard let pitch = entry.pitch else {
+                    throw EngineError.validationFailed("\(context) lacks its pitch record")
+                }
+                // Iteration 0 is valid. The app offers it numeric entry only.
+                guard pitch.iteration.isFinite else {
+                    throw EngineError.validationFailed("\(context) pitch iteration is not finite")
+                }
+            } else if entry.pitch != nil {
+                throw EngineError.validationFailed("\(context) is not a pitch property but carries one")
+            }
+            let dragVerified = entry.dragVerified ?? false
+            guard !dragVerified || (shared.status == .bound && shared.impactComplete) else {
+                throw EngineError.validationFailed("\(context) verifies a drag without complete impact")
+            }
+            return PropertyRecord(
+                semantic: shared.semantic, formal: shared.formal, status: shared.status, value: entry.value,
+                displayMultiplier: shared.displayMultiplier, centered: shared.centered,
+                expression: shared.expression, chain: shared.chain, inputs: shared.inputs,
+                impactComplete: shared.impactComplete, dragVerified: dragVerified, pitch: entry.pitch
+            )
+        }
+    }
+
+    private func checkSharedDetails(_ manifest: Manifest, filesByID: [UInt32: FileRecord]) throws {
+        for (index, definition) in (manifest.propertyDefinitions ?? []).enumerated() {
+            let context = "property definition \(index)"
+            guard Self.displayMultipliers.contains(definition.displayMultiplier) else {
+                throw EngineError.validationFailed("\(context) has an illegal displayMultiplier")
+            }
+            try requireLimit(definition.chain.count, limit: limits.propertyChainLimit, name: "\(context) chain")
+            try requireLimit(definition.inputs.count, limit: limits.propertyInputLimit, name: "\(context) inputs")
+            if let span = definition.expression {
+                try checkSpan(span, filesByID: filesByID, context: context)
+            }
+            for span in definition.chain.compactMap(\.span) + definition.inputs {
+                try checkSpan(span, filesByID: filesByID, context: context)
+            }
+        }
+        for (index, list) in (manifest.argumentLists ?? []).enumerated() {
+            try requireLimit(list.count, limit: limits.argumentLimit, name: "argument list \(index)")
+            for (entry, argument) in list.enumerated() {
+                if let span = argument.expression {
+                    try checkSpan(span, filesByID: filesByID, context: "argument list \(index) entry \(entry)")
+                }
+            }
+        }
+    }
+
     // MARK: - Scene
 
     private func decodeScene(
         directoryFD: Int32,
         manifest: Manifest,
+        instances: [InstanceRecord],
         meshDescriptor: MeshDescriptor?,
         tables: Tables
     ) throws -> SceneSnapshot {
-        let instances = manifest.instances ?? []
         let operandRecords = manifest.operands ?? []
         let operations = manifest.operations ?? []
 
-        try requireLimit(instances.count, limit: limits.instanceLimit, name: "instance")
         try requireLimit(operandRecords.count, limit: limits.operandLimit, name: "operand")
         try requireLimit(operations.count, limit: limits.operationLimit, name: "operation")
+        try checkSharedDetails(manifest, filesByID: tables.filesByID)
 
         var indexByID: [UInt32: Int] = [:]
         indexByID.reserveCapacity(instances.count)
@@ -389,6 +538,9 @@ public struct ResultDecoder: Sendable {
                 for link in diameter.chain {
                     if let span = link.span { try checkSpan(span, filesByID: tables.filesByID, context: context) }
                 }
+            }
+            if let span = instance.definitionSpan {
+                try checkSpan(span, filesByID: tables.filesByID, context: "\(context) definitionSpan")
             }
 
             // Instances arrive in executed order, so a parent is always decoded
@@ -475,7 +627,8 @@ public struct ResultDecoder: Sendable {
             )
         }
 
-        return SceneSnapshot(mesh: mesh, operands: operands, instances: instances, operations: operations)
+        return SceneSnapshot(mesh: mesh, operands: operands, instances: instances, operations: operations,
+                             propertiesOmitted: manifest.propertiesOmitted ?? false)
     }
 
     /// A span must name a file in the result table and fit inside its declared
@@ -710,5 +863,11 @@ public struct ResultDecoder: Sendable {
 
     private func requireLimit(_ count: UInt64, limit: UInt64, name: String) throws {
         guard count <= limit else { throw EngineError.limitExceeded(name) }
+    }
+
+    /// The semantic+formal pair that must stay unique within one instance.
+    private struct PropertyKey: Hashable {
+        let semantic: PropertyRecord.Semantic
+        let formal: String
     }
 }

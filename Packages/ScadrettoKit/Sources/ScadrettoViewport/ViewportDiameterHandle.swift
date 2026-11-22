@@ -21,16 +21,9 @@ public struct ViewportDiameterHandle: Equatable, Sendable {
     func resized(from start: Double, to end: Double, snap: Double) -> Double? {
         let proposal = diameter + 2 * (end - start)
         guard proposal.isFinite, proposal > 0, proposal != diameter else { return nil }
-        // Remove arithmetic noise from projection and unprojection. The
-        // numeric field can still accept a user's full-precision input.
-        let value: Double
-        if snap.isFinite, snap > 0 {
-            value = (proposal / snap).rounded() * snap
-        } else {
-            let decimal = String(format: "%.12g", locale: Locale(identifier: "en_US_POSIX"), proposal)
-            value = Double(decimal) ?? proposal
-        }
-        return value.isFinite && value > 0 && value != diameter ? value : nil
+        // The numeric field can still accept a user's full-precision input.
+        let value = draggedValue(proposal, snap: snap)
+        return value.isFinite && value > 0 && changesDraggedValue(diameter, to: value) ? value : nil
     }
 
     func radiusCoordinate(at point: CGPoint, in frame: ViewportTransform) -> Double? {

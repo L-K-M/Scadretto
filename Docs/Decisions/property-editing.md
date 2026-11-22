@@ -1,0 +1,154 @@
+# Property edits, local moves and scope
+
+The editor plans every inspector and drag edit in `ScadrettoPlanning`, a
+package target above `ScadrettoCore`, `ScadrettoSyntax` and
+`ScadrettoEngineClient`. The plan asks for pure planning code that tests can
+drive without a window. Core cannot hold it because the bindings come from
+the engine client, which depends on Core. Core still writes every patch.
+The app supplies the selection, shows the plan and commits its transaction.
+
+The [support table](../../Packages/ScadrettoKit/Tests/ScadrettoCoreTests/SupportTable.md)
+lists the targets. The [worker record](executed-properties.md) defines what
+makes a binding complete and a drag safe.
+
+## Rules
+
+- One property path serves every edit, including the M3 diameter. A round
+  feature opens on its diameter.
+- A pick also offers explicit arguments of the enclosing calls, unless the
+  same literal is already offered under the feature's own name.
+- A translation component that is not itself a literal offers "Offset here".
+  Its bytes are wrapped verbatim. The declaration keeps its bytes.
+- A standalone, unrepeated statement without its own translation offers
+  "Move here". The move is withheld where a module named `translate`
+  replaces the built-in.
+- A field takes the locale's decimal separator or a point. Grouped input
+  such as `1.234,5` is refused rather than guessed. The source always
+  receives a point.
+- A handle appears only without a drag blocker: iteration zero, an unproved
+  impact or dependent frame, an untraced placement, or one expression
+  applied twice on a path. Numeric entry stays, with the reason.
+- A drag guide follows only another occurrence that the worker verified for
+  the same literal, along that occurrence's own axis and scale. Other
+  affected uses, such as `-d` or `2 * d`, are highlighted without a guide.
+- Scope counts rendered operands. A set the worker cannot prove complete
+  reads "at least N, other uses unknown".
+- A selection follows its call path through edits. A wrapper written since
+  the last evaluation is a new ancestor of the same selection, and a removed
+  wrapper leaves it selected. A removed selection falls back to its nearest
+  authored ancestor or clears. It never matches an equal sibling.
+- When the chosen property disappears, or a wrapper is inserted or removed
+  between it and the selection, the inspector waits for an explicit choice.
+  An inserted move continues as the translation it created.
+- A field shows twelve significant digits. Committing what it showed keeps
+  the literal's own digits and adds no undo entry.
+- A drag proposes at most twelve significant digits, snapped or not, and
+  no dimension at or below zero. Only its own release commits it.
+
+## Limits
+
+- Local offsets cover translation components. Pitch covers
+  `base + i * pitch` on X.
+- A `translate` redefined in a dependency is detected only after that module
+  has executed.
+- A scene whose property detail the worker omitted for size is inspect-only.
+- A move grip sits at the center of every operand below the moved shape,
+  so a cutter far outside the solid can pull it off the model. Numeric
+  entry is unaffected.
+- A handle stays drawn while text is composed or a dependency is checked.
+  Its release then changes nothing and says why.
+- The ghost holds 600,000 indices and the moving outlines 256 occurrences.
+  The inspector reports anything beyond either bound.
+
+## Verification
+
+```sh
+Scripts/build-engine
+swift test --package-path Packages/ScadrettoKit
+```
+
+`ScadrettoPlanningTests` takes cases from the Scope, Overwritten assignments,
+Module scopes, Expressions, Primitive properties, Transforms, Prefix
+insertion and Procedural picking rows through the pinned worker. The table
+cases evaluate, plan, apply the document transaction, compare the whole
+file, reevaluate and undo. The named cases check impact, dependency
+ownership, resulting geometry, frames and picks. These tests skip, and say
+so, without a built worker. CI restores the checked worker before it runs
+them.
+
+Four parts of those rows are checked below the worker. A singular parent's
+zero axis is refused by the viewport handle's unit test, and the live case
+checks that the worker reports that axis. Ambiguous comments are refused in
+the Core edit tests. Decimal-comma entry is tested on the parser that the
+field calls, with explicit locales. The live picking cases call the
+production picker without a window.
+
+Tests with real worker results and a review of its traces exposed three
+defects that hand-written traces and the goldens had hidden. Offsets were
+never offered for a formula such as `wall/2`, built-in defaults produced
+invalid manifests, and an inserted move lost its selection. Each regression
+failed before its fix. A later mutation check of the worker showed that
+guides chosen by property name or equal value could point the wrong way.
+Their tests compare each guide with reevaluation, and failed first.
+
+An independent review before the PR, in two parts, reported nine defects.
+Seven were fixed. All but the one-frame stale handle have a regression
+test that failed first, natively for a drag whose release was lost. The
+other two write nothing wrong and are listed under Limits. The inspector's
+use of the retargeting and long-literal rules is covered by package tests
+of those rules, not by a native test.
+
+## Native verification
+
+The Apple M4 Max development machine ran macOS 27.0.1 (26A434) with Xcode
+27.2 (27B52) and SDK 27.2, on a 1920 × 1080 display at backing scale 1.
+The app bundled worker SHA-256
+`60a9b08a19a8c3326286d84c6f3f525adf63fc4d369fbfa4f771928bd7f4332e`.
+
+```sh
+xcodebuild -project Scadretto.xcodeproj -scheme Scadretto \
+  -destination 'platform=macOS,arch=arm64' -parallel-testing-enabled NO \
+  -derivedDataPath "$PWD/.build/m4/DerivedData" \
+  -resultBundlePath "$PWD/.build/m4/ui-suite-08.xcresult" \
+  CODE_SIGN_IDENTITY='Apple Development' test
+Scripts/verify-engine --saved-plate .build/m4/ui-suite-08-attachments/saved-plate.scad
+```
+
+The run split that `test` action into `build-for-testing` and
+`test-without-building`. All 12 UI tests passed in 476 seconds. They drive
+the real app through the Open panel, mouse picks and drags, the outline,
+the inspector, menus, save and reopen. `.build/` paths are machine-local.
+
+Walkthrough steps 1 to 5 saved a plate that differs from the fixture only
+in `hole_d = 5;` and `count = 5;`. The unmodified reference rendered it
+with five bores and a symmetric difference of 0.000245 from the worker.
+Steps 6 and 7 dragged pitch to 22, cancelled a drag with Escape while the
+button was held, recovered from a syntax error and typed pitch at
+iteration zero. The saved file differs only in `pitch = 22;`. Its cutters
+are at 15, 37, 59 and 81, and it differs from the reference by 0.000177.
+
+Earlier runs failed, and their recordings gave these causes:
+
+- A failed test left its windows and fixture folders to the next one.
+  Tests now launch without restored windows and clean up on failure.
+- Other applications on the shared test Mac took the focus or put a dialog
+  over Scadretto. The suite needs an uncontested screen.
+- One Undo menu click had no effect and no cause was found. Six repeats
+  of that test and the final suite passed.
+
+An enclosed cutter was selected through the outline after a click at its
+position picked the cube around it. Its ghost was drawn, and `4,5` typed
+under a `de_DE` app locale saved as `d = 4.5`. During a held pitch drag on
+bore 2, the screenshot showed guides on bores 1 and 3 in proportion to
+their iteration and none on bore 0.
+
+Text typed for one property is dropped when another is chosen, because
+showing the new value replaces the field editor's text and the field
+sends its action only on Return. The native test checks that outcome. It
+also passed without an explicit `abortEditing` call, which was removed.
+
+The run logged one priority-inversion warning that has not been traced.
+M5's responsiveness work owns it.
+
+Not exercised natively: the menu of coincident or rim candidates, a
+comma-decimal system locale, a Retina display and macOS 14.

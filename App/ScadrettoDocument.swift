@@ -2,6 +2,7 @@ import AppKit
 import os
 import ScadrettoCore
 import ScadrettoEngineClient
+import ScadrettoPlanning
 import ScadrettoViewport
 
 private struct DocumentIO: Sendable {
@@ -15,27 +16,26 @@ private struct DocumentIO: Sendable {
 @MainActor
 @objc(ScadrettoDocument)
 final class ScadrettoDocument: ScadrettoDocumentBase {
-    private struct FeatureAnchor: Equatable {
-        let name: String
-        let iteration: [String: Double]
-        let dependency: String?
-        var start: Int?
-    }
-
     private struct FeatureSelection {
         var requestID: UUID
         var instanceID: UInt32
-        var path: [FeatureAnchor]
+        var path: SelectionPath
         let localPoint: SIMD3<Double>?
     }
 
-    private struct ActiveDiameter {
+    private struct ActiveEdit {
         let requestID: UUID
         let key: EvaluationKey
         let instanceID: UInt32
-        let literal: DiameterLiteral
-        let handle: ViewportDiameterHandle?
+        let choiceID: String
+        let label: String
+        let operation: PlannedPropertyEdit
+        let handle: ViewportEditHandle?
     }
+
+    private static let guideLimit = 256
+    /// A property ID no choice has. It asks for an explicit choice.
+    private static let noChoice = ""
 
     private nonisolated let io = OSAllocatedUnfairLock(initialState: DocumentIO())
     private lazy var source = SourceDocument(buffer: try! SourceBuffer())
@@ -44,8 +44,10 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     private var typingEnd: Int?
     private var typingTimer: Task<Void, Never>?
     private var featureSelection: FeatureSelection?
-    private var activeDiameter: ActiveDiameter?
-    private var diameterChange: String?
+    private var activeEdit: ActiveEdit?
+    private var sourceChange: String?
+    private var propertyChoices: [PropertyChoice] = []
+    private var propertyChoiceID: String?
 
     // AppKit constructs documents on its reading queue when concurrent
     // reads are enabled. The editable source model is created lazily on main.
@@ -95,9 +97,10 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         controller.previewWorkspace.onSelection = { [weak self] id, point in self?.selectFeature(id, at: point) }
         controller.previewWorkspace.onPresentationChange = { [weak self] in self?.refreshInspector() }
         controller.onSyntaxReady = { [weak self] in self?.refreshInspector() }
-        controller.previewWorkspace.sidebar.inspector.onCommit = { [weak self] value in self?.submitDiameter(value) }
-        controller.previewWorkspace.viewport?.onDiameterCommit = { [weak self] sceneID, handleID, value in
-            self?.commitDiameter(value, sceneID: sceneID, handleID: handleID)
+        controller.previewWorkspace.sidebar.inspector.onCommit = { [weak self] value in self?.submitProperty(value) }
+        controller.previewWorkspace.sidebar.inspector.onChoice = { [weak self] index in self?.chooseProperty(index) }
+        controller.previewWorkspace.viewport?.onEditCommit = { [weak self] sceneID, handleID, value in
+            self?.commitProperty(value, sceneID: sceneID, handleID: handleID)
         }
         preview.schedule(source.snapshot, fileURL: fileURL, immediate: true)
     }
@@ -172,8 +175,10 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         do {
             try source.reload(loaded)
             featureSelection = nil
-            activeDiameter = nil
-            diameterChange = nil
+            activeEdit = nil
+            sourceChange = nil
+            propertyChoices = []
+            propertyChoiceID = nil
             editor?.previewWorkspace.sidebar.inspector.show(nil)
             io.withLock {
                 $0.committed = loaded.bytes
@@ -211,8 +216,8 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         let inverted = try source.apply(source.transaction(edits: edits, label: label))
         if inverted.isEmpty { return }
         adjustFeatureAnchors(for: edits)
-        activeDiameter = nil
-        diameterChange = nil
+        activeEdit = nil
+        sourceChange = nil
         let snapshot = source.snapshot
         io.withLock { $0.committed = snapshot.buffer.bytes }
 
@@ -268,19 +273,29 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
 
     private func selectFeature(_ id: UInt32?, at point: SIMD3<Double>?) {
         guard let workspace = editor?.previewWorkspace else { return }
-        diameterChange = nil
-        activeDiameter = nil
+        sourceChange = nil
+        activeEdit = nil
+        propertyChoices = []
+        propertyChoiceID = nil
         guard let id, let result = workspace.result, preview?.acceptsNavigation(from: result) == true,
               let scene = result.scene else {
             featureSelection = nil
             workspace.sidebar.inspector.show(nil)
             workspace.viewport?.showDiameter(handle: nil, guides: [])
+            workspace.showGhost([])
             return
         }
-        let byID = Dictionary(uniqueKeysWithValues: scene.instances.map { ($0.id, $0) })
         featureSelection = FeatureSelection(requestID: result.requestID, instanceID: id,
-                                            path: featurePath(id, in: byID, files: result.files),
+                                            path: SelectionPath(to: id, in: scene, files: result.files),
                                             localPoint: point.flatMap { workspace.geometry?.localPoint($0, on: id) })
+        refreshInspector(highlight: true)
+    }
+
+    private func chooseProperty(_ index: Int) {
+        guard propertyChoices.indices.contains(index) else { return }
+        propertyChoiceID = propertyChoices[index].id
+        activeEdit = nil
+        sourceChange = nil
         refreshInspector(highlight: true)
     }
 
@@ -290,181 +305,257 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         let inspector = workspace.sidebar.inspector
         guard let result = workspace.result, preview?.acceptsNavigation(from: result) == true,
               let scene = result.scene else {
-            activeDiameter = nil
+            activeEdit = nil
             inspector.disableEditing()
             return
         }
         let byID = Dictionary(uniqueKeysWithValues: scene.instances.map { ($0.id, $0) })
         if selection.requestID != result.requestID {
-            let last = selection.path.last
-            let matches = scene.instances.filter { instance in
-                instance.name == last?.name && instance.iteration == last?.iteration
-                    && featurePath(instance.id, in: byID, files: result.files) == selection.path
-            }
-            guard matches.count == 1, let match = matches.first else {
+            switch selection.path.resolve(in: scene, files: result.files) {
+            case .exact(let id):
+                if !PropertyChoice.continues(propertyChoiceID, to: id, along: selection.path, in: scene,
+                                             files: result.files) {
+                    propertyChoiceID = Self.noChoice
+                }
+                selection.instanceID = id
+                selection.requestID = result.requestID
+                // The path now includes any wrapper inserted since the last evaluation.
+                selection.path = SelectionPath(to: id, in: scene, files: result.files)
+            case .ancestor(let id):
+                // The ancestor has other properties, so typing waits for a choice.
+                selection = FeatureSelection(requestID: result.requestID, instanceID: id,
+                                             path: SelectionPath(to: id, in: scene, files: result.files),
+                                             localPoint: nil)
+                propertyChoiceID = Self.noChoice
+            case nil:
                 selectFeature(nil, at: nil)
                 return
             }
-            selection.instanceID = match.id
-            selection.requestID = result.requestID
             featureSelection = selection
-            workspace.sidebar.selectOccurrence(match.id)
+            workspace.sidebar.selectOccurrence(selection.instanceID)
         }
 
-        let iterations = selection.path.last?.iteration.sorted(by: { $0.key < $1.key }).map {
+        let anchors = selection.path.anchors
+        let iterations = anchors.last?.iteration.sorted(by: { $0.key < $1.key }).map {
             "\($0.key) = \($0.value.formatted(.number.grouping(.never)))"
         } ?? []
-        let breadcrumb = (iterations + selection.path.suffix(2).map(\.name)).joined(separator: " · ")
-        var inspection = DiameterInspection(title: breadcrumb)
-        if let diameter = byID[selection.instanceID]?.diameter {
-            inspection.value = diameter.value
-            var names = ["d"]
-            for link in diameter.chain where link.kind == "lookup" || link.kind == "assignment" {
-                if !link.name.isEmpty, names.last != link.name { names.append(link.name) }
+        let breadcrumb = (iterations + anchors.suffix(2).map(\.name)).joined(separator: " · ")
+        guard let instance = byID[selection.instanceID] else { return }
+        propertyChoices = PropertyChoice.choices(on: instance, among: byID)
+        let selectedIndex = PropertyChoice.selectedIndex(after: propertyChoiceID, in: propertyChoices)
+        var inspection = DiameterInspection(title: breadcrumb, choices: propertyChoices.map(\.title),
+                                            selectedChoice: selectedIndex)
+        guard let selectedIndex else {
+            activeEdit = nil
+            workspace.viewport?.showLinear(handle: nil, guides: [])
+            workspace.showGhost([instance.id])
+            if !propertyChoices.isEmpty {
+                inspection.detail = "Choose a property to edit."
+            } else if scene.propertiesOmitted {
+                inspection.value = instance.diameter?.value
+                inspection.detail = "Property detail was omitted for this large model, so it can only be inspected."
+            } else {
+                inspection.detail = "This occurrence has no observed numeric property."
             }
-            inspection.binding = names.joined(separator: " ← ")
+            inspector.show(inspection)
+            if highlight, let span = instance.span { reveal(file: span.fileID, span: span, in: result) }
+            return
+        }
+        let choice = propertyChoices[selectedIndex]
+        propertyChoiceID = choice.id
+        inspection.property = choice.title
+        inspection.fieldIdentifier = choice.fieldIdentifier
+        showProperty(choice, selection: selection, result: result, instances: byID,
+                     inspection: inspection, highlight: highlight, controller: controller)
+    }
+
+    private func showProperty(_ choice: PropertyChoice, selection: FeatureSelection, result: EvaluationResult,
+                              instances: [UInt32: InstanceRecord], inspection initial: DiameterInspection,
+                              highlight: Bool, controller: SourceWindowController) {
+        var inspection = initial
+        let workspace = controller.previewWorkspace
+        let snapshot = source.snapshot
+        inspection.value = choice.value
+        if let expression = choice.expression, let span = try? result.authoringSpan(expression, in: snapshot) {
+            let authored = String(decoding: snapshot.buffer.bytes.subdata(in: span.bytes), as: UTF8.self)
+            inspection.binding = choice.bindingPath ?? authored
+        } else {
+            inspection.binding = choice.bindingPath ?? ""
         }
 
         do {
-            let snapshot = source.snapshot
-            let target = try result.diameterTarget(for: selection.instanceID, in: snapshot)
-            let count = target.affectedInstances.count
-            let cutters = "\(count) \(count == 1 ? "cutter" : "cutters")"
-            switch target.scope {
-            case .parameter: inspection.scope = "Shared parameter · \(cutters)"
-            case .callSite: inspection.scope = count == 1 ? "This call site" : "Shared call site · \(cutters)"
+            let plan = try choice.plan(in: result, source: snapshot, syntax: controller.currentSyntax)
+            inspection.scope = plan.scope
+            let line = Self.line(of: plan.span.bytes.lowerBound, in: snapshot.buffer.bytes)
+            inspection.binding += inspection.binding.isEmpty ? "Line \(line)" : " · line \(line)"
+            if highlight, let range = try? snapshot.buffer.textRange(for: plan.span.bytes) {
+                controller.highlightSource(range)
             }
-            let sourceRange = try snapshot.buffer.textRange(for: target.span.bytes)
-            if highlight { controller.highlightSource(sourceRange) }
-            guard let syntax = controller.currentSyntax, syntax.documentID == snapshot.documentID,
-                  syntax.revision == snapshot.revision else {
-                inspection.detail = "Checking the source token…"
-                inspector.show(inspection)
-                return
-            }
-            guard let token = syntax.ranges.first(where: { $0.kind == .number && $0.range == target.span.bytes }) else {
-                throw DiameterEditError.unverifiedLiteral
-            }
-            let literal = try DiameterLiteral(source: snapshot, span: target.span, numericToken: token.range,
-                                              value: target.value)
             guard workspace.viewport?.presentedSceneID == result.requestID else {
                 inspection.detail = "Waiting for this preview to appear."
-                inspector.show(inspection)
+                workspace.sidebar.inspector.show(inspection)
                 return
             }
-            let handle: ViewportDiameterHandle?
-            if let active = activeDiameter, active.requestID == result.requestID,
-               active.instanceID == selection.instanceID, active.literal == literal {
-                handle = active.handle
+            let handle: ViewportEditHandle?
+            if plan.dragBlocker != nil {
+                handle = nil
+            } else if let activeEdit, activeEdit.requestID == result.requestID,
+                      activeEdit.instanceID == selection.instanceID,
+                      activeEdit.choiceID == choice.id, activeEdit.operation == plan.operation {
+                handle = activeEdit.handle
             } else {
-                handle = workspace.geometry?.handle(for: selection.instanceID, localPoint: selection.localPoint,
-                                                    diameter: literal.value)
+                handle = workspace.geometry.flatMap { makeHandle(for: choice, selection: selection, geometry: $0) }
             }
-            activeDiameter = ActiveDiameter(requestID: result.requestID, key: result.key, instanceID: selection.instanceID,
-                                            literal: literal, handle: handle)
-            let guideLimit = 256
-            let guides = target.affectedInstances.prefix(guideLimit).compactMap { workspace.geometry?.guide(for: $0) }
-            workspace.viewport?.showDiameter(handle: handle, guides: guides)
+            activeEdit = ActiveEdit(requestID: result.requestID, key: result.key, instanceID: selection.instanceID,
+                                    choiceID: choice.id, label: choice.label, operation: plan.operation, handle: handle)
+            var guidesTruncated = false
+            switch handle {
+            case .diameter(let radial):
+                let cutters = choice.previewRims(affected: plan.affected, instances: instances)
+                guidesTruncated = cutters.count > Self.guideLimit
+                let guides = cutters.prefix(Self.guideLimit).compactMap { workspace.geometry?.guide(for: $0) }
+                workspace.viewport?.showDiameter(handle: radial, guides: guides)
+            case .linear(let linear):
+                let motions = choice.previewMotions(affected: plan.affected, instances: instances)
+                guidesTruncated = motions.count > Self.guideLimit
+                let guides = motions.prefix(Self.guideLimit).compactMap { motion in
+                    instances[motion.instance].flatMap {
+                        workspace.geometry?.moveGuide(for: $0, localUnitsPerValue: motion.localUnitsPerValue)
+                    }
+                }
+                workspace.viewport?.showLinear(handle: linear, guides: guides)
+            case nil:
+                workspace.viewport?.showLinear(handle: nil, guides: [])
+            }
+            workspace.showGhost(plan.affected)
             inspection.writable = !controller.isComposing
-            if let diameterChange {
-                inspection.detail = diameterChange
-            } else if count > guideLimit {
-                inspection.detail = "Showing the first \(guideLimit) traced cutters."
+
+            var notes: [String] = []
+            if let sourceChange {
+                notes.append(sourceChange)
+            } else if handle == nil, choice.hasSpatialHandle {
+                notes.append(Self.explanation(for: plan.dragBlocker))
             }
+            if guidesTruncated { notes.append("Showing the first \(Self.guideLimit) moving outlines.") }
+            if workspace.ghostOmitted > 0 {
+                notes.append("\(workspace.ghostOmitted) affected occurrences are too detailed to highlight.")
+            }
+            if handle != nil, let snap = workspace.snapDescription { notes.append(snap) }
+            inspection.detail = notes.joined(separator: "\n")
         } catch {
-            activeDiameter = nil
-            workspace.viewport?.showDiameter(handle: nil, guides: [])
-            inspection.detail = diameterMessage(for: error)
-            if highlight, let span = byID[selection.instanceID]?.span { reveal(file: span.fileID, span: span, in: result) }
+            activeEdit = nil
+            workspace.viewport?.showLinear(handle: nil, guides: [])
+            workspace.showGhost([selection.instanceID])
+            inspection.detail = propertyMessage(for: error)
+            if highlight, let span = choice.expression { reveal(file: span.fileID, span: span, in: result) }
         }
-        inspector.show(inspection)
+        workspace.sidebar.inspector.show(inspection)
     }
 
-    private func diameterMessage(for error: any Error) -> String {
+    private static func line(of offset: Int, in bytes: Data) -> Int {
+        1 + String(decoding: bytes.prefix(offset), as: UTF8.self).filter(\.isNewline).count
+    }
+
+    private static func explanation(for blocker: DragBlocker?) -> String {
+        switch blocker {
+        case .iterationZero: "Iteration zero keeps its position. Enter pitch or choose another occurrence."
+        case .unverified: "Other uses of this value could move the result, so dragging is off. Enter a value."
+        case .opaqueFrame: "An enclosing operation hides this feature's placement, so dragging is off. Enter a value."
+        case .sharedPath: "This expression applies more than once along the same path. Enter a value."
+        case nil: "A stable drag frame could not be verified. Enter a value."
+        }
+    }
+
+    private func makeHandle(for choice: PropertyChoice, selection: FeatureSelection,
+                            geometry: PreviewGeometry) -> ViewportEditHandle? {
+        switch choice.action {
+        case .value(let owner, let property):
+            if let pitch = property.pitch {
+                return geometry.moveHandle(shape: selection.instanceID, in: owner, axis: .x,
+                                           value: property.value, valuePerUnit: 1 / pitch.iteration)
+                    .map(ViewportEditHandle.linear)
+            }
+            if let axis = property.semantic.translateAxis {
+                return geometry.moveHandle(shape: selection.instanceID, in: owner, axis: axis, value: property.value)
+                    .map(ViewportEditHandle.linear)
+            }
+            if property.semantic == .cylinderDiameter {
+                return geometry.handle(for: owner.id, localPoint: selection.localPoint, diameter: property.value)
+                    .map(ViewportEditHandle.diameter)
+            }
+            return geometry.sizeHandle(for: owner.id, property: property, localPoint: selection.localPoint)
+                .map(ViewportEditHandle.linear)
+        case .offset(let owner, let property):
+            guard let axis = property.semantic.translateAxis else { return nil }
+            return geometry.moveHandle(shape: selection.instanceID, in: owner, axis: axis, value: 0)
+                .map(ViewportEditHandle.linear)
+        case .prefix(let owner, let axis):
+            return geometry.moveHandle(shape: selection.instanceID, in: owner, axis: axis, value: 0)
+                .map(ViewportEditHandle.linear)
+        }
+    }
+
+    private func propertyMessage(for error: any Error) -> String {
         switch error {
-        case DiameterBindingError.unobserved: "This occurrence has no observed uniform diameter binding."
-        case DiameterBindingError.expression: "The diameter comes from an expression without a verified literal target."
-        case DiameterBindingError.dependency(let path): "The diameter is authored in \(URL(fileURLWithPath: path).lastPathComponent)."
-        case DiameterBindingError.staleSource: DiameterEditError.staleSource.localizedDescription
+        case PropertyBindingError.unobserved: "The evaluator did not establish a writable binding."
+        case PropertyBindingError.expression: "This expression has no verified literal target."
+        case PropertyBindingError.dependency(let path): "The target is authored in \(URL(fileURLWithPath: path).lastPathComponent)."
+        case PropertyBindingError.staleSource: ExplicitEditError.staleSource.localizedDescription
         default: error.localizedDescription
         }
     }
 
-    private func featurePath(_ id: UInt32, in instances: [UInt32: InstanceRecord], files: [FileRecord]) -> [FeatureAnchor] {
-        var path: [FeatureAnchor] = []
-        var next: UInt32? = id
-        while let id = next, let instance = instances[id] {
-            let file = instance.span.flatMap { span in files.first { $0.id == span.fileID } }
-            let dependency = file.flatMap { $0.kind == .main ? nil : $0.resolvedPath ?? $0.logicalPath }
-            path.append(FeatureAnchor(name: instance.name, iteration: instance.iteration, dependency: dependency,
-                                      start: instance.span.flatMap { Int(exactly: $0.start) }))
-            next = instance.parent
-        }
-        return path.reversed()
-    }
-
     private func adjustFeatureAnchors(for edits: [SourceEdit]) {
         guard var selection = featureSelection else { return }
-        for index in selection.path.indices {
-            let anchor = selection.path[index]
-            guard anchor.dependency == nil, let start = anchor.start else { continue }
-            var offset = 0
-            for edit in edits {
-                if edit.range.contains(start) {
-                    selectFeature(nil, at: nil)
-                    return
-                }
-                if edit.range.upperBound <= start { offset += edit.replacement.count - edit.range.count }
-            }
-            selection.path[index].start = start + offset
+        guard selection.path.follow(edits) else {
+            selectFeature(nil, at: nil)
+            return
         }
         featureSelection = selection
     }
 
-    private func submitDiameter(_ text: String) {
-        guard let active = activeDiameter else { return }
-        var input = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let decimal = Locale.current.decimalSeparator, decimal != ".", !input.contains(".") {
-            input = input.replacingOccurrences(of: decimal, with: ".")
-        }
-        guard let value = Double(input) else {
-            editor?.previewWorkspace.sidebar.inspector.showMessage(DiameterEditError.invalidDiameter.localizedDescription)
+    private func submitProperty(_ text: String) {
+        guard let active = activeEdit,
+              let shown = propertyChoices.first(where: { $0.id == active.choiceID })?.value else { return }
+        guard let value = PropertyEntry.value(of: text, shown: shown) else {
+            editor?.previewWorkspace.sidebar.inspector.showMessage("Enter a finite number.")
             return
         }
-        commitDiameter(value, sceneID: active.requestID, handleID: nil)
+        commitProperty(value, sceneID: active.requestID, handleID: nil)
     }
 
-    private func commitDiameter(_ value: Double, sceneID: UUID, handleID: UUID?) {
+    private func commitProperty(_ value: Double, sceneID: UUID, handleID: UUID?) {
         guard let controller = editor else { return }
         let workspace = controller.previewWorkspace
         let inspector = workspace.sidebar.inspector
         guard !controller.isComposing else {
-            inspector.showMessage("Finish composing text before editing the diameter.")
+            inspector.showMessage("Finish composing text before editing this property.")
             return
         }
-        guard let active = activeDiameter, active.requestID == sceneID,
+        guard let active = activeEdit, active.requestID == sceneID,
               let result = workspace.result, result.requestID == sceneID, result.key == active.key,
               preview?.acceptsWriteBack(from: result) == true,
               workspace.viewport?.presentedSceneID == sceneID,
               active.instanceID == featureSelection?.instanceID,
+              active.choiceID == propertyChoiceID,
               handleID == nil || handleID == active.handle?.id else {
-            inspector.showMessage(DiameterEditError.staleSource.localizedDescription)
+            inspector.showMessage(ExplicitEditError.staleSource.localizedDescription)
             return
         }
         do {
-            guard let edit = try active.literal.edit(setting: value, in: source.snapshot) else {
+            guard let edit = try active.operation.edit(setting: value, in: source.snapshot) else {
                 refreshInspector()
                 return
             }
             let editedRange = try source.buffer.textRange(for: edit.range)
             let oldToken = String(decoding: edit.expected, as: UTF8.self)
             let newToken = String(decoding: edit.replacement, as: UTF8.self)
-            try commit([edit], label: "Change Diameter",
+            try commit([edit], label: active.label,
                        selection: NSRange(location: editedRange.location, length: newToken.utf16.count))
-            diameterChange = "Source change · \(oldToken) → \(newToken)"
-            inspector.showMessage(diameterChange ?? "")
+            sourceChange = "Source change · \(oldToken) → \(newToken)"
+            inspector.showMessage(sourceChange ?? "")
         } catch {
-            inspector.showMessage(diameterMessage(for: error))
+            inspector.showMessage(propertyMessage(for: error))
         }
     }
 
@@ -559,6 +650,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         guard let step = sender.representedObject as? Double, let viewport = editor?.previewWorkspace.viewport else { return }
         viewport.dragSnapIncrement = step
         UserDefaults.standard.set(step, forKey: "dragSnapIncrement")
+        editor?.previewWorkspace.showSnap()
         refreshInspector()
     }
 
@@ -614,5 +706,20 @@ extension String {
             .replacingOccurrences(of: "\r", with: "\n")
             .replacingOccurrences(of: "\u{2028}", with: "\n")
             .replacingOccurrences(of: "\u{2029}", with: "\n")
+    }
+}
+
+private extension PropertyChoice {
+    var hasSpatialHandle: Bool {
+        guard case .value(_, let property) = action else { return true }
+        return property.semantic != .fragmentCount && property.semantic != .moduleArgument
+    }
+
+    var fieldIdentifier: String {
+        switch action {
+        case .value(_, let property) where property.semantic == .cylinderDiameter: "diameterField"
+        case .value(_, let property) where property.semantic == .pitch: "pitchField"
+        default: "propertyValue"
+        }
     }
 }

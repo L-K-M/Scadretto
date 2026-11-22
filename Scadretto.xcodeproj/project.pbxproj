@@ -21,6 +21,7 @@
 		B3BAEE938B3DE7BEAC1FB1EE /* ScadrettoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */; };
 		D7240DF438FE0AF735ADA91A /* warning-only.scad in Resources */ = {isa = PBXBuildFile; fileRef = A6B1DF3941CE369D6617228D /* warning-only.scad */; };
 		F6C1EB529D983B5238B37644 /* ScadrettoDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BB55BAD86B153C539296444 /* ScadrettoDocument.swift */; };
+		B35B0B4BDEB9646158C214EF /* ScadrettoPlanning in Frameworks */ = {isa = PBXBuildFile; productRef = AE6C172D87560D08D31C2A28 /* ScadrettoPlanning */; };
 		FE0843EDDE20C79009CFFF87 /* ScadrettoEngineClient in Frameworks */ = {isa = PBXBuildFile; productRef = 0CBEEA630745310B4EC8FA42 /* ScadrettoEngineClient */; };
 		FEBA42DA637F14EE90D024FC /* ScadrettoViewport in Frameworks */ = {isa = PBXBuildFile; productRef = AE7808BDDD3B8F0C9AB0A6A0 /* ScadrettoViewport */; };
 		FEEB9832B98CF17B34D6752A /* editor-bom-crlf-edited.scad in Resources */ = {isa = PBXBuildFile; fileRef = 884C485CF77F5109F0C48E35 /* editor-bom-crlf-edited.scad */; };
@@ -64,6 +65,7 @@
 				69926DA9DECD33CC429B2E09 /* ScadrettoCore in Frameworks */,
 				1BD9F8B3CB8555DD73B2F12A /* ScadrettoSyntax in Frameworks */,
 				FE0843EDDE20C79009CFFF87 /* ScadrettoEngineClient in Frameworks */,
+				B35B0B4BDEB9646158C214EF /* ScadrettoPlanning in Frameworks */,
 				FEBA42DA637F14EE90D024FC /* ScadrettoViewport in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -156,6 +158,7 @@
 				0D6AEED0CB0DC0C3D2A11CFC /* ScadrettoCore */,
 				BCD167B455E3C7D983C91905 /* ScadrettoSyntax */,
 				0CBEEA630745310B4EC8FA42 /* ScadrettoEngineClient */,
+				AE6C172D87560D08D31C2A28 /* ScadrettoPlanning */,
 				AE7808BDDD3B8F0C9AB0A6A0 /* ScadrettoViewport */,
 			);
 			productName = Scadretto;
@@ -539,6 +542,10 @@
 		0D6AEED0CB0DC0C3D2A11CFC /* ScadrettoCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ScadrettoCore;
+		};
+		AE6C172D87560D08D31C2A28 /* ScadrettoPlanning */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ScadrettoPlanning;
 		};
 		AE7808BDDD3B8F0C9AB0A6A0 /* ScadrettoViewport */ = {
 			isa = XCSwiftPackageProductDependency;

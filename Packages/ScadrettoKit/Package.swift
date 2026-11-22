@@ -9,6 +9,7 @@ let package = Package(
         .library(name: "ScadrettoCore", targets: ["ScadrettoCore"]),
         .library(name: "ScadrettoSyntax", targets: ["ScadrettoSyntax"]),
         .library(name: "ScadrettoEngineClient", targets: ["ScadrettoEngineClient"]),
+        .library(name: "ScadrettoPlanning", targets: ["ScadrettoPlanning"]),
         .library(name: "ScadrettoViewport", targets: ["ScadrettoViewport"]),
     ],
     dependencies: [
@@ -29,8 +30,15 @@ let package = Package(
         .testTarget(name: "ScadrettoSyntaxTests", dependencies: ["ScadrettoSyntax", "ScadrettoCore"]),
         .target(name: "ScadrettoEngineClient", dependencies: ["ScadrettoCore"]),
         .testTarget(name: "ScadrettoEngineClientTests", dependencies: [
-            "ScadrettoEngineClient", "ScadrettoCore", "ScadrettoSyntax", "ScadrettoViewport",
+            "ScadrettoEngineClient", "ScadrettoCore", "ScadrettoSyntax", "ScadrettoViewport", "ScadrettoTestSupport",
         ]),
+        .target(name: "ScadrettoPlanning", dependencies: ["ScadrettoCore", "ScadrettoSyntax", "ScadrettoEngineClient"]),
+        .testTarget(name: "ScadrettoPlanningTests", dependencies: [
+            "ScadrettoPlanning", "ScadrettoCore", "ScadrettoSyntax", "ScadrettoEngineClient", "ScadrettoTestSupport",
+            "ScadrettoViewport",
+        ]),
+        .target(name: "ScadrettoTestSupport", dependencies: ["ScadrettoCore", "ScadrettoEngineClient"],
+                path: "Tests/ScadrettoTestSupport"),
         .target(name: "ScadrettoViewport"),
         .testTarget(name: "ScadrettoViewportTests", dependencies: ["ScadrettoViewport"]),
     ]

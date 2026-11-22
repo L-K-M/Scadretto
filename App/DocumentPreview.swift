@@ -1,6 +1,7 @@
 import Foundation
 import ScadrettoCore
 import ScadrettoEngineClient
+import ScadrettoPlanning
 import ScadrettoViewport
 import simd
 
@@ -9,6 +10,10 @@ struct PreviewGeometry: Sendable {
     let picker: ViewportPicker?
     let occurrences: [UInt32: ViewportOperand]
     let bounds: [UInt32: SceneSnapshot.BoundingBox]
+    private let meshes: [UInt32: ViewportMesh]
+    private let scene: SceneSnapshot
+    /// Bounds of everything rendered at or below each instance, in world space.
+    private let extents: [UInt32: ViewportBounds]
 
     init?(scene: SceneSnapshot) {
         guard let final = scene.mesh else { return nil }
@@ -17,33 +22,27 @@ struct PreviewGeometry: Sendable {
         let meshes = Dictionary(uniqueKeysWithValues: scene.operands.map {
             ($0.id, ViewportMesh(positions: $0.mesh.positions, indices: $0.mesh.indices))
         })
+        self.meshes = meshes
         bounds = Dictionary(uniqueKeysWithValues: scene.operands.map { ($0.id, $0.mesh.bounds) })
-        var subtracted: Set<UInt32> = []
-        for operation in scene.operations {
-            for child in operation.children where child.role == .subtracted {
-                subtracted.insert(child.instanceID)
-            }
-        }
-        var reversed: [UInt32: Bool] = [:]
+        self.scene = scene
+        let subtracted = scene.subtractedInstances
         var occurrences: [UInt32: ViewportOperand] = [:]
         for instance in scene.instances {
-            let parentReversed = instance.parent.flatMap { reversed[$0] } ?? false
-            let isSubtracted = parentReversed != subtracted.contains(instance.id)
-            reversed[instance.id] = isSubtracted
             if let meshID = instance.operand {
                 occurrences[instance.id] = ViewportOperand(id: instance.id, meshID: meshID,
                                                            world: Self.matrix(instance.world),
-                                                           isSubtracted: isSubtracted)
+                                                           isSubtracted: subtracted.contains(instance.id))
             }
         }
         self.occurrences = occurrences
+        extents = Self.extents(of: scene.instances, occurrences: occurrences, bounds: bounds)
         picker = ViewportPicker(mesh: mesh, owners: final.triangleOwners, operandMeshes: meshes,
                                 occurrences: Array(occurrences.values))
     }
 
     func guide(for instanceID: UInt32) -> ViewportDiameterGuide? {
         guard let operand = occurrences[instanceID], let bounds = bounds[operand.meshID],
-              Self.invertible(operand.world) else { return nil }
+              operand.world.isInvertibleFrame else { return nil }
         return ViewportDiameterGuide(
             bottom: Self.point(SIMD3(0, 0, bounds.min.z), in: operand.world),
             top: Self.point(SIMD3(0, 0, bounds.max.z), in: operand.world),
@@ -52,13 +51,13 @@ struct PreviewGeometry: Sendable {
     }
 
     func localPoint(_ worldPoint: SIMD3<Double>, on instanceID: UInt32) -> SIMD3<Double>? {
-        guard let operand = occurrences[instanceID], Self.invertible(operand.world) else { return nil }
+        guard let operand = occurrences[instanceID], operand.world.isInvertibleFrame else { return nil }
         return Self.point(worldPoint, in: operand.world.inverse)
     }
 
     func handle(for instanceID: UInt32, localPoint: SIMD3<Double>?, diameter: Double) -> ViewportDiameterHandle? {
         guard let operand = occurrences[instanceID], let bounds = bounds[operand.meshID],
-              Self.invertible(operand.world) else { return nil }
+              operand.world.isInvertibleFrame else { return nil }
         var center = SIMD3(0.0, 0.0, (bounds.min.z + bounds.max.z) / 2)
         var radial = SIMD3(1.0, 0.0, 0.0)
         if let local = localPoint {
@@ -72,16 +71,97 @@ struct PreviewGeometry: Sendable {
                                       radialUnit: Self.xyz(operand.world * SIMD4(radial, 0)), diameter: diameter)
     }
 
+    /// One reverse pass, since a child always follows its parent.
+    private static func extents(of instances: [InstanceRecord], occurrences: [UInt32: ViewportOperand],
+                                bounds: [UInt32: SceneSnapshot.BoundingBox]) -> [UInt32: ViewportBounds] {
+        var extents: [UInt32: ViewportBounds] = [:]
+        for instance in instances.reversed() {
+            if let operand = occurrences[instance.id], let local = bounds[operand.meshID] {
+                for corner in 0..<8 {
+                    let position = SIMD3(corner & 1 == 0 ? local.min.x : local.max.x,
+                                         corner & 2 == 0 ? local.min.y : local.max.y,
+                                         corner & 4 == 0 ? local.min.z : local.max.z)
+                    let world = point(position, in: operand.world)
+                    extents[instance.id] = extents[instance.id]?.including(world) ?? ViewportBounds(min: world, max: world)
+                }
+            }
+            if let parent = instance.parent, let own = extents[instance.id] {
+                extents[parent] = extents[parent]?.including(own.min).including(own.max) ?? own
+            }
+        }
+        return extents
+    }
+
+    /// The operands below these instances, and how many did not fit the budget.
+    func ghost(for instanceIDs: [UInt32]) -> (mesh: ViewportMesh?, omitted: Int) {
+        let operands = scene.renderedOperands(below: instanceIDs).compactMap { occurrences[$0] }
+        let ghost = ViewportGhost(operands: operands, meshes: meshes)
+        return (ghost.mesh, ghost.omitted)
+    }
+
+    func moveHandle(shape: UInt32, in frame: InstanceRecord, axis: ModelAxis, value: Double,
+                    valuePerUnit: Double = 1) -> ViewportLinearHandle? {
+        let transform = Self.matrix(frame.world)
+        guard let origin = extents[shape]?.center, transform.isInvertibleFrame else { return nil }
+        return ViewportLinearHandle(anchor: origin, axis: Self.axis(axis, of: transform),
+                                    value: value, valuePerUnit: valuePerUnit)
+    }
+
+    func moveGuide(for frame: InstanceRecord, localUnitsPerValue: SIMD3<Double>) -> ViewportLinearGuide? {
+        let transform = Self.matrix(frame.world)
+        guard let origin = extents[frame.id]?.center, transform.isInvertibleFrame else { return nil }
+        return ViewportLinearGuide(anchor: origin,
+                                   worldUnitsPerValue: Self.xyz(transform * SIMD4(localUnitsPerValue, 0)))
+    }
+
+    func sizeHandle(for instanceID: UInt32, property: PropertyRecord,
+                    localPoint: SIMD3<Double>?) -> ViewportLinearHandle? {
+        guard let operand = occurrences[instanceID], let bounds = bounds[operand.meshID],
+              operand.world.isInvertibleFrame else { return nil }
+        let center = (bounds.min + bounds.max) / 2
+        var anchor = center
+        var axis = SIMD3<Double>.zero
+        var factor = property.centered ? 2.0 : 1.0
+        switch property.semantic {
+        case .cubeUniformSize, .cubeSizeX:
+            axis.x = 1
+            anchor.x = bounds.max.x
+        case .cubeSizeY:
+            axis.y = 1
+            anchor.y = bounds.max.y
+        case .cubeSizeZ, .cylinderHeight:
+            axis.z = 1
+            anchor.z = bounds.max.z
+        case .sphereDiameter:
+            let direction = localPoint.map { $0 - center } ?? SIMD3(1.0, 0, 0)
+            axis = simd_length(direction) > 1e-10 ? simd_normalize(direction) : SIMD3(1, 0, 0)
+            anchor += axis * (property.value / 2)
+            factor = 2
+        case .cylinderBottomRadius, .cylinderTopRadius:
+            let direction = localPoint.map { SIMD3($0.x, $0.y, 0) } ?? SIMD3(1.0, 0, 0)
+            axis = simd_length(direction) > 1e-10 ? simd_normalize(direction) : SIMD3(1, 0, 0)
+            anchor += axis * property.value
+            anchor.z = property.semantic == .cylinderTopRadius ? bounds.max.z : bounds.min.z
+            factor = 1
+        default:
+            return nil
+        }
+        return ViewportLinearHandle(anchor: Self.point(anchor, in: operand.world),
+                                    axis: Self.xyz(operand.world * SIMD4(axis, 0)),
+                                    value: property.value, valuePerUnit: factor, exclusiveMinimum: 0)
+    }
+
+    private static func axis(_ axis: ModelAxis, of matrix: simd_double4x4) -> SIMD3<Double> {
+        var local = SIMD4<Double>.zero
+        local[axis.index] = 1
+        return xyz(matrix * local)
+    }
+
     private static func matrix(_ values: [Double]) -> simd_double4x4 {
         func column(_ index: Int) -> SIMD4<Double> {
             SIMD4(values[index], values[index + 1], values[index + 2], values[index + 3])
         }
         return simd_double4x4(columns: (column(0), column(4), column(8), column(12)))
-    }
-
-    private static func invertible(_ matrix: simd_double4x4) -> Bool {
-        let scale = simd_length(matrix.columns.0) * simd_length(matrix.columns.1) * simd_length(matrix.columns.2)
-        return scale.isFinite && scale > 0 && abs(simd_determinant(matrix)) > scale * 1e-12
     }
 
     private static func point(_ point: SIMD3<Double>, in matrix: simd_double4x4) -> SIMD3<Double> {

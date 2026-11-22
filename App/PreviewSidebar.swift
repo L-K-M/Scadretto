@@ -1,5 +1,6 @@
 import AppKit
 import ScadrettoEngineClient
+import ScadrettoPlanning
 
 @MainActor
 final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelegate, NSTextViewDelegate {
@@ -45,7 +46,8 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     private var selectingOccurrence = false
 
     var onReveal: ((UInt32, WireSpan?, EvaluationResult) -> Void)?
-    var onOccurrence: ((UInt32) -> Void)?
+    var onOccurrence: ((UInt32?) -> Void)?
+    var onCandidate: ((UInt32) -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -198,7 +200,7 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         let id = candidates[index]
         showCandidates([])
         selectOccurrence(id)
-        onOccurrence?(id)
+        onCandidate?(id)
     }
 
     func selectOccurrence(_ id: UInt32?) {
@@ -222,9 +224,9 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
-        guard !selectingOccurrence, let id = selectedInstance?.id else { return }
+        guard !selectingOccurrence, current else { return }
         showCandidates([])
-        onOccurrence?(id)
+        onOccurrence?(selectedInstance?.id)
     }
 
     private func rebuildDiagnostics() {
@@ -306,6 +308,10 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
 
 struct DiameterInspection {
     let title: String
+    var property = "Diameter"
+    var fieldIdentifier = "diameterField"
+    var choices: [String] = []
+    var selectedChoice: Int?
     var binding = ""
     var scope = ""
     var value: Double?
@@ -318,12 +324,15 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
     private let title = NSTextField(labelWithString: "")
     private let binding = NSTextField(wrappingLabelWithString: "")
     private let scope = NSTextField(wrappingLabelWithString: "")
+    private let choices = NSPopUpButton()
+    private let dimension = NSTextField(labelWithString: "Diameter")
     private let field = NSTextField()
     private let fieldRow = NSStackView()
     private let detail = NSTextField(wrappingLabelWithString: "")
     private var inspection: DiameterInspection?
 
     var onCommit: ((String) -> Void)?
+    var onChoice: ((Int) -> Void)?
 
     init() {
         super.init(frame: .zero)
@@ -340,10 +349,16 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
         detail.textColor = .secondaryLabelColor
         detail.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         detail.setAccessibilityIdentifier("editStatus")
+        choices.target = self
+        choices.action = #selector(changeProperty)
+        choices.setAccessibilityIdentifier("propertyChoice")
+        choices.setAccessibilityLabel("Choose a property")
+        choices.lineBreakMode = .byTruncatingTail
 
         fieldRow.orientation = .horizontal
         fieldRow.alignment = .firstBaseline
-        let dimension = NSTextField(labelWithString: "Diameter")
+        dimension.lineBreakMode = .byTruncatingTail
+        dimension.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         fieldRow.addArrangedSubview(dimension)
         field.target = self
         field.action = #selector(commit)
@@ -352,7 +367,7 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
         field.setAccessibilityLabel("Diameter in model units")
         field.widthAnchor.constraint(equalToConstant: 72).isActive = true
         fieldRow.addArrangedSubview(field)
-        for view in [title, binding, scope, fieldRow, detail] {
+        for view in [title, choices, binding, scope, fieldRow, detail] {
             addArrangedSubview(view)
             view.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor).isActive = true
         }
@@ -365,6 +380,15 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
         self.inspection = inspection
         isHidden = inspection == nil
         guard let inspection else { return }
+        if choices.itemTitles != inspection.choices {
+            choices.removeAllItems()
+            choices.addItems(withTitles: inspection.choices)
+        }
+        // Without a selection even a single property needs an explicit choice.
+        choices.isHidden = inspection.choices.isEmpty
+            || (inspection.choices.count == 1 && inspection.selectedChoice != nil)
+        choices.isEnabled = true
+        choices.selectItem(at: inspection.selectedChoice ?? -1)
         for (label, text) in [(title, inspection.title), (binding, inspection.binding),
                               (scope, inspection.scope), (detail, inspection.detail)] {
             label.stringValue = text
@@ -372,15 +396,21 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
             label.isHidden = text.isEmpty
         }
         fieldRow.isHidden = inspection.value == nil
-        field.stringValue = inspection.value.map(Self.number) ?? ""
+        dimension.stringValue = inspection.property
+        field.setAccessibilityIdentifier(inspection.fieldIdentifier)
+        field.setAccessibilityLabel(inspection.property)
+        field.stringValue = inspection.value.map { PropertyEntry.text(of: $0) } ?? ""
         field.isEnabled = inspection.writable
     }
 
-    func disableEditing() { field.isEnabled = false }
+    func disableEditing() {
+        choices.isEnabled = false
+        field.isEnabled = false
+    }
 
     func showPreview(_ diameter: Double?) {
         if let diameter, let initial = inspection?.value {
-            detail.stringValue = "Preview · \(Self.number(initial)) → \(Self.number(diameter))"
+            detail.stringValue = "Preview · \(PropertyEntry.text(of: initial)) → \(PropertyEntry.text(of: diameter))"
             detail.isHidden = false
         } else {
             showMessage(inspection?.detail ?? "")
@@ -397,8 +427,7 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
     }
 
     @objc private func commit() { onCommit?(field.stringValue) }
-
-    private static func number(_ value: Double) -> String {
-        value.formatted(.number.grouping(.never).precision(.significantDigits(1...12)))
+    @objc private func changeProperty() {
+        onChoice?(choices.indexOfSelectedItem)
     }
 }

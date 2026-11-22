@@ -1,3 +1,4 @@
+import Carbon.HIToolbox
 import XCTest
 
 final class ScadrettoUITests: XCTestCase {
@@ -385,7 +386,253 @@ final class ScadrettoUITests: XCTestCase {
         add(screenshot)
     }
 
+    @MainActor
+    func testPitchDragEscapeSyntaxRecoveryAndIterationZero() throws {
+        let app = launch(arguments: ["-dragSnapIncrement", "0.5"])
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Pitched Mounting Plate.scad")
+        let original = try fixture("mounting-plate")
+        let originalText = String(decoding: original, as: UTF8.self)
+        let pitchedText = originalText.replacingOccurrences(of: "pitch = 20;", with: "pitch = 22;")
+        try original.write(to: url)
+
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        let detail = app.staticTexts["editStatus"].firstMatch
+        waitForText("Preview ready", in: status, timeout: 15)
+        waitForText("Snap 0.5", in: app.staticTexts["dragSnap"].firstMatch)
+
+        // Step 6: iteration 2 moves +4 along local X.
+        try selectThirdBore(in: viewport, app: app)
+        chooseProperty("Pitch", in: app)
+        waitForText("Shared parameter · 4 cutters", in: app.staticTexts["targetScope"].firstMatch)
+        let field = app.textFields["pitchField"].firstMatch
+        waitUntilEnabled(field)
+        XCTAssertEqual(field.value as? String, "20")
+        waitForText("Snap 0.5", in: detail)
+        let grip = plateCoordinate(CGPoint(x: 289.19969, y: 310.45504), in: viewport)
+        let plusFour = plateCoordinate(CGPoint(x: 301.01570, y: 317.27702), in: viewport)
+        grip.click(forDuration: 0.2, thenDragTo: plusFour)
+        waitForText("pitch = 22;", in: editor)
+        XCTAssertEqual(editor.value as? String, pitchedText)
+        waitForText("Preview ready", in: status, timeout: 15)
+        waitForText("Source change · 20 → 22", in: detail, timeout: 8)
+        choose("Save", from: "File", in: app)
+        XCTAssertEqual(try Data(contentsOf: url), Data(pitchedText.utf8))
+        let saved = XCTAttachment(data: Data(pitchedText.utf8), uniformTypeIdentifier: "public.source-code")
+        saved.name = "Saved Pitched Plate.scad"
+        saved.lifetime = .keepAlways
+        add(saved)
+        let shot = XCTAttachment(screenshot: viewport.screenshot())
+        shot.name = "Pitch 22 Preview"
+        shot.lifetime = .keepAlways
+        add(shot)
+
+        choose("Undo Change Pitch", from: "Edit", in: app)
+        waitForText("pitch = 20;", in: editor)
+        XCTAssertEqual(editor.value as? String, originalText)
+        waitForText("Preview ready", in: status, timeout: 15)
+        waitUntilEnabled(field)
+
+        // Step 7: Escape while the button is held leaves bytes and undo depth alone.
+        waitForText("Snap 0.5", in: detail)
+        try cancelDrag(from: grip.screenPoint, to: plusFour.screenPoint) {
+            waitForText("Preview · 20 → 22", in: detail)
+            let guides = XCTAttachment(screenshot: viewport.screenshot())
+            guides.name = "Held Pitch Drag Guides"
+            guides.lifetime = .keepAlways
+            add(guides)
+        }
+        XCTAssertEqual(editor.value as? String, originalText)
+        XCTAssertEqual(field.value as? String, "20")
+        app.menuBarItems["Edit"].click()
+        XCTAssertFalse(app.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "Undo")).firstMatch.isEnabled)
+        XCTAssertTrue(app.menuItems["Redo Change Pitch"].firstMatch.isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+
+        editor.click()
+        editor.typeKey(.downArrow, modifierFlags: .command)
+        editor.typeKey(.leftArrow, modifierFlags: [])
+        editor.typeKey(.delete, modifierFlags: [])
+        waitForText("Parser error", in: status, timeout: 15)
+        waitForText("Preview out of date", in: status)
+        XCTAssertFalse(field.isEnabled)
+        editor.typeText("}")
+        waitForText("Preview ready", in: status, timeout: 15)
+        waitUntilEnabled(field)
+        XCTAssertEqual(editor.value as? String, originalText)
+
+        // Iteration zero cannot define a drag, and still accepts the number.
+        // A wall point whose sight line clears the opening's rim by one unit.
+        let firstBore = plateCoordinate(CGPoint(x: 180.18168, y: 239.88722), in: viewport)
+        firstBore.click()
+        waitForText("i = 0", in: app.staticTexts["inspectorSelection"].firstMatch, timeout: 8)
+        chooseProperty("Pitch", in: app)
+        waitForText("Iteration zero keeps its position", in: detail)
+        waitUntilEnabled(field)
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("22")
+        field.typeKey(.return, modifierFlags: [])
+        waitForText("pitch = 22;", in: editor, timeout: 8)
+        XCTAssertEqual(editor.value as? String, pitchedText)
+    }
+
+    @MainActor
+    func testOutlineReachesEnclosedOperandWithCommaEntry() throws {
+        let app = launch(arguments: ["-AppleLocale", "de_DE"])
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Enclosed Cutter.scad")
+        let originalText = """
+            difference() {
+                cube(20, center = true);
+                cylinder(h = 4, d = 4, center = true, $fn = 16); // cavity
+            }
+
+            """
+        let editedText = originalText.replacingOccurrences(of: "d = 4,", with: "d = 4.5,")
+        try Data(originalText.utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("Preview ready", in: status, timeout: 15)
+
+        // A ray through the cavity stops at the enclosing cube.
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let selection = app.staticTexts["inspectorSelection"].firstMatch
+        waitForText("cube", in: selection, timeout: 8)
+
+        let operand = app.outlines["sceneOutline"].staticTexts
+            .matching(NSPredicate(format: "label CONTAINS %@", "cylinder")).firstMatch
+        XCTAssertTrue(operand.waitForExistence(timeout: 5), "The enclosed operand must be listed in the outline")
+        operand.click()
+        waitForText("cylinder", in: selection, timeout: 8)
+        let ghost = XCTAttachment(screenshot: viewport.screenshot())
+        ghost.name = "Enclosed Operand Ghost"
+        ghost.lifetime = .keepAlways
+        add(ghost)
+
+        let diameter = app.textFields["diameterField"].firstMatch
+        waitUntilEnabled(diameter)
+        XCTAssertEqual(diameter.value as? String, "4")
+        diameter.click()
+        diameter.typeKey("a", modifierFlags: .command)
+        diameter.typeText("9")
+        chooseProperty("Height (centered)", in: app)
+        let height = app.textFields["propertyValue"].firstMatch
+        waitUntilEnabled(height)
+        XCTAssertEqual(height.value as? String, "4", "Text typed for the diameter must not reach the height")
+        XCTAssertEqual(editor.value as? String, originalText, "Changing the property must not commit unfinished text")
+
+        chooseProperty("Diameter", in: app)
+        waitUntilEnabled(diameter)
+        diameter.click()
+        diameter.typeKey("a", modifierFlags: .command)
+        diameter.typeText("4,5")
+        diameter.typeKey(.return, modifierFlags: [])
+        waitForText("d = 4.5,", in: editor, timeout: 8)
+        XCTAssertEqual(editor.value as? String, editedText)
+        waitForText("Preview ready", in: status, timeout: 15)
+        waitForText("4,5", in: diameter, timeout: 8)
+
+        choose("Save", from: "File", in: app)
+        XCTAssertEqual(try Data(contentsOf: url), Data(editedText.utf8))
+        choose("Undo Change Diameter", from: "Edit", in: app)
+        waitForText("d = 4,", in: editor)
+        XCTAssertEqual(editor.value as? String, originalText)
+    }
+
+    @MainActor
+    func testANewPressAbandonsADragWhoseReleaseWasLost() throws {
+        let app = launch(arguments: ["-dragSnapIncrement", "0.5"])
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Lost Release.scad")
+        let original = try fixture("mounting-plate")
+        try original.write(to: url)
+
+        let editor = open(url, in: app)
+        waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 15)
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        try selectThirdBore(in: viewport, app: app)
+        chooseProperty("Pitch", in: app)
+        let detail = app.staticTexts["editStatus"].firstMatch
+        waitUntilEnabled(app.textFields["pitchField"].firstMatch)
+        waitForText("Snap 0.5", in: detail)
+        let grip = plateCoordinate(CGPoint(x: 289.19969, y: 310.45504), in: viewport).screenPoint
+        let moved = plateCoordinate(CGPoint(x: 301.01570, y: 317.27702), in: viewport).screenPoint
+        let background = plateCoordinate(CGPoint(x: 520, y: 120), in: viewport).screenPoint
+
+        XCTAssertTrue(CGPreflightPostEventAccess(), "The UI test runner needs permission to post events")
+        let events = try XCTUnwrap(CGEventSource(stateID: .hidSystemState))
+        // Two presses and one release stand for a release that another app received.
+        for (type, point) in [(CGEventType.mouseMoved, grip), (.leftMouseDown, grip), (.leftMouseDragged, moved),
+                              (.leftMouseDown, background), (.leftMouseUp, background)] {
+            let event = try XCTUnwrap(CGEvent(mouseEventSource: events, mouseType: type,
+                                              mouseCursorPosition: point, mouseButton: .left))
+            event.post(tap: .cghidEventTap)
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        let changed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value != %@", String(decoding: original, as: UTF8.self)), object: editor
+        )
+        changed.isInverted = true
+        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 2), .completed, "A new press committed the old drag")
+        XCTAssertEqual(try Data(contentsOf: url), original)
+    }
+
     private static let plateViewportSize = CGSize(width: 608, height: 638)
+
+    @MainActor
+    private func chooseProperty(_ title: String, in app: XCUIApplication) {
+        let choices = app.popUpButtons["propertyChoice"].firstMatch
+        XCTAssertTrue(choices.waitForExistence(timeout: 8), "Expected the property choices")
+        choices.click()
+        let item = choices.menuItems[title].firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 5), "Missing the \(title) property")
+        item.click()
+    }
+
+    @MainActor
+    private func waitUntilEnabled(_ element: XCUIElement) {
+        let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 8), .completed, "Expected \(element) to become enabled")
+    }
+
+    /// XCUITest cannot press a key during its own drag, so this posts HID events.
+    @MainActor
+    private func cancelDrag(from start: CGPoint, to end: CGPoint, whileHeld check: () -> Void) throws {
+        XCTAssertTrue(CGPreflightPostEventAccess(), "The UI test runner needs permission to post events")
+        let events = try XCTUnwrap(CGEventSource(stateID: .hidSystemState))
+        func post(_ type: CGEventType, at point: CGPoint) throws {
+            let event = try XCTUnwrap(CGEvent(mouseEventSource: events, mouseType: type,
+                                              mouseCursorPosition: point, mouseButton: .left))
+            event.post(tap: .cghidEventTap)
+        }
+        try post(.mouseMoved, at: start)
+        try post(.leftMouseDown, at: start)
+        Thread.sleep(forTimeInterval: 0.15)
+        for step in 1...10 {
+            let progress = Double(step) / 10
+            try post(.leftMouseDragged, at: CGPoint(x: start.x + progress * (end.x - start.x),
+                                                    y: start.y + progress * (end.y - start.y)))
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        check()
+        for isDown in [true, false] {
+            let key = try XCTUnwrap(CGEvent(keyboardEventSource: events, virtualKey: CGKeyCode(kVK_Escape), keyDown: isDown))
+            key.post(tap: .cghidEventTap)
+        }
+        Thread.sleep(forTimeInterval: 0.2)
+        try post(.leftMouseUp, at: end)
+    }
 
     @MainActor
     private func selectThirdBore(in viewport: XCUIElement, app: XCUIApplication, afterDiameterEdit: Bool = false) throws {
@@ -453,7 +700,10 @@ final class ScadrettoUITests: XCTestCase {
     private func launch(arguments: [String] = []) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments += arguments
+        // Each test opens its own documents rather than the last test's windows.
+        app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"] + arguments
+        // A failed assertion ends a test without running its defer blocks.
+        addTeardownBlock { await MainActor.run { app.terminate() } }
         app.launch()
         app.activate()
         return app
@@ -471,7 +721,7 @@ final class ScadrettoUITests: XCTestCase {
     private func submitOpenPanel(_ url: URL, in app: XCUIApplication) {
         let panel = app.windows["Open"]
         if !panel.exists { app.typeKey("o", modifierFlags: .command) }
-        XCTAssertTrue(panel.waitForExistence(timeout: 8), "Expected the system Open panel")
+        XCTAssertTrue(panel.waitForExistence(timeout: 20), "Expected the system Open panel")
         panel.typeKey("g", modifierFlags: [.command, .shift])
         let path = panel.sheets.firstMatch.textFields.firstMatch
         XCTAssertTrue(path.waitForExistence(timeout: 5), "Expected the Go to Folder path field")
@@ -527,8 +777,10 @@ final class ScadrettoUITests: XCTestCase {
 
     private func makeDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
-            .appending(path: "ScadrettoUITests-\(UUID().uuidString)", directoryHint: .isDirectory)
+            .appending(path: "UI-\(UUID().uuidString.prefix(8))", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        // Go to Folder completes against every leftover here on each typed key.
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
         return directory
     }
 }

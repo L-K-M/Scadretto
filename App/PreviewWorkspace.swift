@@ -11,9 +11,13 @@ final class PreviewWorkspace {
     private(set) var result: EvaluationResult?
     private(set) var geometry: PreviewGeometry?
     private let status = NSTextField(labelWithString: "Evaluating…")
+    private let snap = NSTextField(labelWithString: "")
     private let viewportError: String?
     private var hasGeometry = false
     private var renderedStatus: String?
+    private var ghostIDs: [UInt32] = []
+    private(set) var ghostOmitted = 0
+    private var candidateHit: SIMD3<Double>?
     var onSelection: ((UInt32?, SIMD3<Double>?) -> Void)?
     var onPresentationChange: (() -> Void)?
 
@@ -51,13 +55,19 @@ final class PreviewWorkspace {
         status.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         status.lineBreakMode = .byTruncatingTail
         status.setAccessibilityIdentifier("renderStatus")
-        for item in [renderingView, status] {
+        snap.font = status.font
+        snap.textColor = .secondaryLabelColor
+        snap.setAccessibilityIdentifier("dragSnap")
+        snap.setContentCompressionResistancePriority(.required, for: .horizontal)
+        for item in [renderingView, status, snap] {
             item.translatesAutoresizingMaskIntoConstraints = false
             panel.addSubview(item)
         }
         NSLayoutConstraint.activate([
             status.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 10),
-            status.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -10),
+            status.trailingAnchor.constraint(lessThanOrEqualTo: snap.leadingAnchor, constant: -8),
+            snap.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -10),
+            snap.firstBaselineAnchor.constraint(equalTo: status.firstBaselineAnchor),
             status.topAnchor.constraint(equalTo: panel.topAnchor, constant: 7),
             renderingView.topAnchor.constraint(equalTo: status.bottomAnchor, constant: 7),
             renderingView.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
@@ -69,8 +79,15 @@ final class PreviewWorkspace {
             self?.updateFrameStatus()
             self?.onPresentationChange?()
         }
-        viewport?.onDiameterPreview = { [weak sidebar = self.sidebar] value in sidebar?.inspector.showPreview(value) }
+        viewport?.onEditPreview = { [weak sidebar = self.sidebar] value in sidebar?.inspector.showPreview(value) }
+        showSnap()
         sidebar.onOccurrence = { [weak self] id in self?.onSelection?(id, nil) }
+        sidebar.onCandidate = { [weak self] id in
+            guard let self else { return }
+            let point = candidateHit
+            candidateHit = nil
+            onSelection?(id, point)
+        }
     }
 
     func update(_ phase: DocumentPreview.Phase) {
@@ -95,6 +112,10 @@ final class PreviewWorkspace {
                 let warning = result.diagnostics.first { $0.severity == .warning || $0.severity == .deprecated }
                 let label = viewportError ?? (warning.map { "\(message) · \($0.message)" } ?? message)
                 renderedStatus = label
+                ghostIDs = []
+                ghostOmitted = 0
+                // The last scene's handle must not be drawn or presented over this one.
+                viewport?.showLinear(handle: nil, guides: [])
                 viewport?.setMesh(geometry?.upload, sceneID: result.requestID)
                 viewport?.setSceneStale(false)
                 updateFrameStatus()
@@ -105,6 +126,7 @@ final class PreviewWorkspace {
                 self.result = nil
                 self.geometry = nil
                 renderedStatus = nil
+                showGhost([])
                 sidebar.inspector.disableEditing()
                 viewport?.setSceneStale(hasGeometry)
                 let reason = result.diagnostics.first { $0.severity == .error }?.message ?? "Evaluation failed"
@@ -117,8 +139,11 @@ final class PreviewWorkspace {
         result = nil
         geometry = nil
         renderedStatus = nil
+        candidateHit = nil
+        showGhost([])
         viewport?.showDiameter(handle: nil, guides: [])
         viewport?.setSceneStale(hasGeometry)
+        sidebar.showCandidates([])
         sidebar.setCurrent(false)
         displayStatus(hasGeometry ? "Preview out of date · \(text)" : text)
     }
@@ -137,8 +162,27 @@ final class PreviewWorkspace {
         }
     }
 
+    func showGhost(_ ids: [UInt32]) {
+        guard ghostIDs != ids else { return }
+        ghostIDs = ids
+        let ghost = geometry?.ghost(for: ids)
+        ghostOmitted = ghost?.omitted ?? 0
+        viewport?.showGhost(ghost?.mesh)
+    }
+
+    /// The snap increment applies to every handle, so it stays in view.
+    var snapDescription: String? {
+        guard let step = viewport?.dragSnapIncrement, step > 0 else { return nil }
+        return "Snap \(step.formatted(.number.grouping(.never)))"
+    }
+
+    func showSnap() {
+        snap.stringValue = snapDescription ?? ""
+    }
+
     private func pick(frame: ViewportView.PresentedFrame, at point: CGPoint) {
         guard result?.requestID == frame.sceneID else { return }
+        candidateHit = nil
         sidebar.showCandidates([])
         guard let picker = geometry?.picker else {
             onSelection?(nil, nil)
@@ -157,6 +201,7 @@ final class PreviewWorkspace {
         } else {
             sidebar.selectOccurrence(nil)
             onSelection?(nil, nil)
+            candidateHit = pick.hit.point
             sidebar.showCandidates(pick.candidates)
             sidebar.inspector.show(DiameterInspection(
                 title: "Final surface", detail: pick.candidates.isEmpty
