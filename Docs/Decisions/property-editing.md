@@ -119,6 +119,17 @@ Earlier runs failed, and their recordings gave these causes:
 - One Undo menu click had no effect and no cause was found. Six repeats
   of that test and the final suite passed.
 
-Not exercised natively: selecting an enclosed shape through the outline,
-a drag guide of another occurrence, a comma-decimal system locale, a
-Retina display and macOS 14.
+A later focused run passed two tests. An enclosed cutter was selected
+through the outline after a click at its position picked the cube around
+it. Its ghost was drawn, and `4,5` typed under a `de_DE` app locale saved
+as `d = 4.5`. During a held pitch drag on bore 2, the screenshot showed
+guides on bores 1 and 3 in proportion to their iteration and none on
+bore 0.
+
+Text typed for one property is dropped when another is chosen, because
+showing the new value replaces the field editor's text and the field
+sends its action only on Return. The native test checks that outcome. It
+also passed without an explicit `abortEditing` call, which was removed.
+
+Not exercised natively: a comma-decimal system locale, a Retina display
+and macOS 14.

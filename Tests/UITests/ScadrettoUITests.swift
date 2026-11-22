@@ -441,6 +441,10 @@ final class ScadrettoUITests: XCTestCase {
         waitForText("Snap 0.5", in: detail)
         try cancelDrag(from: grip.screenPoint, to: plusFour.screenPoint) {
             waitForText("Preview · 20 → 22", in: detail)
+            let guides = XCTAttachment(screenshot: viewport.screenshot())
+            guides.name = "Held Pitch Drag Guides"
+            guides.lifetime = .keepAlways
+            add(guides)
         }
         XCTAssertEqual(editor.value as? String, originalText)
         XCTAssertEqual(field.value as? String, "20")
@@ -475,6 +479,73 @@ final class ScadrettoUITests: XCTestCase {
         field.typeKey(.return, modifierFlags: [])
         waitForText("pitch = 22;", in: editor, timeout: 8)
         XCTAssertEqual(editor.value as? String, pitchedText)
+    }
+
+    @MainActor
+    func testOutlineReachesEnclosedOperandWithCommaEntry() throws {
+        let app = launch(arguments: ["-AppleLocale", "de_DE"])
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Enclosed Cutter.scad")
+        let originalText = """
+            difference() {
+                cube(20, center = true);
+                cylinder(h = 4, d = 4, center = true, $fn = 16); // cavity
+            }
+
+            """
+        let editedText = originalText.replacingOccurrences(of: "d = 4,", with: "d = 4.5,")
+        try Data(originalText.utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("Preview ready", in: status, timeout: 15)
+
+        // A ray through the cavity stops at the enclosing cube.
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let selection = app.staticTexts["inspectorSelection"].firstMatch
+        waitForText("cube", in: selection, timeout: 8)
+
+        let operand = app.outlines["sceneOutline"].staticTexts
+            .matching(NSPredicate(format: "label CONTAINS %@", "cylinder")).firstMatch
+        XCTAssertTrue(operand.waitForExistence(timeout: 5), "The enclosed operand must be listed in the outline")
+        operand.click()
+        waitForText("cylinder", in: selection, timeout: 8)
+        let ghost = XCTAttachment(screenshot: viewport.screenshot())
+        ghost.name = "Enclosed Operand Ghost"
+        ghost.lifetime = .keepAlways
+        add(ghost)
+
+        let diameter = app.textFields["diameterField"].firstMatch
+        waitUntilEnabled(diameter)
+        XCTAssertEqual(diameter.value as? String, "4")
+        diameter.click()
+        diameter.typeKey("a", modifierFlags: .command)
+        diameter.typeText("9")
+        chooseProperty("Height (centered)", in: app)
+        let height = app.textFields["propertyValue"].firstMatch
+        waitUntilEnabled(height)
+        XCTAssertEqual(height.value as? String, "4", "Text typed for the diameter must not reach the height")
+        XCTAssertEqual(editor.value as? String, originalText, "Changing the property must not commit unfinished text")
+
+        chooseProperty("Diameter", in: app)
+        waitUntilEnabled(diameter)
+        diameter.click()
+        diameter.typeKey("a", modifierFlags: .command)
+        diameter.typeText("4,5")
+        diameter.typeKey(.return, modifierFlags: [])
+        waitForText("d = 4.5,", in: editor, timeout: 8)
+        XCTAssertEqual(editor.value as? String, editedText)
+        waitForText("Preview ready", in: status, timeout: 15)
+        waitForText("4,5", in: diameter, timeout: 8)
+
+        choose("Save", from: "File", in: app)
+        XCTAssertEqual(try Data(contentsOf: url), Data(editedText.utf8))
+        choose("Undo Change Diameter", from: "Edit", in: app)
+        waitForText("d = 4,", in: editor)
+        XCTAssertEqual(editor.value as? String, originalText)
     }
 
     private static let plateViewportSize = CGSize(width: 608, height: 638)
