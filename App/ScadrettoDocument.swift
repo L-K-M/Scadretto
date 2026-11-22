@@ -8,7 +8,9 @@ import ScadrettoViewport
 private struct DocumentIO: Sendable {
     var pendingRead: SourceBuffer?
     var committed: Data = Data()
-    var baseline: Data?
+    var disk = DiskBaseline(acknowledged: nil)
+    /// Where another program moved the file, until the user accepts or declines it.
+    var movedTo: URL?
     var writing: Data?
     var written: Data?
 }
@@ -48,6 +50,11 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     private var sourceChange: String?
     private var propertyChoices: [PropertyChoice] = []
     private var propertyChoiceID: String?
+    private var saving = false
+    /// A disk check waits for a running save or text composition to finish.
+    private var diskCheckPending = false
+    private var diskWindows: [NSWindowController] = []
+    private var activation: (any NSObjectProtocol)?
 
     // AppKit constructs documents on its reading queue when concurrent
     // reads are enabled. The editable source model is created lazily on main.
@@ -78,9 +85,26 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     }
 
     // NSDocument would adopt the new location, so Save would target another program's backup or
-    // the Trash. The URL changes only through Save As, and Save's baseline check refuses a path
-    // that no longer holds this document's bytes.
-    override nonisolated func presentedItemDidMove(to newURL: URL) {}
+    // the Trash. The URL changes only when the user accepts the new location or uses Save As.
+    override nonisolated func presentedItemDidMove(to newURL: URL) {
+        io.withLock { $0.movedTo = newURL }
+        Task { @MainActor [weak self] in await self?.checkDisk() }
+    }
+
+    override nonisolated func presentedItemDidChange() {
+        super.presentedItemDidChange()
+        Task { @MainActor [weak self] in await self?.checkDisk() }
+    }
+
+    // A coordinated replacement announces a deletion before its change, so look once it settles
+    // rather than trusting the kind of notice. The document stays open either way.
+    override nonisolated func accommodatePresentedItemDeletion(completionHandler: @escaping (Error?) -> Void) {
+        completionHandler(nil)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            await self?.checkDisk()
+        }
+    }
 
     override func makeWindowControllers() {
         adoptRead()
@@ -102,6 +126,16 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         controller.previewWorkspace.onSelection = { [weak self] id, point in self?.selectFeature(id, at: point) }
         controller.previewWorkspace.onPresentationChange = { [weak self] in self?.refreshInspector() }
         controller.onSyntaxReady = { [weak self] in self?.refreshInspector() }
+        controller.onCompositionFinished = { [weak self] in
+            guard let self, diskCheckPending else { return }
+            Task { await self.checkDisk() }
+        }
+        // A plain delete sends no presenter notice; look again whenever the app comes forward.
+        activation = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in await self?.checkDisk() }
+        }
         controller.previewWorkspace.sidebar.inspector.onCommit = { [weak self] value in self?.submitProperty(value) }
         controller.previewWorkspace.sidebar.inspector.onChoice = { [weak self] index in self?.chooseProperty(index) }
         controller.previewWorkspace.viewport?.onEditCommit = { [weak self] sceneID, handleID, value in
@@ -110,7 +144,11 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         preview.schedule(source.snapshot, fileURL: fileURL, immediate: true)
     }
 
-    override var isDocumentEdited: Bool { source.isEdited }
+    // An unresolved external change or removal leaves the text unsaved even when it matches the
+    // bytes last read, so closing still asks.
+    override var isDocumentEdited: Bool {
+        source.isEdited || io.withLock { $0.disk.conflict != nil }
+    }
 
     override func revert(toContentsOf url: URL, ofType typeName: String) throws {
         editor?.finishComposition()
@@ -129,9 +167,10 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         for saveOperation: NSDocument.SaveOperationType
     ) throws {
         let state = io.withLock { $0 }
-        if saveOperation == .saveOperation, let baseline = state.baseline {
-            let onDisk = try? Data(contentsOf: url)
-            guard onDisk == baseline else { throw DocumentSaveError.changedOnDisk }
+        if saveOperation == .saveOperation {
+            guard state.disk.allowsWrite(over: try Self.readDisk(at: url)) else {
+                throw DocumentSaveError.changedOnDisk
+            }
         }
         io.withLock { $0.writing = state.committed }
         defer { io.withLock { $0.writing = nil } }
@@ -150,24 +189,61 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         endTypingGroup()
         let snapshot = source.snapshot
         let priorURL = fileURL
+        saving = true
         super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
+            self?.saving = false
             if error == nil, let self,
                saveOperation == .saveOperation || saveOperation == .saveAsOperation {
                 let written = self.io.withLock { state in
                     let written = state.written
                     state.written = nil
-                    if let written { state.baseline = written }
+                    if let written {
+                        state.disk.adopt(written)
+                        state.movedTo = nil
+                    }
                     return written
                 }
                 if written == snapshot.buffer.bytes {
                     self.source.acknowledgeSaved(snapshot)
-                    self.editor?.window?.isDocumentEdited = self.source.isEdited
+                    self.editor?.window?.isDocumentEdited = self.isDocumentEdited
                 }
                 if priorURL != self.fileURL {
                     self.preview?.schedule(self.source.snapshot, fileURL: self.fileURL, immediate: true)
                 }
             }
+            if let self, self.diskCheckPending { Task { await self.checkDisk() } }
             completionHandler(error)
+        }
+    }
+
+    /// Saves to the checked path. AppKit's Save would run its own move and date checks, which ask
+    /// again after the user has already accepted a new location; `writeSafely` checks the bytes.
+    private func saveCheckedDocument() {
+        guard let url = fileURL, let type = fileType else { return }
+        save(to: url, ofType: type, for: .saveOperation) { [weak self] error in
+            guard let self, let error else { return }
+            if let window = editor?.window {
+                presentError(error, modalFor: window, delegate: nil, didPresent: nil, contextInfo: nil)
+            } else {
+                presentError(error)
+            }
+        }
+    }
+
+    override func save(_ sender: Any?) {
+        editor?.finishComposition()
+        guard let url = fileURL else {
+            super.save(sender)
+            return
+        }
+        // Look at the path before AppKit's own checks, which would offer to follow a move.
+        Task { [weak self] in
+            guard let self, let disk = await readDiskCoordinated(url), url == fileURL else { return }
+            switch applyDisk(disk, at: url, presenting: false) {
+            case nil: saveCheckedDocument()
+            case .changed(let reviewed): askToOverwrite(reviewed)
+            case .removed: present(.removed)
+            }
         }
     }
 
@@ -187,7 +263,8 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             editor?.previewWorkspace.sidebar.inspector.show(nil)
             io.withLock {
                 $0.committed = loaded.bytes
-                $0.baseline = loaded.bytes
+                $0.disk.adopt(loaded.bytes)
+                $0.movedTo = nil
             }
             undoManager?.removeAllActions()
         } catch {
@@ -607,7 +684,201 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     override func close() {
         endTypingGroup()
         preview?.close()
+        if let activation { NotificationCenter.default.removeObserver(activation) }
+        for window in diskWindows { window.close() }
+        diskWindows = []
         super.close()
+    }
+
+    // MARK: - External changes
+
+    private nonisolated static func readDisk(at url: URL) throws -> DiskBaseline.Disk {
+        do {
+            return .bytes(try Data(contentsOf: url))
+        } catch CocoaError.fileReadNoSuchFile {
+            return .missing
+        }
+    }
+
+    /// Reads the path off the main thread. Naming this document as the presenter keeps the read
+    /// from asking it to save first. Nil when the path cannot be read at all.
+    private func readDiskCoordinated(_ url: URL) async -> DiskBaseline.Disk? {
+        let presenter = self
+        return await Task.detached(priority: .userInitiated) {
+            var coordination: NSError?
+            var disk: DiskBaseline.Disk?
+            NSFileCoordinator(filePresenter: presenter).coordinate(
+                readingItemAt: url, options: .withoutChanges, error: &coordination
+            ) { local in
+                disk = try? Self.readDisk(at: local)
+            }
+            if let coordination, coordination.code == CocoaError.fileReadNoSuchFile.rawValue { return .missing }
+            return disk
+        }.value
+    }
+
+    private func checkDisk() async {
+        guard let url = fileURL else { return }
+        diskCheckPending = false
+        guard !saving, editor?.isComposing != true else {
+            diskCheckPending = true
+            return
+        }
+        guard let disk = await readDiskCoordinated(url), url == fileURL else { return }
+        guard !saving, editor?.isComposing != true else {
+            diskCheckPending = true
+            return
+        }
+        applyDisk(disk, at: url, presenting: true)
+    }
+
+    /// Applies an observation of the path and returns the conflict still pending.
+    @discardableResult
+    private func applyDisk(_ disk: DiskBaseline.Disk, at url: URL, presenting: Bool) -> DiskBaseline.Conflict? {
+        let local = source.buffer.bytes
+        var reaction = io.withLock { $0.disk.observe(disk, local: local) }
+        if case .reload(let bytes) = reaction {
+            if let buffer = try? SourceBuffer(bytes: bytes) {
+                replaceContents(with: buffer)
+                reaction = .none
+            } else {
+                reaction = io.withLock { $0.disk.decline(bytes) }
+            }
+        }
+        let conflict = io.withLock { $0.disk.conflict }
+        // AppKit compares this date on Save and would raise its own alert for a change the
+        // document has already taken or settled.
+        if conflict == nil {
+            fileModificationDate = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+        }
+        editor?.window?.isDocumentEdited = isDocumentEdited
+        if presenting, case .conflict(let raised) = reaction { present(raised) }
+        return conflict
+    }
+
+    private func replaceContents(with buffer: SourceBuffer) {
+        endTypingGroup()
+        let selection = editor?.selection ?? NSRange(location: 0, length: 0)
+        io.withLock { $0.pendingRead = buffer }
+        adoptRead()
+        editor?.show(source.snapshot, selecting: selection)
+        preview?.schedule(source.snapshot, fileURL: fileURL, immediate: true)
+    }
+
+    private func reloadFromDisk() {
+        guard let url = fileURL else { return }
+        Task { [weak self] in
+            guard let self, let disk = await readDiskCoordinated(url), url == fileURL else { return }
+            guard case .bytes(let bytes) = disk else {
+                applyDisk(disk, at: url, presenting: true)
+                return
+            }
+            do {
+                replaceContents(with: try SourceBuffer(bytes: bytes))
+                fileModificationDate = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+                editor?.window?.isDocumentEdited = isDocumentEdited
+            } catch {
+                presentError(error)
+            }
+        }
+    }
+
+    private var fileName: String { fileURL?.lastPathComponent ?? displayName ?? "This document" }
+
+    private func present(_ conflict: DiskBaseline.Conflict) {
+        guard let window = editor?.window, window.attachedSheet == nil else { return }
+        let alert = NSAlert()
+        switch conflict {
+        case .changed(let reviewed):
+            alert.messageText = "“\(fileName)” changed on disk"
+            alert.informativeText = "Another application changed the file. Your edits in Scadretto are not saved. "
+                + "Reload from Disk discards them."
+            alert.addButton(withTitle: "Keep Editing")
+            alert.addButton(withTitle: "Reload from Disk")
+            alert.addButton(withTitle: "Compare")
+            alert.beginSheetModal(for: window) { [weak self] response in
+                switch response {
+                case .alertSecondButtonReturn: self?.reloadFromDisk()
+                case .alertThirdButtonReturn: self?.showDiskVersion(reviewed)
+                default: break
+                }
+            }
+        case .removed:
+            let moved = io.withLock { $0.movedTo }.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+            alert.messageText = "“\(fileName)” is no longer at its location"
+            if let moved {
+                alert.informativeText = "Another application moved it to “\(moved.lastPathComponent)”. Your text stays open. "
+                    + "Use New Location to keep editing that file, or Save As to choose another."
+            } else {
+                alert.informativeText = "Your text stays open in Scadretto. Choose Save As to keep it in a file."
+            }
+            alert.addButton(withTitle: "Keep Editing")
+            alert.addButton(withTitle: "Save As…")
+            if moved != nil { alert.addButton(withTitle: "Use New Location") }
+            alert.beginSheetModal(for: window) { [weak self] response in
+                switch response {
+                case .alertSecondButtonReturn: self?.saveAs(nil)
+                case .alertThirdButtonReturn: if let moved { self?.acceptMove(to: moved) }
+                default: break
+                }
+            }
+        }
+    }
+
+    private func askToOverwrite(_ reviewed: Data) {
+        guard let window = editor?.window, window.attachedSheet == nil else { return }
+        let alert = NSAlert()
+        alert.messageText = "“\(fileName)” changed on disk"
+        alert.informativeText = "Overwrite replaces the other application's version with your text. "
+            + "Save As keeps both."
+        alert.addButton(withTitle: "Save As…")
+        alert.addButton(withTitle: "Overwrite")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }
+            switch response {
+            case .alertFirstButtonReturn:
+                saveAs(nil)
+            case .alertSecondButtonReturn:
+                // The approval covers only the reviewed bytes. Another change needs a new decision.
+                guard io.withLock({ $0.disk.conflict }) == .changed(reviewed) else { return }
+                io.withLock { $0.disk.approveOverwrite() }
+                if let url = fileURL {
+                    fileModificationDate = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+                }
+                saveCheckedDocument()
+            default:
+                break
+            }
+        }
+    }
+
+    private func acceptMove(to url: URL) {
+        io.withLock { $0.movedTo = nil }
+        fileURL = url
+        preview?.schedule(source.snapshot, fileURL: url, immediate: true)
+        Task { await checkDisk() }
+    }
+
+    private func showDiskVersion(_ bytes: Data) {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 480),
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                              backing: .buffered, defer: false)
+        window.title = "\(fileName) (Disk Version)"
+        window.isReleasedWhenClosed = false
+        let scroll = NSTextView.scrollableTextView()
+        if let text = scroll.documentView as? NSTextView {
+            text.isEditable = false
+            text.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+            text.string = (try? SourceBuffer(bytes: bytes))?.displayText ?? String(decoding: bytes, as: UTF8.self)
+            text.setAccessibilityLabel("Disk version of \(fileName)")
+        }
+        window.contentView = scroll
+        let controller = NSWindowController(window: window)
+        diskWindows.removeAll { $0.window?.isVisible != true }
+        diskWindows.append(controller)
+        if let main = editor?.window { window.setFrameTopLeftPoint(NSPoint(x: main.frame.minX + 40, y: main.frame.maxY - 40)) }
+        controller.showWindow(nil)
     }
 
     @IBAction func retryPreview(_ sender: Any?) { preview?.retry() }

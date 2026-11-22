@@ -227,6 +227,9 @@ final class ScadrettoUITests: XCTestCase {
         try external?.write(to: url)
         settle(2)
 
+        // Keep the edits through any external-change sheet, then try to save them.
+        let keep = app.sheets.buttons["Keep Editing"].firstMatch
+        if keep.exists { keep.click() }
         choose("Save", from: "File", in: app)
         // A followed move makes Save, under the new name, the default answer of AppKit's sheet.
         let acceptDefault = app.sheets.buttons["Save"].firstMatch
@@ -240,6 +243,138 @@ final class ScadrettoUITests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: moved), original)
         XCTAssertEqual(try? Data(contentsOf: url), external)
         XCTAssertTrue((editor.value as? String)?.contains("// local") == true, "The local edit was lost")
+    }
+
+    @MainActor
+    func testCleanDocumentReloadsAnExternalChange() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Watched.scad")
+        try Data("cube(1);\n".utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        let external = Data("cube(2);\n".utf8)
+        try external.write(to: url, options: .atomic)
+        waitForText("cube(2);", in: editor, timeout: 8)
+        XCTAssertEqual(app.sheets.count, 0, "A document without edits needs no decision")
+        choose("Save", from: "File", in: app)
+        XCTAssertEqual(try Data(contentsOf: url), external)
+    }
+
+    @MainActor
+    func testUnsavedEditsAskBeforeAnExternalChangeIsReplaced() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Watched.scad")
+        try Data("cube(1);\n".utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        editor.typeText("// local ")
+        waitForText("// local cube(1);", in: editor)
+
+        let external = Data("cube(2);\n".utf8)
+        try external.write(to: url, options: .atomic)
+        let keep = app.sheets.buttons["Keep Editing"].firstMatch
+        XCTAssertTrue(keep.waitForExistence(timeout: 8), "Expected the external change sheet")
+        XCTAssertTrue(app.sheets.buttons["Reload from Disk"].exists)
+        app.sheets.buttons["Compare"].firstMatch.click()
+        let diskWindow = app.windows.matching(NSPredicate(format: "title CONTAINS %@", "Disk Version")).firstMatch
+        XCTAssertTrue(diskWindow.waitForExistence(timeout: 5), "Expected the disk version window")
+        waitForText("cube(2);", in: diskWindow.textViews.firstMatch)
+        diskWindow.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertEqual(editor.value as? String, "// local cube(1);\n")
+        XCTAssertEqual(try Data(contentsOf: url), external)
+
+        // Save asks before replacing the version the user reviewed.
+        choose("Save", from: "File", in: app)
+        let overwrite = app.sheets.buttons["Overwrite"].firstMatch
+        XCTAssertTrue(overwrite.waitForExistence(timeout: 5), "Expected Save to ask before overwriting")
+        XCTAssertEqual(try Data(contentsOf: url), external)
+        overwrite.click()
+        let local = Data("// local cube(1);\n".utf8)
+        let saved = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            (try? Data(contentsOf: url)) == local
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 5), .completed)
+
+        // A later change is a new decision; reloading discards the local text.
+        editor.click()
+        editor.typeKey(.downArrow, modifierFlags: .command)
+        editor.typeText("// more")
+        waitForText("// more", in: editor)
+        let later = Data("cube(3);\n".utf8)
+        try later.write(to: url, options: .atomic)
+        let reload = app.sheets.buttons["Reload from Disk"].firstMatch
+        XCTAssertTrue(reload.waitForExistence(timeout: 8), "Expected a fresh decision")
+        reload.click()
+        waitForText("cube(3);", in: editor)
+        XCTAssertEqual(editor.value as? String, "cube(3);\n")
+        XCTAssertEqual(try Data(contentsOf: url), later)
+    }
+
+    @MainActor
+    func testRemovedFileKeepsItsTextAndOffersSaveAs() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Removed.scad")
+        try Data("cube(1);\n".utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        editor.typeText("// local ")
+        waitForText("// local cube(1);", in: editor)
+        // A plain delete sends no file presenter notice. Save checks the path itself.
+        try FileManager.default.removeItem(at: url)
+
+        choose("Save", from: "File", in: app)
+        let saveAs = app.sheets.buttons["Save As…"].firstMatch
+        XCTAssertTrue(saveAs.waitForExistence(timeout: 5), "Expected the removed-file sheet")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+        saveAs.click()
+        let panel = app.sheets.buttons["Save"].firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 5), "Expected the Save As panel")
+        app.typeKey(.escape, modifierFlags: [])
+        settle(1)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertEqual(editor.value as? String, "// local cube(1);\n")
+    }
+
+    @MainActor
+    func testAMovedFileFollowsOnlyWhenAccepted() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Before.scad")
+        let moved = directory.appending(path: "After.scad")
+        try Data("cube(1);\n".utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        editor.typeText("// local ")
+        waitForText("// local cube(1);", in: editor)
+        try FileManager.default.moveItem(at: url, to: moved)
+        let follow = app.sheets.buttons["Use New Location"].firstMatch
+        XCTAssertTrue(follow.waitForExistence(timeout: 8), "Expected the moved-file sheet")
+        XCTAssertEqual(try Data(contentsOf: moved), Data("cube(1);\n".utf8))
+        follow.click()
+        XCTAssertTrue(app.windows["After.scad"].waitForExistence(timeout: 5))
+        choose("Save", from: "File", in: app)
+        let saved = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            (try? Data(contentsOf: moved)) == Data("// local cube(1);\n".utf8)
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 5), .completed)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
 
     @MainActor
