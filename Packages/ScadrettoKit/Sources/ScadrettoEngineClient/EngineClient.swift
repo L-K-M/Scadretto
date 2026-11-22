@@ -205,8 +205,9 @@ public actor EngineClient {
         let source = DispatchSource.makeMemoryPressureSource(eventMask: [.normal, .critical],
                                                             queue: DispatchQueue.global(qos: .utility))
         source.setEventHandler { [weak self, weak source] in
-            guard let event = source?.data else { return }
-            Task { await self?.setCriticalPressure(event.contains(.critical)) }
+            guard let self, let source else { return }
+            let critical = source.data.contains(.critical)
+            Task { await self.setCriticalPressure(critical) }
         }
         pressureSource = source
         source.activate()
