@@ -148,7 +148,7 @@ struct PreviewGeometry: Sendable {
         }
         return ViewportLinearHandle(anchor: Self.point(anchor, in: operand.world),
                                     axis: Self.xyz(operand.world * SIMD4(axis, 0)),
-                                    value: property.value, valuePerUnit: factor)
+                                    value: property.value, valuePerUnit: factor, exclusiveMinimum: 0)
     }
 
     private static func axis(_ axis: ModelAxis, of matrix: simd_double4x4) -> SIMD3<Double> {

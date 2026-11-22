@@ -37,8 +37,11 @@ makes a binding complete and a drag safe.
   the last evaluation is a new ancestor of the same selection, and a removed
   wrapper leaves it selected. A removed selection falls back to its nearest
   authored ancestor or clears. It never matches an equal sibling.
-- When the chosen property disappears, the inspector waits for an explicit
-  choice. An inserted move continues as the translation it created.
+- When the chosen property disappears, or a wrapper is inserted or removed
+  between it and the selection, the inspector waits for an explicit choice.
+  An inserted move continues as the translation it created.
+- A drag proposes at most twelve significant digits, snapped or not, and
+  no dimension at or below zero. Only its own release commits it.
 
 ## Limits
 
@@ -47,6 +50,11 @@ makes a binding complete and a drag safe.
 - A `translate` redefined in a dependency is detected only after that module
   has executed.
 - A scene whose property detail the worker omitted for size is inspect-only.
+- A move grip sits at the center of every operand below the moved shape,
+  so a cutter far outside the solid can pull it off the model. Numeric
+  entry is unaffected.
+- A handle stays drawn while text is composed or a dependency is checked.
+  Its release then changes nothing and says why.
 - The ghost holds 600,000 indices and the moving outlines 256 occurrences.
   The inspector reports anything beyond either bound.
 

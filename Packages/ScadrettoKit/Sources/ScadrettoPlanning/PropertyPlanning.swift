@@ -120,6 +120,16 @@ public struct PropertyChoice: Sendable {
         }
     }
 
+    /// Whether a choice still names the same owner after the selection was
+    /// found again. Its ID starts with the owner's distance above the selection.
+    public static func continues(_ previousID: String?, to instanceID: UInt32, along path: SelectionPath,
+                                 in scene: SceneSnapshot, files: [FileRecord]) -> Bool {
+        guard let previousID, let distance = previousID.split(separator: ":").first.flatMap({ Int($0) }),
+              distance > 0,
+              let changed = path.changedDistance(to: instanceID, in: scene, files: files) else { return true }
+        return distance < changed
+    }
+
     public var value: Double? {
         switch action {
         case .value(_, let property): property.value

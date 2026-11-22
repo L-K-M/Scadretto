@@ -313,6 +313,10 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         if selection.requestID != result.requestID {
             switch selection.path.resolve(in: scene, files: result.files) {
             case .exact(let id):
+                if !PropertyChoice.continues(propertyChoiceID, to: id, along: selection.path, in: scene,
+                                             files: result.files) {
+                    propertyChoiceID = Self.noChoice
+                }
                 selection.instanceID = id
                 selection.requestID = result.requestID
                 // The path now includes any wrapper inserted since the last evaluation.

@@ -229,3 +229,78 @@ private func platePlan(_ semantic: PropertyRecord.Semantic, on id: UInt32) async
     let after = try await PlanningFixture.make("post();\nmodule post() {  }\n", instances: [post])
     #expect(path.resolve(in: after.scene, files: after.result.files) == .ancestor(1))
 }
+
+private struct WrapperEdit: Sendable {
+    let before: String
+    let after: String
+    let removed: String
+    let inserted: String
+    /// The edited text's position is that of this first occurrence.
+    let at: String
+    let keeps: Bool
+}
+
+@MainActor
+private func translatedCube(_ source: String) async throws -> (PlanningFixture, cube: InstanceRecord) {
+    let bytes = Data(source.utf8)
+    var instances = [instance(1, "group")]
+    var start = 0
+    while let found = bytes.range(of: Data("translate([".utf8), in: start..<bytes.count) {
+        let close = try #require(bytes.range(of: Data(")".utf8), in: found.upperBound..<bytes.count))
+        let comma = try #require(bytes.range(of: Data(",".utf8), in: found.upperBound..<bytes.count))
+        let token = WireSpan(fileID: 0, start: UInt64(found.upperBound), end: UInt64(comma.lowerBound))
+        let value = try #require(Double(String(decoding: bytes[found.upperBound..<comma.lowerBound], as: UTF8.self)))
+        instances.append(instance(UInt32(instances.count + 1), "translate", parent: UInt32(instances.count),
+                                  at: WireSpan(fileID: 0, start: UInt64(found.lowerBound), end: UInt64(close.upperBound)),
+                                  properties: [literal(.translateX, "v", value, at: token)]))
+        start = close.upperBound
+    }
+    let cube = instance(UInt32(instances.count + 1), "cube", parent: UInt32(instances.count),
+                        at: span("cube(8)", in: source), operand: 1)
+    return (try await PlanningFixture.make(source, instances: instances + [cube]), cube)
+}
+
+@Test(arguments: [
+    WrapperEdit(before: "translate([3, 0, 0]) cube(8);", after: "translate([3, 0, 0]) translate([7, 0, 0]) cube(8);",
+                removed: "", inserted: "translate([7, 0, 0]) ", at: "cube", keeps: false),
+    WrapperEdit(before: "translate([7, 0, 0]) translate([3, 0, 0]) cube(8);", after: "translate([7, 0, 0]) cube(8);",
+                removed: "translate([3, 0, 0]) ", inserted: "", at: "translate([3", keeps: false),
+    WrapperEdit(before: "translate([3, 0, 0]) cube(8);", after: "translate([7, 0, 0]) translate([3, 0, 0]) cube(8);",
+                removed: "", inserted: "translate([7, 0, 0]) ", at: "translate", keeps: true),
+    WrapperEdit(before: "translate([3, 0, 0]) cube(8);", after: "translate([12, 0, 0]) cube(8);",
+                removed: "3", inserted: "12", at: "3", keeps: true),
+])
+@MainActor private func aChoiceNeverMovesToAnotherWrapper(_ change: WrapperEdit) async throws {
+    let (before, cube) = try await translatedCube(change.before)
+    let chosen = try #require(PropertyChoice.choices(on: cube, among: before.byID).first { $0.title == "Translate X" })
+    var path = SelectionPath(to: cube.id, in: before.scene, files: before.result.files)
+    let position = Int(span(change.at, in: change.before).start)
+    let removed = Data(change.removed.utf8)
+    let followed = path.follow([SourceEdit(range: position..<(position + removed.count), expected: removed,
+                                           replacement: Data(change.inserted.utf8))])
+    #expect(followed)
+
+    let (after, moved) = try await translatedCube(change.after)
+    #expect(path.resolve(in: after.scene, files: after.result.files) == .exact(moved.id))
+    #expect(PropertyChoice.continues(chosen.id, to: moved.id, along: path, in: after.scene,
+                                     files: after.result.files) == change.keeps)
+}
+
+@Test @MainActor func losingADeepRecursiveSelectionIsLinear() async throws {
+    let source = "module r(n) { if (n > 0) r(n - 1); else cube(1); }\nr(300);\n"
+    let call = span("r(n - 1)", in: source)
+    func recursion(_ depth: UInt32) -> [InstanceRecord] {
+        var instances = [instance(1, "group")]
+        for id in 2...(depth + 1) { instances.append(instance(id, "r", parent: id - 1, at: call)) }
+        instances.append(instance(depth + 2, "cube", parent: depth + 1, at: span("cube(1)", in: source), operand: 1))
+        return instances
+    }
+    let before = try await PlanningFixture.make(source, instances: recursion(300))
+    let after = try await PlanningFixture.make(source, instances: recursion(150))
+    let path = SelectionPath(to: 302, in: before.scene, files: before.result.files)
+    let clock = ContinuousClock()
+    let started = clock.now
+    #expect(path.resolve(in: after.scene, files: after.result.files) == .ancestor(151))
+    let elapsed = started.duration(to: clock.now)
+    #expect(elapsed < .milliseconds(250), "Resolving took \(elapsed)")
+}

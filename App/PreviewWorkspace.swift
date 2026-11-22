@@ -114,6 +114,8 @@ final class PreviewWorkspace {
                 renderedStatus = label
                 ghostIDs = []
                 ghostOmitted = 0
+                // The last scene's handle must not be drawn or presented over this one.
+                viewport?.showLinear(handle: nil, guides: [])
                 viewport?.setMesh(geometry?.upload, sceneID: result.requestID)
                 viewport?.setSceneStale(false)
                 updateFrameStatus()

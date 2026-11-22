@@ -26,12 +26,15 @@ public struct ViewportLinearHandle: Equatable, Sendable {
     /// Change in `value` per +1 authored local unit along `axis`. Must be
     /// finite and nonzero for `point(for:)` to produce a usable position.
     public let valuePerUnit: Double
+    /// A drag proposes only values above this, as a dimension requires.
+    public let exclusiveMinimum: Double?
 
     /// View-point distance within which a press grabs the projected grip.
     private static let hitRadius: Double = 9
 
     public init(id: UUID = UUID(), anchor: SIMD3<Double>, axis: SIMD3<Double>,
-                value: Double, valuePerUnit: Double) {
+                value: Double, valuePerUnit: Double, exclusiveMinimum: Double? = nil) {
+        self.exclusiveMinimum = exclusiveMinimum
         self.id = id
         self.anchor = anchor
         self.axis = axis
@@ -67,18 +70,13 @@ public struct ViewportLinearHandle: Equatable, Sendable {
     /// The candidate model scalar for a drag whose `coordinate` moved from
     /// `start` at mouse-down to `end`, computed against the immutable
     /// baseline `value`. A positive finite `snap` rounds the candidate to
-    /// that interval in model units; without one, 12-digit rounding removes
-    /// projection noise. Returns `nil` for non-finite results and no change.
+    /// that interval in model units. Returns `nil` for non-finite results, no
+    /// change and values at or below `exclusiveMinimum`.
     public func value(from start: Double, to end: Double, snap: Double) -> Double? {
         let proposal = value + valuePerUnit * (end - start)
         guard proposal.isFinite, proposal != value else { return nil }
-        let candidate: Double
-        if snap.isFinite, snap > 0 {
-            candidate = (proposal / snap).rounded() * snap
-        } else {
-            let decimal = String(format: "%.12g", locale: Locale(identifier: "en_US_POSIX"), proposal)
-            candidate = Double(decimal) ?? proposal
-        }
+        let candidate = draggedValue(proposal, snap: snap)
+        if let exclusiveMinimum, candidate <= exclusiveMinimum { return nil }
         return candidate.isFinite && candidate != value ? candidate : nil
     }
 
@@ -87,6 +85,15 @@ public struct ViewportLinearHandle: Equatable, Sendable {
         guard let grip = frame.project(anchor), (0...1).contains(grip.z) else { return false }
         return hypot(point.x - grip.x, point.y - grip.y) <= Self.hitRadius
     }
+}
+
+/// The value a drag proposes, at the snap increment when there is one.
+/// Twelve digits drop projection and multiplication noise, and zero has no sign.
+func draggedValue(_ proposal: Double, snap: Double) -> Double {
+    let stepped = snap.isFinite && snap > 0 ? (proposal / snap).rounded() * snap : proposal
+    let decimal = String(format: "%.12g", locale: Locale(identifier: "en_US_POSIX"), stepped)
+    let value = Double(decimal) ?? stepped
+    return value == 0 ? 0 : value
 }
 
 /// A draft marker for another occurrence affected by a scalar edit.

@@ -18,6 +18,8 @@ public struct SelectionPath: Equatable, Sendable {
     public private(set) var anchors: [Anchor]
     /// An edit removed the selected statement, so only an ancestor remains.
     private var lostSelection = false
+    /// How far above the selection the nearest removed wrapper was.
+    private var removedDistance: Int?
     /// Text written since the selection was resolved. A wrapper authored there
     /// is a new ancestor of the same selection.
     private var inserted: [Range<Int>] = []
@@ -29,21 +31,36 @@ public struct SelectionPath: Equatable, Sendable {
 
     /// An exact match, otherwise the nearest authored ancestor. Never a sibling.
     public func resolve(in scene: SceneSnapshot, files: [FileRecord]) -> Match? {
-        let byID = Dictionary(uniqueKeysWithValues: scene.instances.map { ($0.id, $0) })
+        // One forward pass, as a parent precedes its children. An instance keeps
+        // how many anchors its own authored path matches, leaving out inserted wrappers.
+        var matched: [UInt32: Int] = [:]
+        var candidates: [Int: [UInt32]] = [:]
+        for instance in scene.instances {
+            let above: Int
+            if let parent = instance.parent {
+                guard let depth = matched[parent] else { continue }
+                above = depth
+            } else {
+                above = 0
+            }
+            let own = Self.anchor(of: instance, files: files)
+            // The selection itself must keep its exact start, so an equal sibling never matches.
+            let matches = above < anchors.count && own == anchors[above]
+            if matches { candidates[above + 1, default: []].append(instance.id) }
+            if isInserted(own) {
+                matched[instance.id] = above
+            } else if matches {
+                matched[instance.id] = above + 1
+            }
+        }
+
         for length in stride(from: anchors.count, to: 0, by: -1) {
-            let anchor = anchors[length - 1]
             let isSelection = length == anchors.count && !lostSelection
             // The unspanned root would select the whole model.
-            guard isSelection || anchor.start != nil else { continue }
-            let expected = Array(anchors.prefix(length))
-            let matches = scene.instances.filter { instance in
-                // The selection itself must keep its exact start, so an equal sibling never matches.
-                guard instance.name == anchor.name, instance.iteration == anchor.iteration else { return false }
-                let path = Self.path(to: instance.id, among: byID, files: files)
-                guard path.last == anchor else { return false }
-                return path.dropLast().filter { !isInserted($0) } + [anchor] == expected
+            guard isSelection || anchors[length - 1].start != nil else { continue }
+            if let found = candidates[length], found.count == 1 {
+                return isSelection ? .exact(found[0]) : .ancestor(found[0])
             }
-            if matches.count == 1 { return isSelection ? .exact(matches[0].id) : .ancestor(matches[0].id) }
         }
         return nil
     }
@@ -66,7 +83,9 @@ public struct SelectionPath: Equatable, Sendable {
             var anchor = anchor
             if anchor.dependency == nil, let start = anchor.start {
                 if changes.contains(where: { $0.range.contains(start) }) {
-                    if index == anchors.count - 1 { lostSelection = true }
+                    let distance = anchors.count - 1 - index
+                    if distance == 0 { lostSelection = true }
+                    removedDistance = min(distance, removedDistance ?? distance)
                     continue
                 }
                 anchor.start = shift(start)
@@ -84,6 +103,15 @@ public struct SelectionPath: Equatable, Sendable {
             inserted.append(lower..<(lower + change.length))
         }
         return anchors.contains { $0.start != nil }
+    }
+
+    /// The nearest distance above the selection at which a wrapper was
+    /// inserted or removed. A property owned there or farther out has moved.
+    func changedDistance(to id: UInt32, in scene: SceneSnapshot, files: [FileRecord]) -> Int? {
+        let byID = Dictionary(uniqueKeysWithValues: scene.instances.map { ($0.id, $0) })
+        let path = Self.path(to: id, among: byID, files: files).reversed()
+        let insertedDistance = path.enumerated().first { $0.offset > 0 && isInserted($0.element) }?.offset
+        return [removedDistance, insertedDistance].compactMap { $0 }.min()
     }
 
     private func isInserted(_ anchor: Anchor) -> Bool {
@@ -111,12 +139,16 @@ public struct SelectionPath: Equatable, Sendable {
         var path: [Anchor] = []
         var next: UInt32? = id
         while let id = next, let instance = instances[id] {
-            let file = instance.span.flatMap { span in files.first { $0.id == span.fileID } }
-            let dependency = file.flatMap { $0.kind == .main ? nil : $0.resolvedPath ?? $0.logicalPath }
-            path.append(Anchor(name: instance.name, iteration: instance.iteration, dependency: dependency,
-                               start: instance.span.flatMap { Int(exactly: $0.start) }))
+            path.append(anchor(of: instance, files: files))
             next = instance.parent
         }
         return path.reversed()
+    }
+
+    private static func anchor(of instance: InstanceRecord, files: [FileRecord]) -> Anchor {
+        let file = instance.span.flatMap { span in files.first { $0.id == span.fileID } }
+        let dependency = file.flatMap { $0.kind == .main ? nil : $0.resolvedPath ?? $0.logicalPath }
+        return Anchor(name: instance.name, iteration: instance.iteration, dependency: dependency,
+                      start: instance.span.flatMap { Int(exactly: $0.start) })
     }
 }

@@ -222,6 +222,25 @@ final class ViewportLinearHandleTests: XCTestCase {
 
     // MARK: Snap and hit test
 
+    func testSnappedCandidatesCarryNoArithmeticNoise() throws {
+        let offset = ViewportLinearHandle(anchor: .zero, axis: SIMD3(1, 0, 0), value: 0, valuePerUnit: 1)
+        XCTAssertEqual(offset.value(from: 0, to: 0.31, snap: 0.1), 0.3)
+        let diameter = ViewportDiameterHandle(center: .zero, radialUnit: SIMD3(1, 0, 0), diameter: 10)
+        XCTAssertEqual(diameter.resized(from: 5, to: 5.051, snap: 0.1), 10.1)
+        let one = ViewportLinearHandle(anchor: .zero, axis: SIMD3(1, 0, 0), value: 1, valuePerUnit: 1)
+        let zero = try XCTUnwrap(one.value(from: 0, to: -1.2, snap: 1))
+        XCTAssertEqual(zero, 0)
+        XCTAssertEqual(zero.sign, .plus, "A drag to zero must not write -0")
+    }
+
+    func testADimensionPreviewsOnlyValuesItCanCommit() throws {
+        let size = ViewportLinearHandle(anchor: .zero, axis: SIMD3(1, 0, 0), value: 10, valuePerUnit: 1,
+                                        exclusiveMinimum: 0)
+        XCTAssertEqual(size.value(from: 0, to: -4, snap: 0), 6)
+        XCTAssertNil(size.value(from: 0, to: -12, snap: 0))
+        XCTAssertNil(size.value(from: 0, to: -9.8, snap: 1), "Snapping must not reach zero either")
+    }
+
     func testSnapRoundsCandidateInModelUnits() throws {
         let handle = ViewportLinearHandle(anchor: .zero, axis: SIMD3(1, 0, 0),
                                           value: 20, valuePerUnit: 0.5)
