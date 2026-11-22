@@ -52,3 +52,7 @@ python3 Tests/Engine/verify_spike.py "$reference/bin/openscad" "$worker/bin/scad
     "$reference/bin/solid-difference" Tests/Fixtures/mounting-plate.scad "$evidence" \
     --font-cache "$reference/bin/fc-cache" --fonts "$reference/Resources/fonts" \
     | tee "$evidence/verify.log"
+python3 -B Tests/Engine/verify_v1.py --worker "$worker/bin/scadretto-engine" \
+    --reference "$reference/bin/openscad" --oracle "$reference/bin/solid-difference" \
+    --resources "$worker/Resources" --fixtures Tests/Fixtures --goldens Engine/protocol/golden \
+    --evidence "$evidence/v1" | tee "$evidence/verify-v1.log"
