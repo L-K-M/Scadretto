@@ -125,6 +125,11 @@ public final class ViewportView: MTKView {
     /// convention; the coordinate conversion lives in `ViewportTransform`.
     public override var isFlipped: Bool { true }
 
+    public override func layout() {
+        super.layout()
+        if !hasAutoFramed { frameAll() }
+    }
+
     /// Replaces the displayed scene. `nil` clears the mesh but keeps the
     /// camera and axes so navigation still works on a failed evaluation.
     /// The camera is preserved across revisions; the first non-empty mesh
@@ -132,10 +137,7 @@ public final class ViewportView: MTKView {
     public func setMesh(_ prepared: ViewportMeshUpload?) {
         upload = prepared ?? ViewportMeshUpload(mesh: ViewportMesh(positions: [], indices: []))
         renderer.upload(upload)
-        if !hasAutoFramed, let bounds = upload.bounds, bounds.radius > 0 {
-            camera.frameAll(bounds, aspect: boundsAspect)
-            hasAutoFramed = true
-        }
+        if !hasAutoFramed { frameAll() }
         isSceneStale = false
         needsDisplay = true
     }
@@ -143,8 +145,10 @@ public final class ViewportView: MTKView {
     /// Frames the whole scene in the current view, keeping the camera's
     /// orientation and projection mode.
     public func frameAll() {
-        guard let bounds = upload.bounds, bounds.radius > 0 else { return }
-        camera.frameAll(bounds, aspect: boundsAspect)
+        guard bounds.width > 0, bounds.height > 0,
+              let meshBounds = upload.bounds, meshBounds.radius > 0 else { return }
+        camera.frameAll(meshBounds, aspect: boundsAspect)
+        hasAutoFramed = true
         needsDisplay = true
     }
 

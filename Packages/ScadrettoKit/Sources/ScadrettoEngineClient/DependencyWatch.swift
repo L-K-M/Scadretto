@@ -1,13 +1,27 @@
 import CryptoKit
 import Darwin
 import Foundation
+import os
 
 /// Watches both a file and its containing directory so atomic replacements
 /// and the creation of formerly missing lookup candidates are visible.
 public final class DependencyWatch: Sendable {
+    private struct Watch: Sendable {
+        let device: dev_t
+        let inode: ino_t
+        let source: any DispatchSourceFileSystemObject
+
+        func stillWatches(_ url: URL) -> Bool {
+            var info = stat()
+            return stat(url.path, &info) == 0 && info.st_dev == device && info.st_ino == inode
+        }
+    }
+
     private let files: [FileRecord]
     private let lookups: [LookupRecord]
-    private let sources: [any DispatchSourceFileSystemObject]
+    private let paths: Set<URL>
+    private let onChange: @Sendable () -> Void
+    private let watches = OSAllocatedUnfairLock(initialState: [URL: Watch]())
 
     public init(result: EvaluationResult, onChange: @escaping @Sendable () -> Void) {
         files = result.files.filter { $0.kind != .main }
@@ -16,35 +30,62 @@ public final class DependencyWatch: Sendable {
             [file.logicalPath, file.resolvedPath].compactMap { $0 }
         })
         for lookup in lookups { paths.formUnion(lookup.candidates) }
+        self.paths = Set(paths.map { URL(fileURLWithPath: $0).standardizedFileURL })
+        self.onChange = onChange
+        refreshWatches()
+    }
 
-        var watched: Set<URL> = []
-        for path in paths {
-            let url = URL(fileURLWithPath: path).standardizedFileURL
-            if Self.regularFile(url) { watched.insert(url) }
-            if let ancestor = Self.existingAncestor(of: url) { watched.insert(ancestor) }
-        }
-        sources = watched.compactMap { url in
-            let fd = open(url.path, O_EVTONLY | O_CLOEXEC)
-            guard fd >= 0 else { return nil }
-            let source = DispatchSource.makeFileSystemObjectSource(
-                fileDescriptor: fd,
-                eventMask: [.write, .delete, .rename, .extend, .attrib, .revoke],
-                queue: DispatchQueue.global(qos: .utility)
-            )
-            source.setEventHandler(handler: onChange)
-            source.setCancelHandler { close(fd) }
-            source.activate()
-            return source
+    private func refreshWatches() {
+        watches.withLock { active in
+            var needed: Set<URL> = []
+            for url in paths {
+                if Self.regularFile(url) { needed.insert(url) }
+                if let ancestor = Self.existingAncestor(of: url) { needed.insert(ancestor) }
+            }
+            var next: [URL: Watch] = [:]
+            for url in needed {
+                if let watch = active[url], watch.stillWatches(url) {
+                    next[url] = active.removeValue(forKey: url)
+                } else {
+                    next[url] = startWatch(at: url)
+                }
+            }
+            for watch in active.values { watch.source.cancel() }
+            active = next
         }
     }
 
+    private func startWatch(at url: URL) -> Watch? {
+        let fd = open(url.path, O_EVTONLY | O_CLOEXEC)
+        guard fd >= 0 else { return nil }
+        var info = stat()
+        guard fstat(fd, &info) == 0 else {
+            close(fd)
+            return nil
+        }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .delete, .rename, .extend, .attrib, .revoke],
+            queue: DispatchQueue.global(qos: .utility)
+        )
+        source.setEventHandler(handler: onChange)
+        source.setCancelHandler { close(fd) }
+        source.activate()
+        return Watch(device: info.st_dev, inode: info.st_ino, source: source)
+    }
+
     deinit {
-        for source in sources { source.cancel() }
+        watches.withLock { active in
+            for watch in active.values { watch.source.cancel() }
+        }
     }
 
     /// Recheck content and path identity off the main actor before presenting
     /// a result and after directory notifications.
     public func isCurrent() -> Bool {
+        // A directory can appear without changing the lookup winner yet.
+        // Follow it before checking the paths so the next creation is visible.
+        refreshWatches()
         for file in files {
             let url = URL(fileURLWithPath: file.resolvedPath ?? file.logicalPath)
             guard let digest = try? Self.coordinatedDigest(url, expectedLength: file.byteLength),
