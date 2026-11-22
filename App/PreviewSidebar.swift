@@ -427,8 +427,6 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
 
     @objc private func commit() { onCommit?(field.stringValue) }
     @objc private func changeProperty() {
-        // Text typed for the previous property must never commit to the new one.
-        field.abortEditing()
         onChoice?(choices.indexOfSelectedItem)
     }
 
