@@ -77,6 +77,11 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         io.withLock { $0.writing ?? $0.committed }
     }
 
+    // NSDocument would adopt the new location, so Save would target another program's backup or
+    // the Trash. The URL changes only through Save As, and Save's baseline check refuses a path
+    // that no longer holds this document's bytes.
+    override nonisolated func presentedItemDidMove(to newURL: URL) {}
+
     override func makeWindowControllers() {
         adoptRead()
         undoManager?.groupsByEvent = false

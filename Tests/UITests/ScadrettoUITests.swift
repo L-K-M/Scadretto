@@ -193,6 +193,56 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
+    func testExternalBackupRenameDoesNotRedirectSave() throws {
+        try saveAfterExternalMove(refilledWith: Data("cube(2);\n".utf8))
+    }
+
+    @MainActor
+    func testFileMovedAwayIsNeitherFollowedNorRecreated() throws {
+        try saveAfterExternalMove(refilledWith: nil)
+    }
+
+    /// Edits a file, moves it aside as another program would, then takes Save's default answer.
+    @MainActor
+    private func saveAfterExternalMove(refilledWith external: Data?) throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Shared.scad")
+        let moved = directory.appending(path: "Shared-backup.scad")
+        let original = Data("cube(1);\n".utf8)
+        try original.write(to: url)
+
+        let editor = open(url, in: app)
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        editor.typeText("// local ")
+        waitForText("// local cube(1);", in: editor)
+
+        // AppKit reports a path refilled within half a second as a change. It follows the move
+        // when the path stays empty longer, so wait before any refill.
+        try FileManager.default.moveItem(at: url, to: moved)
+        settle(3)
+        try external?.write(to: url)
+        settle(2)
+
+        choose("Save", from: "File", in: app)
+        // A followed move makes Save, under the new name, the default answer of AppKit's sheet.
+        let acceptDefault = app.sheets.buttons["Save"].firstMatch
+        if acceptDefault.waitForExistence(timeout: 3) { acceptDefault.click() }
+        let written = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            (try? Data(contentsOf: moved)) != original || (try? Data(contentsOf: url)) != external
+        }, object: nil)
+        written.isInverted = true
+        XCTAssertEqual(XCTWaiter.wait(for: [written], timeout: 4), .completed,
+                       "Save wrote to a file the user did not choose")
+        XCTAssertEqual(try Data(contentsOf: moved), original)
+        XCTAssertEqual(try? Data(contentsOf: url), external)
+        XCTAssertTrue((editor.value as? String)?.contains("// local") == true, "The local edit was lost")
+    }
+
+    @MainActor
     func testNativeUndoRedoAndIndependentDocuments() throws {
         let app = launch()
         defer { app.terminate() }
@@ -768,6 +818,14 @@ final class ScadrettoUITests: XCTestCase {
         let expectation = XCTNSPredicateExpectation(predicate: matches, object: element)
         XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: timeout), .completed,
                        "Expected “\(text)”, got \(element.value ?? "(no value)")", file: file, line: line)
+    }
+
+    /// File presenter notices arrive asynchronously and have no element to wait for.
+    @MainActor
+    private func settle(_ seconds: TimeInterval) {
+        let pause = XCTestExpectation(description: "File notices settle")
+        pause.isInverted = true
+        XCTAssertEqual(XCTWaiter.wait(for: [pause], timeout: seconds), .completed)
     }
 
     private func fixture(_ name: String) throws -> Data {

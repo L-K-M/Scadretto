@@ -22,6 +22,15 @@ owns opening, safe save, Save As and Revert. Autosaving is disabled in
 the M1 shell while explicit saves verify the bytes last read or written
 at the document URL.
 
+The document does not follow a file that another program moves.
+`NSDocument` adopts the new location by default once the old path has
+stayed empty for a moment, then offers to save there, which overwrote a
+backup in a native regression test. The URL changes only through Save
+As. Measured on macOS 27.0.1, a plain delete sends no presenter notice,
+and a coordinated replacement sends a deletion notice before its change
+notice. Handlers must check the path's contents rather than trust the
+kind of notice.
+
 ## Text system measurements
 
 On a Mac16,9 with M4 Max and 36 GiB RAM, macOS 27.0.1 (26A434), Xcode
