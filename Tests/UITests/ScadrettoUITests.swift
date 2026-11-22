@@ -193,6 +193,42 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
+    func testExternalBackupRenameDoesNotRedirectSave() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Shared.scad")
+        let backup = directory.appending(path: "Shared-backup.scad")
+        let original = Data("cube(1);\n".utf8)
+        let external = Data("cube(2);\n".utf8)
+        try original.write(to: url)
+
+        let editor = open(url, in: app)
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        editor.typeText("// local ")
+        waitForText("// local cube(1);", in: editor)
+
+        // Editors that keep backups move the file aside, then write a new one at its path.
+        try FileManager.default.moveItem(at: url, to: backup)
+        try external.write(to: url)
+        let noticed = XCTestExpectation(description: "AppKit delivered the file move")
+        noticed.isInverted = true
+        XCTAssertEqual(XCTWaiter.wait(for: [noticed], timeout: 2), .completed)
+
+        choose("Save", from: "File", in: app)
+        let redirected = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            (try? Data(contentsOf: backup)) != original
+        }, object: nil)
+        redirected.isInverted = true
+        XCTAssertEqual(XCTWaiter.wait(for: [redirected], timeout: 4), .completed,
+                       "Save followed the other application's backup")
+        XCTAssertEqual(try Data(contentsOf: backup), original)
+        XCTAssertEqual(try Data(contentsOf: url), external)
+    }
+
+    @MainActor
     func testNativeUndoRedoAndIndependentDocuments() throws {
         let app = launch()
         defer { app.terminate() }
