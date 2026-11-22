@@ -548,6 +548,46 @@ final class ScadrettoUITests: XCTestCase {
         XCTAssertEqual(editor.value as? String, originalText)
     }
 
+    @MainActor
+    func testANewPressAbandonsADragWhoseReleaseWasLost() throws {
+        let app = launch(arguments: ["-dragSnapIncrement", "0.5"])
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Lost Release.scad")
+        let original = try fixture("mounting-plate")
+        try original.write(to: url)
+
+        let editor = open(url, in: app)
+        waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 15)
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        try selectThirdBore(in: viewport, app: app)
+        chooseProperty("Pitch", in: app)
+        let detail = app.staticTexts["editStatus"].firstMatch
+        waitUntilEnabled(app.textFields["pitchField"].firstMatch)
+        waitForText("Snap 0.5", in: detail)
+        let grip = plateCoordinate(CGPoint(x: 289.19969, y: 310.45504), in: viewport).screenPoint
+        let moved = plateCoordinate(CGPoint(x: 301.01570, y: 317.27702), in: viewport).screenPoint
+        let background = plateCoordinate(CGPoint(x: 520, y: 120), in: viewport).screenPoint
+
+        XCTAssertTrue(CGPreflightPostEventAccess(), "The UI test runner needs permission to post events")
+        let events = try XCTUnwrap(CGEventSource(stateID: .hidSystemState))
+        // Two presses and one release stand for a release that another app received.
+        for (type, point) in [(CGEventType.mouseMoved, grip), (.leftMouseDown, grip), (.leftMouseDragged, moved),
+                              (.leftMouseDown, background), (.leftMouseUp, background)] {
+            let event = try XCTUnwrap(CGEvent(mouseEventSource: events, mouseType: type,
+                                              mouseCursorPosition: point, mouseButton: .left))
+            event.post(tap: .cghidEventTap)
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        let changed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value != %@", String(decoding: original, as: UTF8.self)), object: editor
+        )
+        changed.isInverted = true
+        XCTAssertEqual(XCTWaiter.wait(for: [changed], timeout: 2), .completed, "A new press committed the old drag")
+        XCTAssertEqual(try Data(contentsOf: url), original)
+    }
+
     private static let plateViewportSize = CGSize(width: 608, height: 638)
 
     @MainActor

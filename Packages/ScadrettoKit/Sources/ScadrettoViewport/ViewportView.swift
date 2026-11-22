@@ -328,6 +328,8 @@ public final class ViewportView: MTKView {
     // MARK: - Gestures
 
     public override func mouseDown(with event: NSEvent) {
+        // A drag still held here lost its release, and only a release commits.
+        cancelHandleDrag()
         pressedFrame = presentedFrame
         mouseDownPoint = viewPoint(for: event)
         lastDragPoint = mouseDownPoint
