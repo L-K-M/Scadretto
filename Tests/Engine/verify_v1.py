@@ -156,7 +156,7 @@ def canonical(root, result):
 def check_goldens(args, environment, build):
     # A stable logical directory inside the job root supplies diagnostics without
     # hard-coding user paths into the checked examples.
-    logical_base = args.evidence / 'Golden source – "test"'
+    logical_base = args.evidence / "Golden source – Unicode"
     logical_base.mkdir()
     cases = {
         "cube": ((args.goldens / "cube/main.scad").read_bytes(), 0, "rendered"),
