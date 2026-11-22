@@ -51,7 +51,7 @@ failure cannot publish a scene.
 | `droppedConsoleMessages` | Count of messages excluded by the capture limit. |
 | `mesh` | Final mesh descriptor or null. |
 | `operands` | Array of operand records containing `id` and `mesh` descriptor. |
-| `instances` | Executed occurrences containing `id`, optional `parent`, `name`, optional `span`, `iteration` map (numeric values), column-major affine matrices `local` and `world`, optional operand ID `operand`, and optional `diameter` (`value`, ordered `chain` of `kind`, `name`, and optional `span`). |
+| `instances` | Executed occurrences containing `id`, optional `parent`, `name`, optional `span` and `definitionSpan`, `iteration` map (numeric values), column-major affine matrices `local` and `world`, optional operand ID `operand`, and optional `diameter`, `arguments` and `properties`. |
 | `operations` | Records containing `instanceID` and ordered `children` with `instanceID` and `role` (`positive`, `subtracted`, `intersection`). |
 | `dependencyEdges` | Records with a source `span`, an `instanceID` and a `property` string. |
 | `lookups` | Records with optional `requestingFileID`, lookup `name`, ordered absolute `candidates`, optional selected `winner` candidate, and optional `resolvedWinner` giving its canonical path at evaluation time. |
@@ -63,6 +63,29 @@ Only the main snapshot is writable in this editor session. Dependency paths
 are available for diagnostics and navigation. A dependency edge represents one
 binding step, so separate steps can point to the same source range. The
 worker reports `modelError` if it cannot retain a complete dependency search.
+
+The optional `arguments` array records `name`, `formal`, `status` and
+`expression` span for supplied arguments. A positional argument has an empty
+`name`. An unbound argument has an empty `formal`. Status is `bound`,
+`superseded`, `unbound` or `ignored`. These records follow source argument
+order. Built-in defaults are represented by the applicable property status.
+
+Each optional `properties` entry carries `semantic`, `formal`, `status`,
+finite `value`, `displayMultiplier`, `centered`, an optional `expression`
+span and an ordered `chain` from the supplied value to its observed origin.
+The displayed scalar equals the authored scalar times the multiplier.
+Statuses are `bound`, `default`, `computedVector` or `invalid`. A bound
+value can still be an inspectable expression. A branching arithmetic step
+ends the chain, and its observed dependencies appear in `dependencyEdges`.
+`diameter` retains its original `value` and `chain` fields. Each chain link
+carries a `kind`, `name` and optional `span`.
+
+Semantics cover uniform and axis-specific cube sizes, sphere diameter,
+cylinder height, uniform diameter and separate end radii, fragment count,
+translation vector components, module arguments and pitch. Pitch includes
+`pitch: {iteration, dragVerified}` when evaluated in a range loop. The flag
+describes dependency and frame independence. Iteration zero offers numeric
+entry because spatial displacement cannot determine pitch there.
 
 ## Binary mesh payloads
 

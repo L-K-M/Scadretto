@@ -130,6 +130,9 @@ def canonical(root, result):
     def span(value):
         return None if value is None else (files[value["fileID"]], value["start"], value["end"])
 
+    def chain(links):
+        return [(link["kind"], link["name"], span(link.get("span"))) for link in links]
+
     rows = []
     for record in result["instances"]:
         diameter = record.get("diameter")
@@ -137,8 +140,13 @@ def canonical(root, result):
             record["name"], instances.get(record.get("parent")), span(record.get("span")), record["iteration"],
             [round(value, 9) for value in record["local"]], [round(value, 9) for value in record["world"]],
             operands.get(record.get("operand")),
-            None if diameter is None else (diameter["value"], [
-                (link["kind"], link["name"], span(link.get("span"))) for link in diameter["chain"]]),
+            None if diameter is None else (diameter["value"], chain(diameter["chain"])),
+            span(record.get("definitionSpan")),
+            [(item["name"], item["formal"], item["status"], span(item.get("expression")))
+             for item in record.get("arguments", [])],
+            [(item["semantic"], item["formal"], item["status"], item["value"], item["displayMultiplier"],
+              item["centered"], span(item.get("expression")), chain(item["chain"]), item.get("pitch"))
+             for item in record.get("properties", [])],
         ))
     operations = sorted((instances[operation["instanceID"]], [
         (instances[child["instanceID"]], child["role"]) for child in operation["children"]
@@ -405,6 +413,123 @@ def check_saved_plate(args, environment, build):
     print(f"App-saved plate verified at offsets {changed}, with five bores and reference difference {difference:.9g}")
 
 
+def check_executed_properties(args, environment, build):
+    files = args.evidence / "property inputs"
+    files.mkdir()
+
+    def evaluate(name, source, compare=False):
+        logical = files / (name + ".scad")
+        logical.write_bytes(source)
+        job = args.evidence / ("properties-" + name)
+        result = run_job(args.worker, job, source, request_for(source, logical, build), environment)
+        check(result["detail"] == "rendered", f"{name}: expected a rendered solid")
+        if compare:
+            mesh = mesh_geometry(job, result["mesh"])
+            reference = render_reference(args.reference, logical, job / "reference.stl", environment)
+            difference = symmetric_difference(args.oracle, job, mesh, reference)
+            check(difference <= DIFFERENCE_ABS_TOLERANCE, f"{name}: properties changed reference geometry by {difference}")
+        return result
+
+    def text(buffer, span):
+        return buffer[span["start"]:span["end"]]
+
+    def called(result, buffer, spelling):
+        matches = [record for record in result["instances"] if record["span"] is not None
+                   and record["span"]["fileID"] == 0 and text(buffer, record["span"]).startswith(spelling)]
+        check(len(matches) == 1, f"Unable to identify the executed call {spelling!r}")
+        return matches[0]
+
+    def prop(record, semantic):
+        matches = [item for item in record.get("properties", []) if item["semantic"] == semantic]
+        check(len(matches) == 1, f"{record['name']} has no unique property {semantic}")
+        return matches[0]
+
+    def assert_property(property, source, *, formal, value, token, multiplier=1):
+        check((property["formal"], property["value"], property["displayMultiplier"], property["status"])
+              == (formal, value, multiplier, "bound"), f"Wrong evaluated property: {property}")
+        leaf = property["chain"][-1]
+        check(leaf["kind"] == "literal" and leaf["span"]["fileID"] == 0 and text(source, leaf["span"]) == token,
+              f"{formal} did not resolve to its authored literal")
+
+    source = (args.fixtures / "property-signatures.scad").read_bytes()
+    signatures = evaluate("signatures", source, compare=True)
+    cube = called(signatures, source, b"cube([4, 6, 8]")
+    for axis, dimension in zip("XYZ", (4, 6, 8)):
+        property = prop(cube, "cubeSize" + axis)
+        assert_property(property, source, formal="size", value=dimension, token=str(dimension).encode())
+        check(property["centered"], "Centered cube lost its origin convention")
+    sphere = called(signatures, source, b"sphere(r = 2)")
+    assert_property(prop(sphere, "sphereDiameter"), source, formal="r", value=4, multiplier=2, token=b"2")
+    for spelling in [b"cylinder(8, 2)", b"cylinder(h = 8, 2)"]:
+        cylinder = called(signatures, source, spelling)
+        assert_property(prop(cylinder, "cylinderHeight"), source, formal="h", value=8, token=b"8")
+        assert_property(prop(cylinder, "cylinderBottomRadius"), source, formal="r1", value=2, token=b"2")
+        check(prop(cylinder, "cylinderTopRadius")["status"] == "default", "An absent cylinder end became writable")
+    positional = called(signatures, source, b"cylinder(8, 2, 3, false, 5)")
+    assert_property(prop(positional, "cylinderTopRadius"), source, formal="r2", value=3, token=b"3")
+    check(any(a["formal"] == "r" and a["status"] == "ignored" for a in positional["arguments"]),
+          "Uniform radius looked writable after both ends overrode it")
+    alias = called(signatures, source, b"cylinder(d = 8, r = 1)")
+    assert_property(prop(alias, "cylinderDiameter"), source, formal="d", value=8, token=b"8")
+    check(any(a["formal"] == "r" and a["status"] == "ignored" for a in alias["arguments"]),
+          "Losing radius alias was not identified")
+    tapered = called(signatures, source, b"cylinder(r = 2, r2 = 4)")
+    assert_property(prop(tapered, "cylinderBottomRadius"), source, formal="r", value=2, token=b"2")
+    assert_property(prop(tapered, "cylinderTopRadius"), source, formal="r2", value=4, token=b"4")
+    overwritten = called(signatures, source, b"cylinder(8, 2, h = 7)")
+    assert_property(prop(overwritten, "cylinderHeight"), source, formal="h", value=7, token=b"7")
+    check(any(a["formal"] == "h" and a["status"] == "superseded" for a in overwritten["arguments"]),
+          "Earlier positional height was not marked superseded")
+    unbound = called(signatures, source, b"cylinder(3, 2, 3, false, 4, 6, 8, 10, 1)")
+    check(unbound["arguments"][-1]["status"] == "unbound", "Extra positional argument was bound")
+    moved = called(signatures, source, b"translate([10, 0])")
+    assert_property(prop(moved, "translateX"), source, formal="v", value=10, token=b"10")
+    check(prop(moved, "translateZ")["status"] == "default", "Two-component translate offered a Z literal")
+    moved = called(signatures, source, b"translate([-3, 0, 0])")
+    assert_property(prop(moved, "translateX"), source, formal="v", value=-3, token=b"-3")
+    invalid = called(signatures, source, b"translate(5)")
+    check(all(item["status"] == "invalid" for item in invalid["properties"]), "Scalar translate became writable")
+    closer = called(signatures, source, b"sphere(d = 4, $fn = 12)")
+    assert_property(prop(sphere, "fragmentCount"), source, formal="$fn", value=16, token=b"16")
+    assert_property(prop(closer, "fragmentCount"), source, formal="$fn", value=12, token=b"12")
+
+    shadow = b"module cylinder(d) { cube(d); }\nsize = 4;\ncylinder(size);\n"
+    shadowed = evaluate("shadow", shadow, compare=True)
+    call = called(shadowed, shadow, b"cylinder(size)")
+    check("cylinderDiameter" not in [item["semantic"] for item in call["properties"]],
+          "A user module was mistaken for a built-in cylinder")
+    assert_property(prop(call, "moduleArgument"), shadow, formal="d", value=4, token=b"4")
+    check(call["definitionSpan"]["fileID"] == 0, "The user module definition was lost")
+
+    library = b"lib_size = 3;\nmodule library_hole(d = lib_size) { cylinder(d = d); }\n"
+    (files / "library.scad").write_bytes(library)
+    uses_library = b"use <library.scad>\nlib_size = 90;\nlibrary_hole();\n"
+    from_library = evaluate("from-library", uses_library, compare=True)
+    cutter = next(record for record in from_library["instances"] if record["name"] == "cylinder")
+    property = prop(cutter, "cylinderDiameter")
+    leaf = property["chain"][-1]["span"]
+    check(property["value"] == 3 and leaf["fileID"] != 0 and text(library, leaf) == b"3",
+          "Definition-site default used the caller's equal-named declaration")
+    check(any(link["kind"] == "default" for link in property["chain"]), "Default binding lost its role")
+
+    original = (args.fixtures / "mounting-plate.scad").read_bytes()
+    for name, source, stable in [
+        ("pitch", original, True),
+        ("base-depends-on-pitch", original.replace(b"x0 = 15;", b"x0 = pitch;"), False),
+        ("range-depends-on-pitch", original.replace(b"count - 1", b"pitch - 17"), False),
+        ("another-axis-depends-on-pitch", original.replace(b"* pitch, 20", b"* pitch, pitch"), False),
+        ("pitch-under-parent-transform", original.replace(b"difference()", b"scale(1) difference()"), False),
+    ]:
+        result = evaluate(name, source)
+        translations = [record for record in result["instances"] if record["name"] == "translate"
+                        and record["iteration"].get("i") == 2]
+        check(len(translations) == 1, f"{name}: missing the third loop occurrence")
+        pitch = prop(translations[0], "pitch")
+        assert_property(pitch, source, formal="pitch", value=20, token=b"20")
+        check(pitch["pitch"] == {"iteration": 2, "dragVerified": stable}, f"{name}: wrong pitch drag eligibility")
+    print("Observed property arguments, aliases, scopes, vectors and pitch independence passed")
+
+
 def main():
     parser = argparse.ArgumentParser()
     for field in ("worker", "reference", "oracle", "resources", "fixtures", "goldens", "evidence"):
@@ -427,6 +552,7 @@ def main():
     check_request_and_trace_limits(args, environment, build)
     check_goldens(args, environment, build)
     check_live_inputs(args, environment, build)
+    check_executed_properties(args, environment, build)
     check_lifetime_pipe(args, environment, build)
     if args.saved_plate is not None:
         check_saved_plate(args, environment, build)

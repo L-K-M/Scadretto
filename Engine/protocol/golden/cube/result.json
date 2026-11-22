@@ -1,7 +1,35 @@
 {
   "buildSHA": "0000000000000000000000000000000000000000000000000000000000000000",
   "console": [],
-  "dependencyEdges": [],
+  "dependencyEdges": [
+    {
+      "instanceID": 2,
+      "property": "cubeUniformSize",
+      "span": {
+        "end": 6,
+        "fileID": 0,
+        "start": 5
+      }
+    },
+    {
+      "instanceID": 2,
+      "property": "cubeUniformSize",
+      "span": {
+        "end": 6,
+        "fileID": 0,
+        "start": 5
+      }
+    },
+    {
+      "instanceID": 2,
+      "property": "cubeUniformSize",
+      "span": {
+        "end": 6,
+        "fileID": 0,
+        "start": 5
+      }
+    }
+  ],
   "detail": "rendered",
   "diagnostics": [],
   "droppedConsoleMessages": 0,
@@ -62,6 +90,19 @@
       ]
     },
     {
+      "arguments": [
+        {
+          "expression": {
+            "end": 6,
+            "fileID": 0,
+            "start": 5
+          },
+          "formal": "size",
+          "name": "",
+          "status": "bound"
+        }
+      ],
+      "definitionSpan": null,
       "diameter": null,
       "id": 2,
       "iteration": {},
@@ -86,6 +127,50 @@
       "name": "cube",
       "operand": 0,
       "parent": 1,
+      "properties": [
+        {
+          "centered": false,
+          "chain": [
+            {
+              "kind": "parameter",
+              "name": "size",
+              "span": {
+                "end": 6,
+                "fileID": 0,
+                "start": 5
+              }
+            },
+            {
+              "kind": "argument",
+              "name": "",
+              "span": {
+                "end": 6,
+                "fileID": 0,
+                "start": 5
+              }
+            },
+            {
+              "kind": "literal",
+              "name": "",
+              "span": {
+                "end": 6,
+                "fileID": 0,
+                "start": 5
+              }
+            }
+          ],
+          "displayMultiplier": 1.0,
+          "expression": {
+            "end": 6,
+            "fileID": 0,
+            "start": 5
+          },
+          "formal": "size",
+          "semantic": "cubeUniformSize",
+          "status": "bound",
+          "value": 2.0
+        }
+      ],
       "span": {
         "end": 7,
         "fileID": 0,
