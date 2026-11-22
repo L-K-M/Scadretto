@@ -2,6 +2,114 @@ import XCTest
 
 final class ScadrettoUITests: XCTestCase {
     @MainActor
+    func testLiveMountingPlatePreviewRecoversAfterSyntaxError() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Mounting Plate.scad")
+        let original = try fixture("mounting-plate")
+        try original.write(to: url)
+
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("Preview ready", in: status, timeout: 15)
+        let initialPreview = status.value as? String
+
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        for _ in 0..<3 { editor.typeKey(.downArrow, modifierFlags: []) }
+        editor.typeKey(.leftArrow, modifierFlags: .command)
+        for _ in 0..<8 { editor.typeKey(.rightArrow, modifierFlags: []) }
+        editor.typeKey(.rightArrow, modifierFlags: .shift)
+        editor.typeText("5")
+        waitForText("count = 5;", in: editor)
+        let changedPreview = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value BEGINSWITH %@ AND value != %@", "Preview ready", initialPreview ?? ""),
+            object: status
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [changedPreview], timeout: 12), .completed)
+        let fifth = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "i = 4")).firstMatch
+        XCTAssertTrue(fifth.waitForExistence(timeout: 5), "The fifth executed occurrence should be visible in the outline")
+        let preview = XCTAttachment(screenshot: app.screenshot())
+        preview.name = "Live mounting plate with five bores"
+        preview.lifetime = .keepAlways
+        add(preview)
+        XCTAssertEqual(try Data(contentsOf: url), original)
+
+        editor.typeKey(.delete, modifierFlags: [])
+        waitForText("count = ;", in: editor)
+        waitForText("Preview out of date", in: status, timeout: 15)
+        waitForText("Parser error", in: status, timeout: 15)
+        editor.typeText("5")
+        waitForText("Preview ready", in: status, timeout: 15)
+
+        editor.typeKey("a", modifierFlags: .command)
+        editor.typeText("difference(){ cube(2); cube(2); }")
+        waitForText("Empty model", in: status, timeout: 15)
+    }
+
+    @MainActor
+    func testWarningKeepsGeometryAndJumpsToItsSource() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Warning.scad")
+        try fixture("warning-only").write(to: url)
+
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("Preview ready", in: status, timeout: 15)
+        waitForText("missing_parameter", in: status)
+        let initialTriangles = (status.value as? String)?.components(separatedBy: " · ").dropFirst().first
+
+        let diagnostics = app.popUpButtons["modelDiagnostics"].firstMatch
+        XCTAssertTrue(diagnostics.waitForExistence(timeout: 6))
+        diagnostics.click()
+        let warning = diagnostics.menuItems.matching(NSPredicate(format: "title CONTAINS %@", "missing_parameter")).firstMatch
+        XCTAssertTrue(warning.waitForExistence(timeout: 5))
+        warning.click()
+        editor.typeText("0")
+        waitForText("echo(\"preview:\", $preview, 0);", in: editor)
+        waitForText("Preview ready", in: status, timeout: 15)
+        let finalTriangles = (status.value as? String)?.components(separatedBy: " · ").dropFirst().first
+        XCTAssertEqual(initialTriangles, finalTriangles)
+    }
+
+    @MainActor
+    func testMissingIncludeRecoversWhenDependencyAppears() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Dependencies.scad")
+        let include = directory.appending(path: "part.scad")
+        try Data("include <part.scad>\n".utf8).write(to: url)
+
+        _ = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("Could not resolve part.scad", in: status, timeout: 15)
+        try Data("cube(2);\n".utf8).write(to: include, options: .atomic)
+        waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
+        try FileManager.default.removeItem(at: include)
+        waitForText("Preview out of date", in: status, timeout: 15)
+        try Data("cube(3);\n".utf8).write(to: include, options: .atomic)
+        waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
+
+        choose("Cancel Evaluation", from: "Model", in: app)
+        waitForText("Preview canceled", in: status)
+        try Data("sphere(1, $fn = 16);\n".utf8).write(to: include, options: .atomic)
+        let restarted = XCTNSPredicateExpectation(predicate: NSPredicate(format: "NOT value CONTAINS %@", "Preview canceled"),
+                                                  object: status)
+        restarted.isInverted = true
+        XCTAssertEqual(XCTWaiter.wait(for: [restarted], timeout: 0.75), .completed)
+        choose("Retry Preview", from: "Model", in: app)
+        waitForText("Preview ready", in: status, timeout: 15)
+        XCTAssertNotEqual(status.value as? String, "Preview ready · 12 triangles")
+    }
+
+    @MainActor
     func testOpenKeyboardEditSaveAndReopenPreserveBytes() throws {
         let app = launch()
         defer { app.terminate() }
@@ -161,11 +269,12 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
-    private func waitForText(_ text: String, in editor: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+    private func waitForText(_ text: String, in element: XCUIElement, timeout: TimeInterval = 5,
+                             file: StaticString = #filePath, line: UInt = #line) {
         let matches = NSPredicate(format: "value CONTAINS %@", text)
-        let expectation = XCTNSPredicateExpectation(predicate: matches, object: editor)
-        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 5), .completed,
-                       "Expected “\(text)” in source editor, got \(editor.value ?? "(no value)")", file: file, line: line)
+        let expectation = XCTNSPredicateExpectation(predicate: matches, object: element)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: timeout), .completed,
+                       "Expected “\(text)”, got \(element.value ?? "(no value)")", file: file, line: line)
     }
 
     private func fixture(_ name: String) throws -> Data {

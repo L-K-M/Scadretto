@@ -10,11 +10,19 @@
 		074318A108FA4B47D97BF8D8 /* editor-bom-crlf.scad in Resources */ = {isa = PBXBuildFile; fileRef = E8E477BFBAF95B1641A1F784 /* editor-bom-crlf.scad */; };
 		0BCBF4FDB930EBE4CD854632 /* ScadrettoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC5FDCF42FE991552F3F3E1B /* ScadrettoUITests.swift */; };
 		1BD9F8B3CB8555DD73B2F12A /* ScadrettoSyntax in Frameworks */ = {isa = PBXBuildFile; productRef = BCD167B455E3C7D983C91905 /* ScadrettoSyntax */; };
+		23C6166A18E79F8A5DCA4372 /* ScadrettoShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 841BAF814255F995154BA26B /* ScadrettoShaders.metal */; };
+		32D73B9311C1D37730EB5275 /* DocumentPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD1D8381C8A94C94D1C70DA /* DocumentPreview.swift */; };
 		40F9B0835DA56AE1C81ADCD3 /* ScadrettoDocumentBase.m in Sources */ = {isa = PBXBuildFile; fileRef = CC7169339397A5290B227212 /* ScadrettoDocumentBase.m */; };
+		594490A8A19C799244DC8A38 /* mounting-plate.scad in Resources */ = {isa = PBXBuildFile; fileRef = 2582FD20D9A8E8BE2F83FA23 /* mounting-plate.scad */; };
+		610C5A67DCDCC16EDF58A097 /* PreviewWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0423D8B38A0739716E934E2 /* PreviewWorkspace.swift */; };
 		69926DA9DECD33CC429B2E09 /* ScadrettoCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0D6AEED0CB0DC0C3D2A11CFC /* ScadrettoCore */; };
 		7510EDA39840F4E6811C4D6B /* SourceWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F3D6412F155EB359337E727 /* SourceWindowController.swift */; };
+		7EAB47C9A57EFFD93EF1D081 /* PreviewSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C51F6E26F6727B3C11B381 /* PreviewSidebar.swift */; };
 		B3BAEE938B3DE7BEAC1FB1EE /* ScadrettoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */; };
+		D7240DF438FE0AF735ADA91A /* warning-only.scad in Resources */ = {isa = PBXBuildFile; fileRef = A6B1DF3941CE369D6617228D /* warning-only.scad */; };
 		F6C1EB529D983B5238B37644 /* ScadrettoDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BB55BAD86B153C539296444 /* ScadrettoDocument.swift */; };
+		FE0843EDDE20C79009CFFF87 /* ScadrettoEngineClient in Frameworks */ = {isa = PBXBuildFile; productRef = 0CBEEA630745310B4EC8FA42 /* ScadrettoEngineClient */; };
+		FEBA42DA637F14EE90D024FC /* ScadrettoViewport in Frameworks */ = {isa = PBXBuildFile; productRef = AE7808BDDD3B8F0C9AB0A6A0 /* ScadrettoViewport */; };
 		FEEB9832B98CF17B34D6752A /* editor-bom-crlf-edited.scad in Resources */ = {isa = PBXBuildFile; fileRef = 884C485CF77F5109F0C48E35 /* editor-bom-crlf-edited.scad */; };
 /* End PBXBuildFile section */
 
@@ -30,13 +38,19 @@
 
 /* Begin PBXFileReference section */
 		0DCE9ABD2847FE35D7D90660 /* ScadrettoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ScadrettoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		23C51F6E26F6727B3C11B381 /* PreviewSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewSidebar.swift; sourceTree = "<group>"; };
+		2582FD20D9A8E8BE2F83FA23 /* mounting-plate.scad */ = {isa = PBXFileReference; path = "mounting-plate.scad"; sourceTree = "<group>"; };
 		3A5B00664D3FEE649417C49A /* ScadrettoDocumentBase.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ScadrettoDocumentBase.h; sourceTree = "<group>"; };
 		3F3D6412F155EB359337E727 /* SourceWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceWindowController.swift; sourceTree = "<group>"; };
+		4FD1D8381C8A94C94D1C70DA /* DocumentPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentPreview.swift; sourceTree = "<group>"; };
 		6BB55BAD86B153C539296444 /* ScadrettoDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScadrettoDocument.swift; sourceTree = "<group>"; };
 		73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScadrettoApp.swift; sourceTree = "<group>"; };
+		841BAF814255F995154BA26B /* ScadrettoShaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = ScadrettoShaders.metal; sourceTree = "<group>"; };
 		884C485CF77F5109F0C48E35 /* editor-bom-crlf-edited.scad */ = {isa = PBXFileReference; path = "editor-bom-crlf-edited.scad"; sourceTree = "<group>"; };
+		A6B1DF3941CE369D6617228D /* warning-only.scad */ = {isa = PBXFileReference; path = "warning-only.scad"; sourceTree = "<group>"; };
 		A95057B6AF7BE264494E7378 /* ScadrettoKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ScadrettoKit; path = Packages/ScadrettoKit; sourceTree = SOURCE_ROOT; };
 		CC7169339397A5290B227212 /* ScadrettoDocumentBase.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ScadrettoDocumentBase.m; sourceTree = "<group>"; };
+		E0423D8B38A0739716E934E2 /* PreviewWorkspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewWorkspace.swift; sourceTree = "<group>"; };
 		E8E477BFBAF95B1641A1F784 /* editor-bom-crlf.scad */ = {isa = PBXFileReference; path = "editor-bom-crlf.scad"; sourceTree = "<group>"; };
 		EC5FDCF42FE991552F3F3E1B /* ScadrettoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScadrettoUITests.swift; sourceTree = "<group>"; };
 		FB4D77D56B49D6D963EB85C0 /* Scadretto.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Scadretto.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -49,6 +63,8 @@
 			files = (
 				69926DA9DECD33CC429B2E09 /* ScadrettoCore in Frameworks */,
 				1BD9F8B3CB8555DD73B2F12A /* ScadrettoSyntax in Frameworks */,
+				FE0843EDDE20C79009CFFF87 /* ScadrettoEngineClient in Frameworks */,
+				FEBA42DA637F14EE90D024FC /* ScadrettoViewport in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -67,10 +83,14 @@
 		22B57D7D7CE00EC968F4E50B /* App */ = {
 			isa = PBXGroup;
 			children = (
+				4FD1D8381C8A94C94D1C70DA /* DocumentPreview.swift */,
+				23C51F6E26F6727B3C11B381 /* PreviewSidebar.swift */,
+				E0423D8B38A0739716E934E2 /* PreviewWorkspace.swift */,
 				73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */,
 				6BB55BAD86B153C539296444 /* ScadrettoDocument.swift */,
 				3A5B00664D3FEE649417C49A /* ScadrettoDocumentBase.h */,
 				CC7169339397A5290B227212 /* ScadrettoDocumentBase.m */,
+				841BAF814255F995154BA26B /* ScadrettoShaders.metal */,
 				3F3D6412F155EB359337E727 /* SourceWindowController.swift */,
 			);
 			path = App;
@@ -98,6 +118,8 @@
 			children = (
 				884C485CF77F5109F0C48E35 /* editor-bom-crlf-edited.scad */,
 				E8E477BFBAF95B1641A1F784 /* editor-bom-crlf.scad */,
+				2582FD20D9A8E8BE2F83FA23 /* mounting-plate.scad */,
+				A6B1DF3941CE369D6617228D /* warning-only.scad */,
 			);
 			name = Fixtures;
 			path = Tests/Fixtures;
@@ -123,6 +145,7 @@
 			buildPhases = (
 				20A6CFDBE2012296126670BB /* Sources */,
 				F9499E3BFB67993BCE2F8F5D /* Frameworks */,
+				384E9AA253E3188EE2378BA9 /* Stage OpenSCAD worker */,
 			);
 			buildRules = (
 			);
@@ -132,6 +155,8 @@
 			packageProductDependencies = (
 				0D6AEED0CB0DC0C3D2A11CFC /* ScadrettoCore */,
 				BCD167B455E3C7D983C91905 /* ScadrettoSyntax */,
+				0CBEEA630745310B4EC8FA42 /* ScadrettoEngineClient */,
+				AE7808BDDD3B8F0C9AB0A6A0 /* ScadrettoViewport */,
 			);
 			productName = Scadretto;
 			productReference = FB4D77D56B49D6D963EB85C0 /* Scadretto.app */;
@@ -204,19 +229,47 @@
 			files = (
 				FEEB9832B98CF17B34D6752A /* editor-bom-crlf-edited.scad in Resources */,
 				074318A108FA4B47D97BF8D8 /* editor-bom-crlf.scad in Resources */,
+				594490A8A19C799244DC8A38 /* mounting-plate.scad in Resources */,
+				D7240DF438FE0AF735ADA91A /* warning-only.scad in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		384E9AA253E3188EE2378BA9 /* Stage OpenSCAD worker */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Stage OpenSCAD worker";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SRCROOT/Scripts/stage-worker\" \"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH\"";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		20A6CFDBE2012296126670BB /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				32D73B9311C1D37730EB5275 /* DocumentPreview.swift in Sources */,
+				7EAB47C9A57EFFD93EF1D081 /* PreviewSidebar.swift in Sources */,
+				610C5A67DCDCC16EDF58A097 /* PreviewWorkspace.swift in Sources */,
 				B3BAEE938B3DE7BEAC1FB1EE /* ScadrettoApp.swift in Sources */,
 				F6C1EB529D983B5238B37644 /* ScadrettoDocument.swift in Sources */,
 				40F9B0835DA56AE1C81ADCD3 /* ScadrettoDocumentBase.m in Sources */,
+				23C6166A18E79F8A5DCA4372 /* ScadrettoShaders.metal in Sources */,
 				7510EDA39840F4E6811C4D6B /* SourceWindowController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -479,9 +532,17 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		0CBEEA630745310B4EC8FA42 /* ScadrettoEngineClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ScadrettoEngineClient;
+		};
 		0D6AEED0CB0DC0C3D2A11CFC /* ScadrettoCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ScadrettoCore;
+		};
+		AE7808BDDD3B8F0C9AB0A6A0 /* ScadrettoViewport */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ScadrettoViewport;
 		};
 		BCD167B455E3C7D983C91905 /* ScadrettoSyntax */ = {
 			isa = XCSwiftPackageProductDependency;

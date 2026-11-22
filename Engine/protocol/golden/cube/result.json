@@ -1,0 +1,180 @@
+{
+  "buildSHA": "0000000000000000000000000000000000000000000000000000000000000000",
+  "console": [],
+  "dependencyEdges": [],
+  "detail": "rendered",
+  "diagnostics": [],
+  "droppedConsoleMessages": 0,
+  "files": [
+    {
+      "byteLength": 9,
+      "id": 0,
+      "kind": "main",
+      "logicalPath": "/ScadrettoGolden/cube.scad",
+      "sha256": "b4f979f89abab6a8cba93104053ba14f5216f7818d2651abbca68716e1f51783",
+      "writable": true
+    }
+  ],
+  "instances": [
+    {
+      "diameter": null,
+      "id": 1,
+      "iteration": {},
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "group",
+      "operand": null,
+      "parent": null,
+      "span": null,
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": null,
+      "id": 2,
+      "iteration": {},
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "cube",
+      "operand": 0,
+      "parent": 1,
+      "span": {
+        "end": 7,
+        "fileID": 0,
+        "start": 0
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  ],
+  "key": {
+    "dependencyGeneration": 0,
+    "documentID": "00000000-0000-0000-0000-000000000001",
+    "optionsDigest": "da0a93af914f387d4d4a01184a986d4be2a718ecff6788fef58816486cd7d140",
+    "resolutionDigest": "1087350f3597a140872261004dc3e996a13e3aa0e2f1a75885348853e9c6962a",
+    "sourceRevision": 1,
+    "workerBuild": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "lookups": [],
+  "mesh": {
+    "bounds": {
+      "max": [
+        2.0,
+        2.0,
+        2.0
+      ],
+      "min": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "indexCount": 36,
+    "indexOffset": 208,
+    "indexStride": 4,
+    "indexType": "uint32",
+    "path": "mesh.bin",
+    "positionType": "float64",
+    "vertexCount": 8,
+    "vertexOffset": 16,
+    "vertexStride": 24,
+    "winding": "ccw"
+  },
+  "operands": [
+    {
+      "id": 0,
+      "mesh": {
+        "bounds": {
+          "max": [
+            2.0,
+            2.0,
+            2.0
+          ],
+          "min": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "indexCount": 36,
+        "indexOffset": 208,
+        "indexStride": 4,
+        "indexType": "uint32",
+        "path": "operands.bin",
+        "positionType": "float64",
+        "vertexCount": 8,
+        "vertexOffset": 16,
+        "vertexStride": 24,
+        "winding": "ccw"
+      }
+    }
+  ],
+  "operations": [],
+  "protocolVersion": 1,
+  "requestID": "00000000-0000-0000-0000-000000000002",
+  "status": "ok"
+}

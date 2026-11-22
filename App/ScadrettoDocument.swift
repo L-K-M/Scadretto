@@ -1,6 +1,8 @@
 import AppKit
 import os
 import ScadrettoCore
+import ScadrettoEngineClient
+import ScadrettoViewport
 
 private struct DocumentIO: Sendable {
     var pendingRead: SourceBuffer?
@@ -16,6 +18,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     private nonisolated let io = OSAllocatedUnfairLock(initialState: DocumentIO())
     private lazy var source = SourceDocument(buffer: try! SourceBuffer())
     private weak var editor: SourceWindowController?
+    private var preview: DocumentPreview?
     private var typingEnd: Int?
     private var typingTimer: Task<Void, Never>?
 
@@ -54,6 +57,13 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         addWindowController(controller)
         editor = controller
         controller.show(source.snapshot, selecting: NSRange(location: 0, length: 0))
+        let preview = DocumentPreview(engine: (NSApp.delegate as? ScadrettoApp)?.engineClient)
+        self.preview = preview
+        preview.onUpdate = { [weak controller] phase in controller?.previewWorkspace.update(phase) }
+        controller.previewWorkspace.sidebar.onReveal = { [weak self] file, span, result in
+            self?.reveal(file: file, span: span, in: result)
+        }
+        preview.schedule(source.snapshot, fileURL: fileURL, immediate: true)
     }
 
     override var isDocumentEdited: Bool { source.isEdited }
@@ -64,6 +74,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         try super.revert(toContentsOf: url, ofType: typeName)
         adoptRead()
         editor?.show(source.snapshot, selecting: NSRange(location: 0, length: 0))
+        preview?.schedule(source.snapshot, fileURL: fileURL, immediate: true)
     }
 
     // AppKit coordinates safe writes and provides the prepared destination.
@@ -94,6 +105,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     ) {
         endTypingGroup()
         let snapshot = source.snapshot
+        let priorURL = fileURL
         super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
             if error == nil, let self,
                saveOperation == .saveOperation || saveOperation == .saveAsOperation {
@@ -106,6 +118,9 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
                 if written == snapshot.buffer.bytes {
                     self.source.acknowledgeSaved(snapshot)
                     self.editor?.window?.isDocumentEdited = self.source.isEdited
+                }
+                if priorURL != self.fileURL {
+                    self.preview?.schedule(self.source.snapshot, fileURL: self.fileURL, immediate: true)
                 }
             }
             completionHandler(error)
@@ -194,6 +209,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
 
         editor?.show(snapshot, selecting: selection)
         editor?.window?.isDocumentEdited = source.isEdited
+        preview?.schedule(snapshot, fileURL: fileURL, immediate: location == nil)
     }
 
     func endTypingGroup() {
@@ -220,6 +236,9 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     }
 
     override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(revealSelectedInstance(_:)) {
+            return editor?.previewWorkspace.sidebar.canRevealOccurrence == true
+        }
         if item.action == #selector(undoSource(_:)) {
             let typing = typingEnd != nil
             if let menu = item as? NSMenuItem {
@@ -236,7 +255,86 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
 
     override func close() {
         endTypingGroup()
+        preview?.close()
         super.close()
+    }
+
+    @IBAction func retryPreview(_ sender: Any?) { preview?.retry() }
+    @IBAction func cancelPreview(_ sender: Any?) { preview?.cancel() }
+    @IBAction func revealSelectedInstance(_ sender: Any?) {
+        editor?.previewWorkspace.sidebar.revealOccurrence()
+    }
+
+    @IBAction func frameModel(_ sender: Any?) { editor?.previewWorkspace.viewport?.frameAll() }
+
+    @IBAction func standardView(_ sender: NSMenuItem) {
+        let views = ViewportStandardView.allCases
+        guard views.indices.contains(sender.tag) else { return }
+        editor?.previewWorkspace.viewport?.setStandardView(views[sender.tag])
+    }
+
+    @IBAction func toggleOrthographic(_ sender: NSMenuItem) {
+        guard let viewport = editor?.previewWorkspace.viewport else { return }
+        viewport.orthographic.toggle()
+        sender.state = viewport.orthographic ? .on : .off
+    }
+
+    @IBAction func toggleEdges(_ sender: NSMenuItem) {
+        guard let viewport = editor?.previewWorkspace.viewport else { return }
+        viewport.showsEdges.toggle()
+        sender.state = viewport.showsEdges ? .on : .off
+        UserDefaults.standard.set(viewport.showsEdges, forKey: "showsEdges")
+    }
+
+    @IBAction func toggleAxes(_ sender: NSMenuItem) {
+        guard let viewport = editor?.previewWorkspace.viewport else { return }
+        viewport.showsAxes.toggle()
+        sender.state = viewport.showsAxes ? .on : .off
+        UserDefaults.standard.set(viewport.showsAxes, forKey: "showsAxes")
+    }
+
+    @IBAction func toggleOrbitPan(_ sender: NSMenuItem) {
+        guard let viewport = editor?.previewWorkspace.viewport else { return }
+        viewport.swapsOrbitAndPan.toggle()
+        sender.state = viewport.swapsOrbitAndPan ? .on : .off
+        UserDefaults.standard.set(viewport.swapsOrbitAndPan, forKey: "swapsOrbitAndPan")
+    }
+
+    @IBAction func showWorkerLog(_ sender: Any?) {
+        guard let window = editor?.window else { return }
+        let alert = NSAlert()
+        alert.messageText = "OpenSCAD Worker Log"
+        let details = preview?.log ?? ""
+        alert.informativeText = details.isEmpty ? "The worker has no process log for this evaluation." : String(details.prefix(4096))
+        alert.beginSheetModal(for: window)
+    }
+
+    private func reveal(file: UInt32, span: WireSpan?, in result: EvaluationResult) {
+        guard let preview, preview.acceptsNavigation(from: result),
+              let record = result.files.first(where: { $0.id == file }) else { return }
+        if record.kind == .main {
+            reveal(span, ifDigest: record.sha256)
+        } else if [.include, .use].contains(record.kind) {
+            let url = URL(fileURLWithPath: record.resolvedPath ?? record.logicalPath)
+            NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { document, _, error in
+                if let document = document as? ScadrettoDocument {
+                    document.reveal(span, ifDigest: record.sha256)
+                } else if let error {
+                    NSApp.presentError(error)
+                }
+            }
+        }
+    }
+
+    private func reveal(_ span: WireSpan?, ifDigest digest: String) {
+        let buffer = source.buffer
+        guard buffer.sha256 == digest else { return }
+        let range = span.flatMap { span in
+            let length = UInt64(buffer.bytes.count)
+            guard span.start <= span.end, span.end <= length else { return nil as NSRange? }
+            return try? buffer.textRange(for: Int(span.start)..<Int(span.end))
+        }
+        editor?.reveal(range)
     }
 }
 

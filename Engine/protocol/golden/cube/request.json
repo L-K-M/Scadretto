@@ -1,0 +1,20 @@
+{
+  "backend": "manifold",
+  "expectedWorkerBuild": "0000000000000000000000000000000000000000000000000000000000000000",
+  "key": {
+    "dependencyGeneration": 0,
+    "documentID": "00000000-0000-0000-0000-000000000001",
+    "optionsDigest": "da0a93af914f387d4d4a01184a986d4be2a718ecff6788fef58816486cd7d140",
+    "resolutionDigest": "1087350f3597a140872261004dc3e996a13e3aa0e2f1a75885348853e9c6962a",
+    "sourceRevision": 1,
+    "workerBuild": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "libraryRoots": [],
+  "logicalPath": "/ScadrettoGolden/cube.scad",
+  "preview": false,
+  "protocolVersion": 1,
+  "requestID": "00000000-0000-0000-0000-000000000002",
+  "resourceRoots": [],
+  "snapshot": "main.scad",
+  "sourceSHA256": "b4f979f89abab6a8cba93104053ba14f5216f7818d2651abbca68716e1f51783"
+}

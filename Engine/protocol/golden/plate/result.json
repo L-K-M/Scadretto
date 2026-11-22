@@ -1,0 +1,1524 @@
+{
+  "buildSHA": "0000000000000000000000000000000000000000000000000000000000000000",
+  "console": [],
+  "dependencyEdges": [
+    {
+      "instanceID": 7,
+      "property": "d",
+      "span": {
+        "end": 184,
+        "fileID": 0,
+        "start": 183
+      }
+    },
+    {
+      "instanceID": 7,
+      "property": "d",
+      "span": {
+        "end": 184,
+        "fileID": 0,
+        "start": 183
+      }
+    },
+    {
+      "instanceID": 7,
+      "property": "d",
+      "span": {
+        "end": 184,
+        "fileID": 0,
+        "start": 183
+      }
+    },
+    {
+      "instanceID": 7,
+      "property": "d",
+      "span": {
+        "end": 345,
+        "fileID": 0,
+        "start": 339
+      }
+    },
+    {
+      "instanceID": 7,
+      "property": "d",
+      "span": {
+        "end": 345,
+        "fileID": 0,
+        "start": 339
+      }
+    },
+    {
+      "instanceID": 7,
+      "property": "hole_d",
+      "span": {
+        "end": 345,
+        "fileID": 0,
+        "start": 339
+      }
+    },
+    {
+      "instanceID": 7,
+      "property": "hole_d",
+      "span": {
+        "end": 75,
+        "fileID": 0,
+        "start": 74
+      }
+    },
+    {
+      "instanceID": 7,
+      "property": "",
+      "span": {
+        "end": 75,
+        "fileID": 0,
+        "start": 74
+      }
+    },
+    {
+      "instanceID": 10,
+      "property": "d",
+      "span": {
+        "end": 184,
+        "fileID": 0,
+        "start": 183
+      }
+    },
+    {
+      "instanceID": 10,
+      "property": "d",
+      "span": {
+        "end": 184,
+        "fileID": 0,
+        "start": 183
+      }
+    },
+    {
+      "instanceID": 10,
+      "property": "d",
+      "span": {
+        "end": 184,
+        "fileID": 0,
+        "start": 183
+      }
+    },
+    {
+      "instanceID": 10,
+      "property": "d",
+      "span": {
+        "end": 345,
+        "fileID": 0,
+        "start": 339
+      }
+    },
+    {
+      "instanceID": 10,
+      "property": "d",
+      "span": {
+        "end": 345,
+        "fileID": 0,
+        "start": 339
+      }
+    },
+    {
+      "instanceID": 10,
+      "property": "hole_d",
+      "span": {
+        "end": 345,
+        "fileID": 0,
+        "start": 339
+      }
+    },
+    {
+      "instanceID": 10,
+      "property": "hole_d",
+      "span": {
+        "end": 75,
+        "fileID": 0,
+        "start": 74
+      }
+    },
+    {
+      "instanceID": 10,
+      "property": "",
+      "span": {
+        "end": 75,
+        "fileID": 0,
+        "start": 74
+      }
+    },
+    {
+      "instanceID": 13,
+      "property": "d",
+      "span": {
+        "end": 184,
+        "fileID": 0,
+        "start": 183
+      }
+    },
+    {
+      "instanceID": 13,
+      "property": "d",
+      "span": {
+        "end": 184,
+        "fileID": 0,
+        "start": 183
+      }
+    },
+    {
+      "instanceID": 13,
+      "property": "d",
+      "span": {
+        "end": 184,
+        "fileID": 0,
+        "start": 183
+      }
+    },
+    {
+      "instanceID": 13,
+      "property": "d",
+      "span": {
+        "end": 345,
+        "fileID": 0,
+        "start": 339
+      }
+    },
+    {
+      "instanceID": 13,
+      "property": "d",
+      "span": {
+        "end": 345,
+        "fileID": 0,
+        "start": 339
+      }
+    },
+    {
+      "instanceID": 13,
+      "property": "hole_d",
+      "span": {
+        "end": 345,
+        "fileID": 0,
+        "start": 339
+      }
+    },
+    {
+      "instanceID": 13,
+      "property": "hole_d",
+      "span": {
+        "end": 75,
+        "fileID": 0,
+        "start": 74
+      }
+    },
+    {
+      "instanceID": 13,
+      "property": "",
+      "span": {
+        "end": 75,
+        "fileID": 0,
+        "start": 74
+      }
+    },
+    {
+      "instanceID": 16,
+      "property": "d",
+      "span": {
+        "end": 184,
+        "fileID": 0,
+        "start": 183
+      }
+    },
+    {
+      "instanceID": 16,
+      "property": "d",
+      "span": {
+        "end": 184,
+        "fileID": 0,
+        "start": 183
+      }
+    },
+    {
+      "instanceID": 16,
+      "property": "d",
+      "span": {
+        "end": 184,
+        "fileID": 0,
+        "start": 183
+      }
+    },
+    {
+      "instanceID": 16,
+      "property": "d",
+      "span": {
+        "end": 345,
+        "fileID": 0,
+        "start": 339
+      }
+    },
+    {
+      "instanceID": 16,
+      "property": "d",
+      "span": {
+        "end": 345,
+        "fileID": 0,
+        "start": 339
+      }
+    },
+    {
+      "instanceID": 16,
+      "property": "hole_d",
+      "span": {
+        "end": 345,
+        "fileID": 0,
+        "start": 339
+      }
+    },
+    {
+      "instanceID": 16,
+      "property": "hole_d",
+      "span": {
+        "end": 75,
+        "fileID": 0,
+        "start": 74
+      }
+    },
+    {
+      "instanceID": 16,
+      "property": "",
+      "span": {
+        "end": 75,
+        "fileID": 0,
+        "start": 74
+      }
+    }
+  ],
+  "detail": "rendered",
+  "diagnostics": [],
+  "droppedConsoleMessages": 0,
+  "files": [
+    {
+      "byteLength": 350,
+      "id": 0,
+      "kind": "main",
+      "logicalPath": "/ScadrettoGolden/plate.scad",
+      "sha256": "136c95090096979a91024b7f1e6325f4f09fdca421880d6ffee447ac6c095235",
+      "writable": true
+    }
+  ],
+  "instances": [
+    {
+      "diameter": null,
+      "id": 1,
+      "iteration": {},
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "group",
+      "operand": null,
+      "parent": null,
+      "span": null,
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": null,
+      "id": 2,
+      "iteration": {},
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "difference",
+      "operand": null,
+      "parent": 1,
+      "span": {
+        "end": 202,
+        "fileID": 0,
+        "start": 190
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": null,
+      "id": 3,
+      "iteration": {},
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "cube",
+      "operand": 0,
+      "parent": 2,
+      "span": {
+        "end": 233,
+        "fileID": 0,
+        "start": 209
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": null,
+      "id": 4,
+      "iteration": {},
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "for",
+      "operand": null,
+      "parent": 2,
+      "span": {
+        "end": 264,
+        "fileID": 0,
+        "start": 239
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": null,
+      "id": 5,
+      "iteration": {
+        "i": 0.0
+      },
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        15.0,
+        20.0,
+        -1.0,
+        1.0
+      ],
+      "name": "translate",
+      "operand": null,
+      "parent": 4,
+      "span": {
+        "end": 308,
+        "fileID": 0,
+        "start": 273
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        15.0,
+        20.0,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": null,
+      "id": 6,
+      "iteration": {
+        "i": 0.0
+      },
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "mounting_hole",
+      "operand": null,
+      "parent": 5,
+      "span": {
+        "end": 346,
+        "fileID": 0,
+        "start": 321
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        15.0,
+        20.0,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": {
+        "chain": [
+          {
+            "kind": "parameter",
+            "name": "d",
+            "span": {
+              "end": 184,
+              "fileID": 0,
+              "start": 183
+            }
+          },
+          {
+            "kind": "argument",
+            "name": "d",
+            "span": {
+              "end": 184,
+              "fileID": 0,
+              "start": 183
+            }
+          },
+          {
+            "kind": "lookup",
+            "name": "d",
+            "span": {
+              "end": 184,
+              "fileID": 0,
+              "start": 183
+            }
+          },
+          {
+            "kind": "parameter",
+            "name": "d",
+            "span": {
+              "end": 345,
+              "fileID": 0,
+              "start": 339
+            }
+          },
+          {
+            "kind": "argument",
+            "name": "d",
+            "span": {
+              "end": 345,
+              "fileID": 0,
+              "start": 339
+            }
+          },
+          {
+            "kind": "lookup",
+            "name": "hole_d",
+            "span": {
+              "end": 345,
+              "fileID": 0,
+              "start": 339
+            }
+          },
+          {
+            "kind": "assignment",
+            "name": "hole_d",
+            "span": {
+              "end": 75,
+              "fileID": 0,
+              "start": 74
+            }
+          },
+          {
+            "kind": "literal",
+            "name": "",
+            "span": {
+              "end": 75,
+              "fileID": 0,
+              "start": 74
+            }
+          }
+        ],
+        "value": 4.0
+      },
+      "id": 7,
+      "iteration": {
+        "i": 0.0
+      },
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "cylinder",
+      "operand": 1,
+      "parent": 6,
+      "span": {
+        "end": 185,
+        "fileID": 0,
+        "start": 153
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        15.0,
+        20.0,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": null,
+      "id": 8,
+      "iteration": {
+        "i": 1.0
+      },
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        35.0,
+        20.0,
+        -1.0,
+        1.0
+      ],
+      "name": "translate",
+      "operand": null,
+      "parent": 4,
+      "span": {
+        "end": 308,
+        "fileID": 0,
+        "start": 273
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        35.0,
+        20.0,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": null,
+      "id": 9,
+      "iteration": {
+        "i": 1.0
+      },
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "mounting_hole",
+      "operand": null,
+      "parent": 8,
+      "span": {
+        "end": 346,
+        "fileID": 0,
+        "start": 321
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        35.0,
+        20.0,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": {
+        "chain": [
+          {
+            "kind": "parameter",
+            "name": "d",
+            "span": {
+              "end": 184,
+              "fileID": 0,
+              "start": 183
+            }
+          },
+          {
+            "kind": "argument",
+            "name": "d",
+            "span": {
+              "end": 184,
+              "fileID": 0,
+              "start": 183
+            }
+          },
+          {
+            "kind": "lookup",
+            "name": "d",
+            "span": {
+              "end": 184,
+              "fileID": 0,
+              "start": 183
+            }
+          },
+          {
+            "kind": "parameter",
+            "name": "d",
+            "span": {
+              "end": 345,
+              "fileID": 0,
+              "start": 339
+            }
+          },
+          {
+            "kind": "argument",
+            "name": "d",
+            "span": {
+              "end": 345,
+              "fileID": 0,
+              "start": 339
+            }
+          },
+          {
+            "kind": "lookup",
+            "name": "hole_d",
+            "span": {
+              "end": 345,
+              "fileID": 0,
+              "start": 339
+            }
+          },
+          {
+            "kind": "assignment",
+            "name": "hole_d",
+            "span": {
+              "end": 75,
+              "fileID": 0,
+              "start": 74
+            }
+          },
+          {
+            "kind": "literal",
+            "name": "",
+            "span": {
+              "end": 75,
+              "fileID": 0,
+              "start": 74
+            }
+          }
+        ],
+        "value": 4.0
+      },
+      "id": 10,
+      "iteration": {
+        "i": 1.0
+      },
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "cylinder",
+      "operand": 1,
+      "parent": 9,
+      "span": {
+        "end": 185,
+        "fileID": 0,
+        "start": 153
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        35.0,
+        20.0,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": null,
+      "id": 11,
+      "iteration": {
+        "i": 2.0
+      },
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        55.0,
+        20.0,
+        -1.0,
+        1.0
+      ],
+      "name": "translate",
+      "operand": null,
+      "parent": 4,
+      "span": {
+        "end": 308,
+        "fileID": 0,
+        "start": 273
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        55.0,
+        20.0,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": null,
+      "id": 12,
+      "iteration": {
+        "i": 2.0
+      },
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "mounting_hole",
+      "operand": null,
+      "parent": 11,
+      "span": {
+        "end": 346,
+        "fileID": 0,
+        "start": 321
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        55.0,
+        20.0,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": {
+        "chain": [
+          {
+            "kind": "parameter",
+            "name": "d",
+            "span": {
+              "end": 184,
+              "fileID": 0,
+              "start": 183
+            }
+          },
+          {
+            "kind": "argument",
+            "name": "d",
+            "span": {
+              "end": 184,
+              "fileID": 0,
+              "start": 183
+            }
+          },
+          {
+            "kind": "lookup",
+            "name": "d",
+            "span": {
+              "end": 184,
+              "fileID": 0,
+              "start": 183
+            }
+          },
+          {
+            "kind": "parameter",
+            "name": "d",
+            "span": {
+              "end": 345,
+              "fileID": 0,
+              "start": 339
+            }
+          },
+          {
+            "kind": "argument",
+            "name": "d",
+            "span": {
+              "end": 345,
+              "fileID": 0,
+              "start": 339
+            }
+          },
+          {
+            "kind": "lookup",
+            "name": "hole_d",
+            "span": {
+              "end": 345,
+              "fileID": 0,
+              "start": 339
+            }
+          },
+          {
+            "kind": "assignment",
+            "name": "hole_d",
+            "span": {
+              "end": 75,
+              "fileID": 0,
+              "start": 74
+            }
+          },
+          {
+            "kind": "literal",
+            "name": "",
+            "span": {
+              "end": 75,
+              "fileID": 0,
+              "start": 74
+            }
+          }
+        ],
+        "value": 4.0
+      },
+      "id": 13,
+      "iteration": {
+        "i": 2.0
+      },
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "cylinder",
+      "operand": 1,
+      "parent": 12,
+      "span": {
+        "end": 185,
+        "fileID": 0,
+        "start": 153
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        55.0,
+        20.0,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": null,
+      "id": 14,
+      "iteration": {
+        "i": 3.0
+      },
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        75.0,
+        20.0,
+        -1.0,
+        1.0
+      ],
+      "name": "translate",
+      "operand": null,
+      "parent": 4,
+      "span": {
+        "end": 308,
+        "fileID": 0,
+        "start": 273
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        75.0,
+        20.0,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": null,
+      "id": 15,
+      "iteration": {
+        "i": 3.0
+      },
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "mounting_hole",
+      "operand": null,
+      "parent": 14,
+      "span": {
+        "end": 346,
+        "fileID": 0,
+        "start": 321
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        75.0,
+        20.0,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "diameter": {
+        "chain": [
+          {
+            "kind": "parameter",
+            "name": "d",
+            "span": {
+              "end": 184,
+              "fileID": 0,
+              "start": 183
+            }
+          },
+          {
+            "kind": "argument",
+            "name": "d",
+            "span": {
+              "end": 184,
+              "fileID": 0,
+              "start": 183
+            }
+          },
+          {
+            "kind": "lookup",
+            "name": "d",
+            "span": {
+              "end": 184,
+              "fileID": 0,
+              "start": 183
+            }
+          },
+          {
+            "kind": "parameter",
+            "name": "d",
+            "span": {
+              "end": 345,
+              "fileID": 0,
+              "start": 339
+            }
+          },
+          {
+            "kind": "argument",
+            "name": "d",
+            "span": {
+              "end": 345,
+              "fileID": 0,
+              "start": 339
+            }
+          },
+          {
+            "kind": "lookup",
+            "name": "hole_d",
+            "span": {
+              "end": 345,
+              "fileID": 0,
+              "start": 339
+            }
+          },
+          {
+            "kind": "assignment",
+            "name": "hole_d",
+            "span": {
+              "end": 75,
+              "fileID": 0,
+              "start": 74
+            }
+          },
+          {
+            "kind": "literal",
+            "name": "",
+            "span": {
+              "end": 75,
+              "fileID": 0,
+              "start": 74
+            }
+          }
+        ],
+        "value": 4.0
+      },
+      "id": 16,
+      "iteration": {
+        "i": 3.0
+      },
+      "local": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "cylinder",
+      "operand": 1,
+      "parent": 15,
+      "span": {
+        "end": 185,
+        "fileID": 0,
+        "start": 153
+      },
+      "world": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        75.0,
+        20.0,
+        -1.0,
+        1.0
+      ]
+    }
+  ],
+  "key": {
+    "dependencyGeneration": 0,
+    "documentID": "00000000-0000-0000-0000-000000000001",
+    "optionsDigest": "da0a93af914f387d4d4a01184a986d4be2a718ecff6788fef58816486cd7d140",
+    "resolutionDigest": "58e7290f3c47738441364ebd981c0cd0db600dc9980074368621fafc921af180",
+    "sourceRevision": 1,
+    "workerBuild": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "lookups": [],
+  "mesh": {
+    "bounds": {
+      "max": [
+        120.0,
+        40.0,
+        6.0
+      ],
+      "min": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "indexCount": 3156,
+    "indexOffset": 12496,
+    "indexStride": 4,
+    "indexType": "uint32",
+    "path": "mesh.bin",
+    "positionType": "float64",
+    "vertexCount": 520,
+    "vertexOffset": 16,
+    "vertexStride": 24,
+    "winding": "ccw"
+  },
+  "operands": [
+    {
+      "id": 0,
+      "mesh": {
+        "bounds": {
+          "max": [
+            120.0,
+            40.0,
+            6.0
+          ],
+          "min": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "indexCount": 36,
+        "indexOffset": 208,
+        "indexStride": 4,
+        "indexType": "uint32",
+        "path": "operands.bin",
+        "positionType": "float64",
+        "vertexCount": 8,
+        "vertexOffset": 16,
+        "vertexStride": 24,
+        "winding": "ccw"
+      }
+    },
+    {
+      "id": 1,
+      "mesh": {
+        "bounds": {
+          "max": [
+            2.0,
+            2.0,
+            8.0
+          ],
+          "min": [
+            -2.0,
+            -2.0,
+            0.0
+          ]
+        },
+        "indexCount": 756,
+        "indexOffset": 3424,
+        "indexStride": 4,
+        "indexType": "uint32",
+        "path": "operands.bin",
+        "positionType": "float64",
+        "vertexCount": 128,
+        "vertexOffset": 352,
+        "vertexStride": 24,
+        "winding": "ccw"
+      }
+    }
+  ],
+  "operations": [
+    {
+      "children": [
+        {
+          "instanceID": 3,
+          "role": "positive"
+        },
+        {
+          "instanceID": 4,
+          "role": "subtracted"
+        }
+      ],
+      "instanceID": 2
+    }
+  ],
+  "protocolVersion": 1,
+  "requestID": "00000000-0000-0000-0000-000000000002",
+  "status": "ok"
+}

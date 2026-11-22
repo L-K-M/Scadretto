@@ -31,12 +31,18 @@ swift test --package-path Packages/ScadrettoKit
 ```
 
 The build wrapper uses the standard Xcode build engine and leaves the app in
-the build directory. The engine and worker have separate milestone scripts.
-Use the [verification guide](plan/06-Verification-and-Release.md#build-and-verification-entry-points)
-for their entry points and the native test plan.
+the build directory. Xcode stages the pinned worker, runtime libraries and
+resources from `.build/engine/worker` and compiles the Metal shaders into the
+app. Build the engine before using the app scheme. If Xcode reports that its
+Metal toolchain is missing, install that component with
+`xcodebuild -downloadComponent MetalToolchain`.
 
-GitHub Actions runs repository script checks, pinned engine verification,
-Swift package tests and the document app build on PRs and pushes to `main`.
+The [verification guide](plan/06-Verification-and-Release.md#build-and-verification-entry-points)
+lists the test and release entry points.
+
+GitHub Actions runs repository script checks, pinned engine verification and
+Swift package tests on PRs and pushes to `main`. The document app build uses
+the checked runtime from the engine job.
 Run the UI test plan on a logged-in Mac:
 
 ```sh
