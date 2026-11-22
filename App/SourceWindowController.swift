@@ -6,25 +6,28 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     private weak var sourceDocument: ScadrettoDocument?
     private let editor = SourceTextView(usingTextLayoutManager: false)
     private let scroll = NSScrollView()
+    private let split = NSSplitView()
     private let status = NSTextField(labelWithString: "")
     private let parser = SyntaxParser()
     private var parseTask: Task<Void, Never>?
     private var snapshot: SourceSnapshot?
     private var mirroring = false
     private var ruler: LineRuler?
+    private var placedDividers = false
+    let previewWorkspace = PreviewWorkspace()
 
     var selection: NSRange { editor.selectedRange() }
 
     init(document: ScadrettoDocument) {
         self.sourceDocument = document
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 850, height: 590),
+            contentRect: NSRect(x: 0, y: 0, width: 1120, height: 690),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         super.init(window: window)
-        window.minSize = NSSize(width: 380, height: 260)
+        window.minSize = NSSize(width: 780, height: 390)
         window.center()
         configureEditor()
 
@@ -45,15 +48,25 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         status.setAccessibilityIdentifier("statusArea")
         let content = NSView()
         window.contentView = content
-        scroll.translatesAutoresizingMaskIntoConstraints = false
+        split.isVertical = true
+        split.dividerStyle = .thin
+        split.translatesAutoresizingMaskIntoConstraints = false
+        for pane in [scroll, previewWorkspace.panel, previewWorkspace.sidebar] {
+            split.addArrangedSubview(pane)
+        }
+        split.setHoldingPriority(.defaultHigh, forSubviewAt: 0)
+        split.setHoldingPriority(.defaultHigh, forSubviewAt: 2)
         status.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(scroll)
+        content.addSubview(split)
         content.addSubview(status)
         NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: content.topAnchor),
-            scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            status.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 5),
+            split.topAnchor.constraint(equalTo: content.topAnchor),
+            split.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            split.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            scroll.widthAnchor.constraint(greaterThanOrEqualToConstant: 310),
+            previewWorkspace.panel.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
+            previewWorkspace.sidebar.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
+            status.topAnchor.constraint(equalTo: split.bottomAnchor, constant: 5),
             status.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
             status.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -12),
             status.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -5),
@@ -65,9 +78,24 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         return nil
     }
 
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        guard !placedDividers else { return }
+        window?.contentView?.layoutSubtreeIfNeeded()
+        let width = split.bounds.width
+        guard width >= 780 else { return }
+        split.setPosition(width * 0.31, ofDividerAt: 0)
+        split.setPosition(width - 240, ofDividerAt: 1)
+        placedDividers = true
+        resetSourceScroll()
+    }
+
     private func configureEditor() {
         let font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
         editor.font = font
+        editor.textColor = .textColor
+        editor.backgroundColor = .textBackgroundColor
+        editor.insertionPointColor = .textColor
         editor.typingAttributes = [.font: font, .foregroundColor: NSColor.textColor]
         editor.isRichText = false
         editor.importsGraphics = false
@@ -95,19 +123,27 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     }
 
     func show(_ snapshot: SourceSnapshot, selecting selection: NSRange) {
+        let firstView = self.snapshot == nil
         self.snapshot = snapshot
         mirroring = true
         if !editor.string.utf16.elementsEqual(snapshot.buffer.displayText.utf16) {
             let change = TextDelta.between(editor.string, snapshot.buffer.displayText)
-            editor.textStorage?.replaceCharacters(in: change.range, with: change.replacement)
+            let replacement = NSAttributedString(string: change.replacement, attributes: editor.typingAttributes)
+            editor.textStorage?.replaceCharacters(in: change.range, with: replacement)
             editor.didChangeText()
         }
         let length = snapshot.buffer.utf16Length
         let location = min(selection.location, length)
         editor.setSelectedRange(NSRange(location: location, length: min(selection.length, length - location)))
+        if firstView { resetSourceScroll() }
         mirroring = false
         ruler?.needsDisplay = true
         scheduleSyntax(snapshot)
+    }
+
+    private func resetSourceScroll() {
+        scroll.contentView.scroll(to: .zero)
+        scroll.reflectScrolledClipView(scroll.contentView)
     }
 
     func textView(
@@ -131,6 +167,17 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
 
     func finishComposition() {
         if editor.hasMarkedText() { editor.unmarkText() }
+    }
+
+    func reveal(_ range: NSRange?) {
+        if let range {
+            editor.setSelectedRange(range)
+            editor.scrollRangeToVisible(range)
+        }
+        guard let window else { return }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(editor)
     }
 
     private func commitComposedText() {

@@ -1,8 +1,13 @@
 import AppKit
+import ScadrettoEngineClient
+import ScadrettoViewport
 
 @main
 @MainActor
 final class ScadrettoApp: NSObject, NSApplicationDelegate {
+    private(set) var engineClient: EngineClient?
+    private(set) var engineStartupError: String?
+
     static func main() {
         let application = NSApplication.shared
         let delegate = ScadrettoApp()
@@ -14,7 +19,21 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSDocumentController.shared.autosavingDelay = 0
+        do {
+            engineClient = EngineClient(runtime: try WorkerRuntime(bundle: .main))
+        } catch {
+            engineStartupError = error.localizedDescription
+        }
         NSApp.mainMenu = makeMainMenu()
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let engineClient else { return .terminateNow }
+        Task {
+            await engineClient.shutdown()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
@@ -70,6 +89,29 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
                                    keyEquivalent: "f")
         replace.keyEquivalentModifierMask = [.command, .option]
         replace.tag = NSTextFinder.Action.showReplaceInterface.rawValue
+
+        let view = addMenu("View", to: menu)
+        view.addItem(withTitle: "Frame Model", action: #selector(ScadrettoDocument.frameModel(_:)), keyEquivalent: "0")
+        let standard = addMenu("Standard Views", to: view)
+        for (index, direction) in ViewportStandardView.allCases.enumerated() {
+            standard.addItem(withTitle: direction.rawValue.capitalized,
+                             action: #selector(ScadrettoDocument.standardView(_:)),
+                             keyEquivalent: String(index + 1)).tag = index
+        }
+        view.addItem(.separator())
+        view.addItem(withTitle: "Orthographic Projection", action: #selector(ScadrettoDocument.toggleOrthographic(_:)),
+                     keyEquivalent: "")
+        view.addItem(withTitle: "Show Edges", action: #selector(ScadrettoDocument.toggleEdges(_:)), keyEquivalent: "")
+        view.addItem(withTitle: "Show Axes", action: #selector(ScadrettoDocument.toggleAxes(_:)), keyEquivalent: "")
+        view.addItem(withTitle: "Swap Orbit and Pan", action: #selector(ScadrettoDocument.toggleOrbitPan(_:)),
+                     keyEquivalent: "")
+
+        let model = addMenu("Model", to: menu)
+        model.addItem(withTitle: "Retry Preview", action: #selector(ScadrettoDocument.retryPreview(_:)), keyEquivalent: "r")
+        model.addItem(withTitle: "Cancel Evaluation", action: #selector(ScadrettoDocument.cancelPreview(_:)), keyEquivalent: "")
+        model.addItem(withTitle: "Reveal Selected Source", action: #selector(ScadrettoDocument.revealSelectedInstance(_:)),
+                      keyEquivalent: "")
+        model.addItem(withTitle: "Show Worker Log…", action: #selector(ScadrettoDocument.showWorkerLog(_:)), keyEquivalent: "")
         return menu
     }
 

@@ -33,11 +33,11 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 **Depends on M1.** Implement the job protocol, `ScadrettoEngineClient`, initial `ScadrettoViewport`, diagnostics and resource resolver.
 
-- [ ] Replace the spike client with a versioned job encoder, validated decoder and cancellable scheduler. Check in the three golden protocol pairs from file 03, including the mounting-plate trace. Package the helper and runtime resources in the developer app. Inject the executable location in tests.
-- [ ] Load and shade the final mesh in Metal. Add camera framing, orbit, pan and zoom with the mouse and trackpad mappings in file 04, the standard views, the Show Edges and Show Axes toggles, the orbit/pan swap preference, orthographic projection, resize/Retina handling, diagnostics that jump to the correct file/range and the evaluation console.
-- [ ] Add a warning-only fixture and assert that warnings reach the status area and jump to their source while eligible bindings in the new scene remain editable.
-- [ ] Render from the live buffer, honor include/use/import paths and upstream's default library roots, accept only the current key and latest request ID, clear valid empty scenes, and label stale last-good scenes. Simulate process crash, out-of-order completion and deleted include recovery.
-- [ ] Build the instance outline from the accepted scene's executed instances: module calls, loops, primitives and boolean operands, with occurrence selection.
+- [x] Replace the spike client with a versioned job encoder, validated decoder and cancellable scheduler. Check in the three golden protocol pairs from file 03, including the mounting-plate trace. Package the helper and runtime resources in the developer app. Inject the executable location in tests.
+- [x] Load and shade the final mesh in Metal. Add camera framing, orbit, pan and zoom with the mouse and trackpad mappings in file 04, the standard views, the Show Edges and Show Axes toggles, the orbit/pan swap preference, orthographic projection, resize/Retina handling, diagnostics that jump to the correct file/range and the evaluation console.
+- [x] Add a warning-only fixture and assert that warnings reach the status area and jump to their source while eligible bindings in the new scene remain editable.
+- [x] Render from the live buffer, honor include/use/import paths and upstream's default library roots, accept only the current key and latest request ID, clear valid empty scenes, and label stale last-good scenes. Simulate process crash, out-of-order completion and deleted include recovery.
+- [x] Build the instance outline from the accepted scene's executed instances: module calls, loops, primitives and boolean operands, with occurrence selection.
 
 **Exit:** Open the handwritten fixture from Finder, change `count` in text, and see the new hole in the shaded mesh and outline. Break and fix a statement without losing work. Running from a path with spaces succeeds.
 

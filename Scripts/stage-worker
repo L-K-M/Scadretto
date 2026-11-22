@@ -1,0 +1,20 @@
+#!/bin/bash
+set -euo pipefail
+
+root="$(cd -- "$(dirname -- "$0")/.." && pwd -P)"
+worker="${SCADRETTO_WORKER_PRODUCT:-$root/.build/engine/worker}"
+contents="${1:?Usage: Scripts/stage-worker /path/to/Scadretto.app/Contents}"
+
+if [[ ! -x "$worker/bin/scadretto-engine" || ! -d "$worker/Frameworks" ||
+      ! -f "$worker/Resources/fonts/fonts.conf" ]]; then
+    echo 'error: the pinned worker runtime is missing. Run Scripts/build-engine first.' >&2
+    exit 1
+fi
+
+install -d "$contents/Helpers" "$contents/Frameworks" "$contents/Resources/OpenSCAD"
+install -m 755 "$worker/bin/scadretto-engine" "$contents/Helpers/scadretto-engine"
+shopt -s nullglob
+for library in "$worker"/Frameworks/*.dylib; do
+    install -m 755 "$library" "$contents/Frameworks/"
+done
+/usr/bin/rsync -a --delete "$worker/Resources/" "$contents/Resources/OpenSCAD/"

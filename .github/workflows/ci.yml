@@ -26,7 +26,7 @@ jobs:
       - name: Check repository scripts
         run: |
           set -euo pipefail
-          shellcheck -x Scripts/*.sh Scripts/bootstrap-macos Scripts/build-engine Scripts/verify-engine Engine/build-dependencies
+          shellcheck -x Scripts/*.sh Scripts/bootstrap-macos Scripts/build-engine Scripts/verify-engine Scripts/stage-worker Engine/build-dependencies
           Scripts/build.sh --help
           Scripts/release.sh --help
           if Scripts/release.sh --preflight 01.2.3 > "$RUNNER_TEMP/invalid-version" 2>&1; then
@@ -76,9 +76,18 @@ jobs:
           name: engine-verification
           path: .build/engine/verification.*/**
           include-hidden-files: true
+      - name: Archive the developer worker runtime
+        run: tar -cf "$RUNNER_TEMP/scadretto-worker.tar" -C .build/engine/worker .
+      - name: Upload the developer worker runtime
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: worker-runtime
+          path: ${{ runner.temp }}/scadretto-worker.tar
+          if-no-files-found: error
 
   document:
     name: Source package and document app
+    needs: engine
     runs-on: macos-15
     timeout-minutes: 20
     steps:
@@ -87,6 +96,15 @@ jobs:
           persist-credentials: false
       - name: Run package tests
         run: swift test --package-path Packages/ScadrettoKit
+      - name: Download the checked worker runtime
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: worker-runtime
+          path: ${{ runner.temp }}
+      - name: Restore the worker runtime
+        run: |
+          mkdir -p .build/engine/worker
+          tar -xf "$RUNNER_TEMP/scadretto-worker.tar" -C .build/engine/worker
       - name: Build app and UI test bundle
         run: |
           xcodebuild -project Scadretto.xcodeproj -scheme Scadretto \
