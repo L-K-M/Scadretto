@@ -51,8 +51,7 @@ public enum ViewportShader {
 /// revolution. Imprecise scroll zooms by `exp(deltaY * 0.2)`. Momentum-phase
 /// scroll events are ignored while a button drag is active so a finishing
 /// flick cannot fight a pan or orbit already in progress. A click is
-/// distinguished from a drag by a three-point threshold; click selection is
-/// out of scope for M2.
+/// distinguished from a drag by a three-point threshold.
 ///
 /// The camera survives `setMesh(_:)` revisions, per the plan's "preserve
 /// camera across reevaluations"; only the first non-empty mesh auto-frames.
@@ -76,11 +75,13 @@ public final class ViewportView: MTKView {
 
     /// Camera state in world coordinates. Read-only; drive it through
     /// `frameAll`, `setStandardView` or gestures.
-    public private(set) var camera = ViewportCamera()
+    public private(set) var camera = ViewportCamera() {
+        didSet { if camera != oldValue { projectionDidChange() } }
+    }
 
     /// Orthographic projection when true, perspective when false.
     public var orthographic = false {
-        didSet { needsDisplay = true }
+        didSet { if orthographic != oldValue { projectionDidChange() } }
     }
 
     /// Draws triangle edges over the shaded mesh, as upstream's Show Edges.
@@ -195,14 +196,12 @@ public final class ViewportView: MTKView {
               let meshBounds = upload.bounds, meshBounds.radius > 0 else { return }
         camera.frameAll(meshBounds, aspect: boundsAspect)
         hasAutoFramed = true
-        needsDisplay = true
     }
 
     /// Aims the camera along a standard view direction, keeping the current
     /// center and zoom.
     public func setStandardView(_ view: ViewportStandardView) {
         camera.setStandardView(view)
-        needsDisplay = true
     }
 
     /// Marks or clears the stale-scene styling.
@@ -220,6 +219,13 @@ public final class ViewportView: MTKView {
         presentation = nil
         cancelDiameterDrag()
         if wasPresented { onPresentationChange?() }
+    }
+
+    private func projectionDidChange() {
+        pressedFrame = nil
+        cancelDiameterDrag()
+        resetPresentationRetry()
+        needsDisplay = true
     }
 
     public func showDiameter(handle: ViewportDiameterHandle?, guides: [ViewportDiameterGuide]) {
@@ -299,7 +305,7 @@ public final class ViewportView: MTKView {
         mouseDownPoint = viewPoint(for: event)
         lastDragPoint = mouseDownPoint
         activeButton = true
-        guard let frame = pressedFrame, let handle = frame.diameterHandle, handle == diameterHandle,
+        guard presentationIsCurrent, let frame = pressedFrame, let handle = frame.diameterHandle,
               let point = mouseDownPoint, handle.contains(point, in: frame.transform),
               let start = handle.radiusCoordinate(at: point, in: frame.transform) else { return }
         diameterDrag = DiameterDrag(frame: frame, handle: handle, startRadius: start)
@@ -419,12 +425,10 @@ public final class ViewportView: MTKView {
                 camera.panByScreenDelta(
                     SIMD2(event.scrollingDeltaX, -event.scrollingDeltaY),
                     transform: viewportTransform())
-                needsDisplay = true
             } else {
                 camera.orbitByDrag(
                     deltaX: event.scrollingDeltaX, deltaY: event.scrollingDeltaY,
                     viewSize: bounds.size)
-                needsDisplay = true
             }
         } else {
             zoomBy(factor: exp(event.scrollingDeltaY * 0.2), anchoredAt: point)
@@ -474,7 +478,6 @@ public final class ViewportView: MTKView {
         case .pan:
             camera.panByScreenDelta(delta, transform: viewportTransform())
         }
-        needsDisplay = true
     }
 
     private func zoomBy(factor: Double, anchoredAt point: CGPoint) {
@@ -486,7 +489,6 @@ public final class ViewportView: MTKView {
                 sceneRadius: upload.sceneRadius
             )
         }
-        needsDisplay = true
     }
 }
 

@@ -213,7 +213,9 @@ final class DocumentPreview {
                 guard let self, isCurrent(request, input: input), !Task.isCancelled,
                       result.requestID == id, result.key == request.key else { return }
 
-                // Route new watch events before the final dependency check.
+                // Retire the prior request's pending check before arming the
+                // new watch. A fresh recheck covers changes during the handoff.
+                stopWatchingDependencies()
                 dependencies = prepared.watch
                 dependencyRequest = id
                 let dependenciesAreCurrent = await Task.detached(priority: .utility) {

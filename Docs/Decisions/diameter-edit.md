@@ -16,6 +16,8 @@ Metal's presented callback. Size and backing changes invalidate that mapping.
 One native run reported presentation time zero for the first frame containing
 the diameter grip. The viewport resubmitted the same current scene and mapping,
 and the next callback confirmed presentation before the grip accepted a press.
+Changing the camera or projection cancels an active drag. A new drag waits
+until the corresponding frame and grip have been presented.
 
 The client resolves the worker's request-local file ID against the result
 file table and verifies the main snapshot's identity, digest and byte length.
@@ -74,6 +76,34 @@ was disabled. Deleting the closing brace made the preview stale and the
 diameter field unavailable. Typing the brace restored the field and the
 original buffer. The event and accessibility records are in
 `.build/m3/escape/`.
+
+To verify a projection change during the gesture, open a fresh plate copy,
+pick the third bore and begin dragging its diameter with snapping off. Keep the
+button down, choose Top with Command-1, then release and save. Before the fix,
+the plate switched to Top while the old draft stayed active, and release
+changed the source to `hole_d = 5.00002242771;`. After the fix, the new view
+cleared the draft before release, Undo stayed disabled and the file matched
+the original bytes. The capture, event driver and comparisons are in
+`.build/m3/drag-projection/` and `.build/m3/stale-drag/`.
+
+In a separate held drag, changing an included count from four to five
+replaced the scene and retained the selection. Mouse-up kept the diameter
+at 4, Undo stayed disabled and Save preserved every main-file byte.
+Another regression probe ran the production document preview coordinator
+with the bundled worker. It touched an included file without changing
+its contents while the next request started, waited for that request to
+publish and tested write-back after the earlier watch's debounce expired.
+Before the fix, an old watch check blocked seven of eight current
+requests. After the fix, 32 runs all accepted write-back. The probe and
+logs are in `.build/m3/dependency-check/`.
+
+With two coincident cutters, clicking the wall offered two occurrences
+and withheld the diameter control. Selecting the independent call and
+entering 5 changed only its literal at byte 394. A native numeric edit in
+a plate copy with a BOM, mixed line endings, emoji and no trailing newline
+changed only byte 83. The native Undo and Redo shortcuts used the same
+history, and Undo followed by Save restored the original SHA-256
+`56c5b62eea5e921670c4d3c82e04c8d17274f6ce46ccc88fcc5061d27619e1cc`.
 
 The saved attachment extracted from the native mouse test is
 `.build/m3/Native Saved Mounting Plate.scad`. It differs from the canonical
