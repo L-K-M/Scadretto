@@ -1,0 +1,1297 @@
+From e8af70675678eaae315b9063d31a435e76e973f1 Mon Sep 17 00:00:00 2001
+From: Scadretto <scadretto@users.noreply.github.com>
+Date: Sun, 22 Nov 2026 12:11:48 +0100
+Subject: [PATCH] Observe executed properties and pitch inputs
+
+---
+ src/core/Arguments.cc      |   2 +
+ src/core/Arguments.h       |   1 +
+ src/core/Expression.cc     | 111 ++++++--
+ src/core/Parameters.cc     |  42 ++-
+ src/core/Parameters.h      |   6 +-
+ src/core/ScadrettoTrace.cc | 555 ++++++++++++++++++++++++++++++++++++-
+ src/core/ScadrettoTrace.h  |  60 ++++
+ src/core/ScopeContext.cc   |  16 +-
+ src/core/ScopeContext.h    |   1 +
+ src/core/TransformNode.cc  |  14 +
+ src/core/UserModule.cc     |   5 +-
+ src/core/Value.cc          |  12 +-
+ src/core/control.cc        |   1 +
+ src/core/node.h            |   2 +
+ src/core/primitives.cc     |  54 +++-
+ 15 files changed, 831 insertions(+), 51 deletions(-)
+
+diff --git a/src/core/Arguments.cc b/src/core/Arguments.cc
+index 28a2cbe..5d64f42 100644
+--- a/src/core/Arguments.cc
++++ b/src/core/Arguments.cc
+@@ -49,4 +49,5 @@ Arguments::Arguments(const AssignmentList& argument_expressions,
+                    : boost::optional<std::string>(argument_expression->getName()),
+                  std::move(value));
++    if (scadrettoTracing()) back().scadrettoExpression = expression->location();
+   }
+ }
+@@ -57,4 +58,5 @@ Arguments Arguments::clone() const
+   for (const Argument& argument : *this) {
+     output.emplace_back(argument.name, argument.value.clone());
++    output.back().scadrettoExpression = argument.scadrettoExpression;
+   }
+   return output;
+diff --git a/src/core/Arguments.h b/src/core/Arguments.h
+index 7fb1ffc..eb32ba2 100644
+--- a/src/core/Arguments.h
++++ b/src/core/Arguments.h
+@@ -17,4 +17,5 @@ struct Argument {
+   boost::optional<std::string> name;
+   Value value;
++  Location scadrettoExpression = Location::NONE;
+ 
+   Argument(boost::optional<std::string> name, Value value)
+diff --git a/src/core/Expression.cc b/src/core/Expression.cc
+index 8043d17..4ff8c83 100644
+--- a/src/core/Expression.cc
++++ b/src/core/Expression.cc
+@@ -80,5 +80,16 @@ Value UnaryOp::evaluate(const std::shared_ptr<const Context>& context) const
+   switch (this->op) {
+   case (Op::Not):       return !this->expr->evaluate(context).toBool();
+-  case (Op::Negate):    return checkUndef(-this->expr->evaluate(context), context);
++  case (Op::Negate): {
++    const auto operand = this->expr->evaluate(context);
++    auto result = checkUndef(-operand, context);
++    if (scadrettoTracing()) {
++      if (dynamic_cast<const Literal *>(this->expr.get())) {
++        scadrettoMark(result, "literal", "", loc);
++      } else {
++        scadrettoMarkNegation(result, loc, operand);
++      }
++    }
++    return result;
++  }
+   case (Op::BinaryNot): return checkUndef(~this->expr->evaluate(context), context);
+   default:
+@@ -115,4 +126,13 @@ BinaryOp::BinaryOp(Expression *left, BinaryOp::Op op, Expression *right, const L
+ }
+ 
++template <class Operator>
++static Value observeArithmetic(const Value& left, const Value& right, const char *name,
++                               const Location& location, Operator operation)
++{
++  auto result = operation(left, right);
++  scadrettoMarkArithmetic(result, name, location, left, right);
++  return result;
++}
++
+ Value BinaryOp::evaluate(const std::shared_ptr<const Context>& context) const
+ {
+@@ -125,13 +145,21 @@ Value BinaryOp::evaluate(const std::shared_ptr<const Context>& context) const
+     return checkUndef(this->left->evaluate(context) ^ this->right->evaluate(context), context);
+   case Op::Multiply:
+-    return checkUndef(this->left->evaluate(context) * this->right->evaluate(context), context);
++    return checkUndef(observeArithmetic(this->left->evaluate(context), this->right->evaluate(context),
++                                      "multiply", loc, [](const Value& a, const Value& b) { return a * b; }),
++                      context);
+   case Op::Divide:
+-    return checkUndef(this->left->evaluate(context) / this->right->evaluate(context), context);
++    return checkUndef(observeArithmetic(this->left->evaluate(context), this->right->evaluate(context),
++                                      "divide", loc, [](const Value& a, const Value& b) { return a / b; }),
++                      context);
+   case Op::Modulo:
+     return checkUndef(this->left->evaluate(context) % this->right->evaluate(context), context);
+   case Op::Plus:
+-    return checkUndef(this->left->evaluate(context) + this->right->evaluate(context), context);
++    return checkUndef(observeArithmetic(this->left->evaluate(context), this->right->evaluate(context),
++                                      "add", loc, [](const Value& a, const Value& b) { return a + b; }),
++                      context);
+   case Op::Minus:
+-    return checkUndef(this->left->evaluate(context) - this->right->evaluate(context), context);
++    return checkUndef(observeArithmetic(this->left->evaluate(context), this->right->evaluate(context),
++                                      "subtract", loc, [](const Value& a, const Value& b) { return a - b; }),
++                      context);
+   case Op::ShiftLeft:
+     return checkUndef(this->left->evaluate(context) << this->right->evaluate(context), context);
+@@ -219,5 +247,7 @@ ArrayLookup::ArrayLookup(Expression *array, Expression *index, const Location& l
+ Value ArrayLookup::evaluate(const std::shared_ptr<const Context>& context) const
+ {
+-  return this->array->evaluate(context)[this->index->evaluate(context)];
++  auto result = this->array->evaluate(context)[this->index->evaluate(context)];
++  scadrettoMarkComputed(result);
++  return result;
+ }
+ 
+@@ -277,4 +307,5 @@ Value Range::evaluate(const std::shared_ptr<const Context>& context) const
+ 
+   double step_d = 1.0;
++  std::shared_ptr<const ScadrettoBinding> step_binding;
+   if (this->step) {
+     const Value& step_val = this->step->evaluate(context);
+@@ -284,4 +315,5 @@ Value Range::evaluate(const std::shared_ptr<const Context>& context) const
+       return Value::undefined.clone();
+     }
++    step_binding = step_val.scadrettoBinding;
+   }
+   if (this->isLiteral()) {
+@@ -292,5 +324,7 @@ Value Range::evaluate(const std::shared_ptr<const Context>& context) const
+     }
+   }
+-  return RangeType(begin_d, step_d, end_d);
++  Value result(RangeType(begin_d, step_d, end_d));
++  scadrettoMarkRange(result, loc, begin_val, end_val, step_binding, bool(this->step));
++  return result;
+ }
+ 
+@@ -343,12 +377,23 @@ Value Vector::evaluate(const std::shared_ptr<const Context>& context) const
+     } else {
+       VectorType vec(context->session());
++      scadrettoMark(val, "element", "", children.front()->location());
+       vec.emplace_back(std::move(val));
+-      return std::move(vec);
++      Value result(std::move(vec));
++      scadrettoMark(result, "vector", "", loc);
++      return result;
+     }
+   } else {
+     VectorType vec(context->session());
+     vec.reserve(this->children.size());
+-    for (const auto& e : this->children) vec.emplace_back(e->evaluate(context));
+-    return std::move(vec);
++    bool direct = true;
++    for (const auto& e : this->children) {
++      auto value = e->evaluate(context);
++      if (value.type() == Value::Type::EMBEDDED_VECTOR) direct = false;
++      scadrettoMark(value, "element", "", e->location());
++      vec.emplace_back(std::move(value));
++    }
++    Value result(std::move(vec));
++    if (direct) scadrettoMark(result, "vector", "", loc);
++    return result;
+   }
+ }
+@@ -388,4 +433,8 @@ Value MemberLookup::evaluate(const std::shared_ptr<const Context>& context) cons
+ {
+   const Value& v = this->expr->evaluate(context);
++  const auto selected = [](Value value) {
++    scadrettoMarkComputed(value);
++    return value;
++  };
+   static const boost::regex re_swizzle_validation("^([xyzw]{1,4}|[rgba]{1,4})$");
+ 
+@@ -410,20 +459,20 @@ Value MemberLookup::evaluate(const std::shared_ptr<const Context>& context) cons
+         return {std::move(ret)};
+       }
+-      if (this->member == "w") return v[3];
+-      if (this->member == "r") return v[0];
+-      if (this->member == "g") return v[1];
+-      if (this->member == "b") return v[2];
+-      if (this->member == "a") return v[3];
++      if (this->member == "w") return selected(v[3]);
++      if (this->member == "r") return selected(v[0]);
++      if (this->member == "g") return selected(v[1]);
++      if (this->member == "b") return selected(v[2]);
++      if (this->member == "a") return selected(v[3]);
+     }
+-    if (this->member == "x") return v[0];
+-    if (this->member == "y") return v[1];
+-    if (this->member == "z") return v[2];
++    if (this->member == "x") return selected(v[0]);
++    if (this->member == "y") return selected(v[1]);
++    if (this->member == "z") return selected(v[2]);
+     break;
+   case Value::Type::RANGE:
+-    if (this->member == "begin") return v[0];
+-    if (this->member == "step") return v[1];
+-    if (this->member == "end") return v[2];
++    if (this->member == "begin") return selected(v[0]);
++    if (this->member == "step") return selected(v[1]);
++    if (this->member == "end") return selected(v[2]);
+     break;
+-  case Value::Type::OBJECT: return v[this->member];
++  case Value::Type::OBJECT: return selected(v[this->member]);
+   default:                  break;
+   }
+@@ -618,4 +667,5 @@ Value FunctionCall::evaluate(const std::shared_ptr<const Context>& context) cons
+       auto result = simplify_function_body(expression, *expression_context);
+       if (Value *value = std::get_if<Value>(&result)) {
++        scadrettoMarkComputed(*value);
+         return std::move(*value);
+       }
+@@ -905,6 +955,9 @@ static void doForEach(const AssignmentList& assignments, const Location& locatio
+       }
+       for (double value : range) {
++        Value iteration(value);
++        scadrettoMarkIteration(iteration, variable_name, assignments[assignment_index]->getExpr()->location(),
++                               variable_values);
+         doForEach(assignments, location, operation, assignment_index + 1,
+-                  *forContext(context, variable_name, value));
++                  *forContext(context, variable_name, std::move(iteration)));
+       }
+     }
+@@ -915,6 +968,8 @@ static void doForEach(const AssignmentList& assignments, const Location& locatio
+     }
+     for (const auto& value : vec) {
++      auto item = value.clone();
++      scadrettoMarkComputed(item);
+       doForEach(assignments, location, operation, assignment_index + 1,
+-                *forContext(context, variable_name, value.clone()));
++                *forContext(context, variable_name, std::move(item)));
+     }
+   } else if (variable_values.type() == Value::Type::OBJECT) {
+@@ -957,5 +1012,7 @@ Value LcFor::evaluate(const std::shared_ptr<const Context>& context) const
+     this->arguments, this->loc, context,
+     [&vec, expression = expr.get()](const std::shared_ptr<const Context>& iterationContext) {
+-      vec.emplace_back(expression->evaluate(iterationContext));
++      auto element = expression->evaluate(iterationContext);
++      scadrettoMarkComputed(element);
++      vec.emplace_back(std::move(element));
+     },
+     &reserve);
+@@ -988,5 +1045,7 @@ Value LcForC::evaluate(const std::shared_ptr<const Context>& context) const
+   unsigned int counter = 0;
+   while (this->cond->evaluate(*currentContext).toBool()) {
+-    output.emplace_back(this->expr->evaluate(*currentContext));
++    auto element = this->expr->evaluate(*currentContext);
++    scadrettoMarkComputed(element);
++    output.emplace_back(std::move(element));
+ 
+     if (counter++ == 1000000) {
+diff --git a/src/core/Parameters.cc b/src/core/Parameters.cc
+index 102c23c..7044772 100644
+--- a/src/core/Parameters.cc
++++ b/src/core/Parameters.cc
+@@ -29,4 +29,5 @@
+ #include "core/Parameters.h"
+ 
++#include <algorithm>
+ #include <cassert>
+ #include <cstddef>
+@@ -46,11 +47,12 @@
+ #include "utils/printutils.h"
+ 
+-Parameters::Parameters(ContextFrame&& frame, Location loc)
+-  : loc(std::move(loc)), frame(std::move(frame)), handle(&this->frame)
++Parameters::Parameters(ContextFrame&& frame, Location loc, std::shared_ptr<ScadrettoNodeTrace> trace)
++  : loc(std::move(loc)), frame(std::move(frame)), handle(&this->frame), trace(std::move(trace))
+ {
+ }
+ 
+ Parameters::Parameters(Parameters&& other) noexcept
+-  : loc(std::move(other.loc)), frame(std::move(other).to_context_frame()), handle(&this->frame)
++  : loc(std::move(other.loc)), frame(std::move(other).to_context_frame()), handle(&this->frame),
++    trace(std::move(other.trace))
+ {
+ }
+@@ -167,5 +169,6 @@ static ContextFrame parse_without_defaults(Arguments arguments, const Location&
+                                            const std::vector<T>& required_parameters,
+                                            const std::vector<T>& optional_parameters,
+-                                           bool warn_for_unexpected_arguments, F parameter_name)
++                                           bool warn_for_unexpected_arguments,
++                                           ScadrettoNodeTrace *trace, F parameter_name)
+ {
+   ContextFrame output{arguments.session()};
+@@ -224,8 +227,24 @@ static ContextFrame parse_without_defaults(Arguments arguments, const Location&
+           warned_for_extra_arguments = true;
+         }
++        if (trace && trace->arguments.size() < 128) {
++          trace->arguments.push_back({"", "", "unbound", argument.scadrettoExpression});
++        }
+         continue;
+       }
+     }
+ 
++    if (trace) {
++      const auto isFormal = [&](const T& parameter) { return parameter_name(parameter) == name; };
++      const bool bound = ContextFrame::is_config_variable(name) ||
++        std::any_of(required_parameters.begin(), required_parameters.end(), isFormal) ||
++        std::any_of(optional_parameters.begin(), optional_parameters.end(), isFormal);
++      for (auto& recorded : trace->arguments) {
++        if (recorded.status == "bound" && recorded.formal == name) recorded.status = "superseded";
++      }
++      if (trace->arguments.size() < 128) {
++        trace->arguments.push_back({argument.name ? *argument.name : "", bound ? name : "",
++                                    bound ? "bound" : "unbound", argument.scadrettoExpression});
++      }
++    }
+     if (argument.value.scadrettoBinding) {
+       scadrettoMark(argument.value, "parameter", name, argument.value.scadrettoBinding->location);
+@@ -240,6 +259,7 @@ Parameters Parameters::parse(Arguments arguments, const Location& loc,
+                              const std::vector<std::string>& optional_parameters)
+ {
++  auto trace = scadrettoTracing() ? std::make_shared<ScadrettoNodeTrace>() : nullptr;
+   ContextFrame frame{parse_without_defaults(std::move(arguments), loc, required_parameters,
+-                                            optional_parameters, true,
++                                            optional_parameters, true, trace.get(),
+                                             [](const std::string& s) -> std::string { return s; })};
+ 
+@@ -250,5 +270,5 @@ Parameters Parameters::parse(Arguments arguments, const Location& loc,
+   }
+ 
+-  return Parameters{std::move(frame), loc};
++  return Parameters{std::move(frame), loc, std::move(trace)};
+ }
+ 
+@@ -257,6 +277,7 @@ Parameters Parameters::parse(Arguments arguments, const Location& loc,
+                              const std::shared_ptr<const Context>& defining_context)
+ {
++  auto trace = scadrettoTracing() ? std::make_shared<ScadrettoNodeTrace>() : nullptr;
+   ContextFrame frame{parse_without_defaults(
+-    std::move(arguments), loc, required_parameters, {}, OpenSCAD::parameterCheck,
++    std::move(arguments), loc, required_parameters, {}, OpenSCAD::parameterCheck, trace.get(),
+     [](const std::shared_ptr<Assignment>& assignment) { return assignment->getName(); })};
+ 
+@@ -273,5 +294,8 @@ Parameters Parameters::parse(Arguments arguments, const Location& loc,
+     if (!frame.lookup_local_variable(parameter->getName())) {
+       if (parameter->getExpr()) {
+-        frame.set_variable(parameter->getName(), parameter->getExpr()->evaluate(defining_context));
++        const auto& expression = *parameter->getExpr();
++        auto value = expression.evaluate(defining_context);
++        scadrettoMark(value, "default", parameter->getName(), expression.location());
++        frame.set_variable(parameter->getName(), std::move(value));
+       } else {
+         frame.set_variable(parameter->getName(), Value::undefined.clone());
+@@ -280,5 +304,5 @@ Parameters Parameters::parse(Arguments arguments, const Location& loc,
+   }
+ 
+-  return Parameters{std::move(frame), loc};
++  return Parameters{std::move(frame), loc, std::move(trace)};
+ }
+ 
+diff --git a/src/core/Parameters.h b/src/core/Parameters.h
+index 3199b2d..e205c58 100644
+--- a/src/core/Parameters.h
++++ b/src/core/Parameters.h
+@@ -13,4 +13,6 @@
+ #include "core/ContextFrame.h"
+ 
++struct ScadrettoNodeTrace;
++
+ /*
+  * The parameters of a builtin function or module do not form a true Context;
+@@ -23,5 +25,5 @@ class Parameters
+ {
+ private:
+-  Parameters(ContextFrame&& frame, Location loc);
++  Parameters(ContextFrame&& frame, Location loc, std::shared_ptr<ScadrettoNodeTrace> trace);
+ 
+ public:
+@@ -71,4 +73,5 @@ public:
+   const std::string& documentRoot() const { return frame.documentRoot(); }
+   const Location& location() const { return loc; }
++  const std::shared_ptr<ScadrettoNodeTrace>& scadrettoTrace() const { return trace; }
+ 
+   static constexpr auto THIS_PARAMETER = "this";
+@@ -79,4 +82,5 @@ private:
+   ContextFrame frame;
+   ContextFrameHandle handle;
++  std::shared_ptr<ScadrettoNodeTrace> trace;
+   bool valid(const std::string& name, const Value& value, Value::Type type);
+   std::string caller = "";
+diff --git a/src/core/ScadrettoTrace.cc b/src/core/ScadrettoTrace.cc
+index 72b6580..a3f245c 100644
+--- a/src/core/ScadrettoTrace.cc
++++ b/src/core/ScadrettoTrace.cc
+@@ -14,7 +14,11 @@
+ #include <map>
+ #include <optional>
++#include <set>
+ #include <sstream>
+ #include <stdexcept>
+ #include <thread>
++#include <tuple>
++#include <unordered_map>
++#include <unordered_set>
+ #include <vector>
+ 
+@@ -26,8 +30,10 @@
+ #include "core/BuiltinContext.h"
+ #include "core/CgalAdvNode.h"
++#include "core/ColorNode.h"
+ #include "core/Context.h"
+ #include "core/CsgOpNode.h"
+ #include "core/EvaluationSession.h"
+ #include "core/ModuleInstantiation.h"
++#include "core/RenderNode.h"
+ #include "core/RenderVariables.h"
+ #include "core/ScadrettoDependencies.h"
+@@ -57,7 +63,142 @@ constexpr auto maxPayloadBytes = 256ULL * 1024 * 1024;
+ constexpr auto maxInstances = 65536;
+ constexpr auto maxExecutableBytes = 512ULL * 1024 * 1024;
++// Releasing a chain recurses once per link, so its depth has to stay bounded.
++constexpr unsigned maxBindingDepth = 4096;
++constexpr std::size_t maxChainLinks = 256;
++constexpr std::size_t maxOrigins = 32;
+ constexpr uint32_t meshPayloadVersion = 1;
+ constexpr unsigned mainFileID = 0;
+ 
++// Follows literals through the operations the trace observes. A read that no
++// property explains leaves that literal's impact set partial.
++class ImpactTrace
++{
++public:
++  const ScadrettoOrigins *literal(const Location& location)
++  {
++    if (auto found = byAddress.find(&location); found != byAddress.end()) return found->second;
++    // Including a file twice creates two syntax nodes for the same bytes.
++    const auto key = std::make_tuple(location.fileName(), location.firstLine(), location.firstColumn(),
++                                     location.lastLine(), location.lastColumn());
++    const auto *canonical = bySource.emplace(key, &location).first->second;
++    const auto *origins = &*interned.insert(ScadrettoOrigins{canonical}).first;
++    byAddress.emplace(&location, origins);
++    return origins;
++  }
++
++  const ScadrettoOrigins *merge(const ScadrettoOrigins *left, const ScadrettoOrigins *right)
++  {
++    if (!left || left == right) return right;
++    if (!right) return left;
++    const auto pair = std::minmax(left, right);
++    if (auto found = merged.find(pair); found != merged.end()) return found->second;
++    ScadrettoOrigins joined;
++    std::set_union(left->begin(), left->end(), right->begin(), right->end(), std::back_inserter(joined),
++                   std::less<const Location *>());
++    const ScadrettoOrigins *result = nullptr;
++    if (joined.size() <= maxOrigins) {
++      result = &*interned.insert(std::move(joined)).first;
++    } else {
++      partial.insert(joined.begin(), joined.end());
++    }
++    merged.emplace(pair, result);
++    return result;
++  }
++
++  void read(const Location& site, const ScadrettoOrigins *origins)
++  {
++    if (origins) reads.emplace(&site, origins);
++  }
++
++  // Built-ins also read special variables without evaluating a lookup.
++  void implicitlyRead(const ScadrettoOrigins *origins)
++  {
++    if (origins) partial.insert(origins->begin(), origins->end());
++  }
++
++  std::unordered_set<const Location *> untraced(const std::unordered_set<const Location *>& explained) const
++  {
++    auto result = partial;
++    for (const auto& [site, origins] : reads) {
++      if (!explained.count(site)) result.insert(origins->begin(), origins->end());
++    }
++    return result;
++  }
++
++private:
++  std::set<ScadrettoOrigins> interned;
++  std::map<std::tuple<std::string, int, int, int, int>, const Location *> bySource;
++  std::unordered_map<const Location *, const ScadrettoOrigins *> byAddress;
++  std::map<std::pair<const ScadrettoOrigins *, const ScadrettoOrigins *>, const ScadrettoOrigins *> merged;
++  std::set<std::pair<const Location *, const ScadrettoOrigins *>> reads;
++  std::unordered_set<const Location *> partial;
++};
++
++ImpactTrace impact;
++
++using BindingRef = std::shared_ptr<const ScadrettoBinding>;
++
++BindingRef makeBinding(std::string kind, const std::string& name, const Location& location, double value,
++                       BindingRef previous, BindingRef second = nullptr, BindingRef third = nullptr)
++{
++  unsigned depth = 1;
++  const ScadrettoOrigins *origins = nullptr;
++  for (const auto *input : {&previous, &second, &third}) {
++    if (!*input) continue;
++    depth = std::max(depth, (*input)->depth + 1);
++    origins = impact.merge(origins, (*input)->origins);
++  }
++  const Location *site = nullptr;
++  if (kind == "literal") {
++    // Built-in defaults such as $fn have no bytes to edit, so they are no origin.
++    if (!location.isNone()) origins = impact.literal(location);
++  } else if (kind == "lookup") {
++    site = &location;
++    impact.read(location, origins);
++  }
++  if (!name.empty() && name.front() == '$') impact.implicitlyRead(origins);
++  if (depth > maxBindingDepth) {
++    kind = "truncated";
++    previous = second = third = nullptr;
++    depth = 1;
++  }
++  return std::make_shared<ScadrettoBinding>(
++    ScadrettoBinding{std::move(kind), name, location, std::move(previous), std::move(second),
++                     std::move(third), value, origins, site, depth});
++}
++
++// Computed results can fill large lists, so equal origins share one node.
++BindingRef computedBinding(const ScadrettoOrigins *origins)
++{
++  static std::unordered_map<const ScadrettoOrigins *, BindingRef> shared;
++  auto& binding = shared[origins];
++  if (!binding) {
++    binding = std::make_shared<ScadrettoBinding>(
++      ScadrettoBinding{"computed", "", Location::NONE, nullptr, nullptr, nullptr, 0, origins, nullptr, 1});
++  }
++  return binding;
++}
++
++bool directLink(const std::string& kind)
++{
++  return kind == "parameter" || kind == "argument" || kind == "assignment" || kind == "lookup" ||
++         kind == "element" || kind == "default";
++}
++
++// The literal that an edit of this binding would replace.
++const Location *writableLiteral(const ScadrettoBinding *binding)
++{
++  while (binding && directLink(binding->kind)) binding = binding->previous.get();
++  if (!binding || binding->kind != "literal" || !binding->origins) return nullptr;
++  return binding->origins->front();
++}
++
++bool consumes(const ScadrettoProperty& property, const Location *literal)
++{
++  if (property.semantic == "moduleArgument" || property.status == "invalid" || !property.binding) return false;
++  const auto *origins = property.binding->origins;
++  return origins && std::find(origins->begin(), origins->end(), literal) != origins->end();
++}
++
+ std::string readFile(const fs::path& path, std::size_t limit)
+ {
+@@ -300,8 +441,204 @@ struct SceneTrace {
+   }
+ 
+-  void visit(const AbstractNode& node, json parent, const Transform3d& parentWorld,
++  struct Occurrence {
++    const AbstractNode *node;
++    std::optional<std::size_t> parent;
++    std::size_t end;  // one past its last descendant in execution order
++    bool knownFrame;
++    bool pitchFrame;
++  };
++  std::vector<Occurrence> occurrences;
++  std::unordered_map<const Location *, std::vector<std::size_t>> consumers;
++  json propertyDefinitions = json::array();
++  json argumentLists = json::array();
++  std::unordered_map<std::string, std::size_t> definitionIDs;
++  std::unordered_map<std::string, std::size_t> argumentListIDs;
++
++  static bool branching(const ScadrettoBinding& binding)
++  {
++    return binding.kind == "add" || binding.kind == "subtract" || binding.kind == "multiply" ||
++           binding.kind == "divide" || binding.kind == "range" || binding.kind == "rangeWithStep";
++  }
++
++  static std::size_t intern(json& table, std::unordered_map<std::string, std::size_t>& ids, json record)
++  {
++    const auto [entry, inserted] = ids.emplace(record.dump(), table.size());
++    if (inserted) table.push_back(std::move(record));
++    return entry->second;
++  }
++
++  // Reads below a computed result can also reach consumers that bypass a lookup.
++  std::unordered_set<const Location *> explainedReads() const
++  {
++    std::unordered_set<const Location *> explained;
++    std::unordered_set<const ScadrettoBinding *> visited;
++    std::vector<const ScadrettoBinding *> pending;
++    for (const auto& occurrence : occurrences) {
++      if (!occurrence.node->scadrettoDetails) continue;
++      for (const auto& property : occurrence.node->scadrettoDetails->properties) {
++        if (property.status == "invalid" || !property.binding) continue;
++        const auto *root = property.binding.get();
++        pending.push_back(root->kind == "element" ? root->previous.get() : root);
++        while (!pending.empty()) {
++          const auto *binding = pending.back();
++          pending.pop_back();
++          if (!binding || !visited.insert(binding).second) continue;
++          if (binding->site) explained.insert(binding->site);
++          const auto& kind = binding->kind;
++          // A range also decides how many occurrences run, which no property records.
++          if (kind == "element" || kind == "computed" || kind == "truncated" || kind == "range" ||
++              kind == "rangeWithStep") continue;
++          pending.push_back(binding->previous.get());
++          pending.push_back(binding->second.get());
++          pending.push_back(binding->third.get());
++        }
++      }
++    }
++    return explained;
++  }
++
++  void indexConsumers()
++  {
++    for (std::size_t index = occurrences.size(); index-- > 0;) {
++      if (const auto parent = occurrences[index].parent) {
++        occurrences[*parent].end = std::max(occurrences[*parent].end, occurrences[index].end);
++      }
++    }
++    for (std::size_t index = 0; index < occurrences.size(); ++index) {
++      const auto& details = occurrences[index].node->scadrettoDetails;
++      if (!details) continue;
++      for (const auto& property : details->properties) {
++        if (property.semantic == "moduleArgument" || property.status == "invalid" || !property.binding ||
++            !property.binding->origins) continue;
++        for (const auto *literal : *property.binding->origins) consumers[literal].push_back(index);
++      }
++    }
++  }
++
++  // A preview matches evaluation only if nothing else on this path moves with the literal.
++  bool sharedOnPath(std::size_t index, const ScadrettoProperty& edited, const Location *literal) const
++  {
++    for (const auto& property : occurrences[index].node->scadrettoDetails->properties) {
++      const bool samePitchComponent = (edited.semantic == "pitch" && property.semantic == "translateX") ||
++                                      (edited.semantic == "translateX" && property.semantic == "pitch");
++      if (&property != &edited && !samePitchComponent && consumes(property, literal)) return true;
++    }
++    const auto found = consumers.find(literal);
++    if (found == consumers.end()) return false;
++    const auto& uses = found->second;
++    const auto below = std::upper_bound(uses.begin(), uses.end(), index);
++    if (below != uses.end() && *below < occurrences[index].end) return true;
++    for (auto parent = occurrences[index].parent; parent; parent = occurrences[*parent].parent) {
++      if (std::binary_search(uses.begin(), uses.end(), *parent)) return true;
++    }
++    return false;
++  }
++
++  json propertyDefinition(const ScadrettoProperty& property, bool complete) const
++  {
++    auto chain = json::array();
++    for (auto binding = property.binding; binding && chain.size() < maxChainLinks; binding = binding->previous) {
++      chain.push_back({{"kind", binding->kind}, {"name", binding->name}, {"span", span(binding->location)}});
++      if (branching(*binding)) break;
++    }
++    auto inputs = json::array();
++    if (property.binding && property.binding->origins) {
++      for (const auto *literal : *property.binding->origins) {
++        if (auto source = span(*literal); !source.is_null()) inputs.push_back(std::move(source));
++      }
++    }
++    return {{"semantic", property.semantic}, {"formal", property.formal}, {"status", property.status},
++            {"displayMultiplier", property.displayMultiplier}, {"centered", property.centered},
++            {"expression", span(property.expression)}, {"chain", std::move(chain)},
++            {"inputs", std::move(inputs)}, {"impactComplete", complete}};
++  }
++
++  void attachDetails()
++  {
++    const auto untraced = impact.untraced(explainedReads());
++    indexConsumers();
++    for (std::size_t index = 0; index < occurrences.size(); ++index) {
++      const auto& occurrence = occurrences[index];
++      auto& instance = instances[index];
++      if (!occurrence.knownFrame) instance["opaqueFrame"] = true;
++      if (!occurrence.node->scadrettoDetails) continue;
++
++      const auto& detail = *occurrence.node->scadrettoDetails;
++      if (auto definition = span(detail.definition); !definition.is_null()) {
++        instance["definitionSpan"] = std::move(definition);
++      }
++      if (!detail.arguments.empty()) {
++        auto arguments = json::array();
++        for (const auto& argument : detail.arguments) {
++          arguments.push_back({{"name", argument.name}, {"formal", argument.formal},
++                               {"status", argument.status}, {"expression", span(argument.expression)}});
++        }
++        instance["arguments"] = intern(argumentLists, argumentListIDs, std::move(arguments));
++      }
++
++      auto properties = json::array();
++      for (const auto& property : detail.properties) {
++        const auto *literal = property.status == "bound" ? writableLiteral(property.binding.get()) : nullptr;
++        // Only the main snapshot can be written, so only its literals have a provable impact.
++        const bool complete = literal && source.owns(*literal) && !untraced.count(literal) &&
++                              !span(*literal).is_null();
++        json record = {{"definition", intern(propertyDefinitions, definitionIDs,
++                                              propertyDefinition(property, complete))},
++                       {"value", property.value}};
++        const bool spatial = property.semantic != "moduleArgument" && property.semantic != "fragmentCount";
++        bool dragVerified = complete && spatial && occurrence.knownFrame;
++        if (property.iteration) {
++          record["pitch"] = {{"iteration", *property.iteration}};
++          // A displacement at iteration zero cannot determine the pitch.
++          dragVerified = dragVerified && *property.iteration != 0 && occurrence.pitchFrame &&
++                         property.pitchIndependent;
++        }
++        if (dragVerified && !sharedOnPath(index, property, literal)) record["dragVerified"] = true;
++        properties.push_back(std::move(record));
++      }
++      if (!properties.empty()) instance["properties"] = std::move(properties);
++    }
++  }
++
++  // What a recorded node hands down to its children.
++  struct Scope {
++    const AbstractNode *node;
++    Transform3d world;
++    std::map<std::string, double> iteration;
++    std::size_t index;
++    bool stableFrame;
++    unsigned loops;
++    bool knownFrame;
++    std::size_t nextChild = 0;
++  };
++
++  // Module recursion can nest deeper than one native frame per node allows.
++  void visit(const AbstractNode& root, json parent, const Transform3d& parentWorld,
+              std::map<std::string, double> iteration)
+   {
+-    if (node.modinst && node.modinst->isBackground()) return;
++    std::vector<Scope> open;
++    if (auto scope = record(root, std::move(parent), parentWorld, std::move(iteration))) {
++      open.push_back(std::move(*scope));
++    }
++    while (!open.empty()) {
++      auto& scope = open.back();
++      if (scope.nextChild == scope.node->children.size()) {
++        open.pop_back();
++        continue;
++      }
++
++      const auto& child = *scope.node->children[scope.nextChild++];
++      auto entered = record(child, scope.node->index(), scope.world, scope.iteration, scope.stableFrame,
++                            scope.loops, scope.index, scope.knownFrame);
++      if (entered) open.push_back(std::move(*entered));
++    }
++  }
++
++  std::optional<Scope> record(const AbstractNode& node, json parent, const Transform3d& parentWorld,
++                              std::map<std::string, double> iteration, bool stableFrame = true,
++                              unsigned loops = 0, std::optional<std::size_t> parentIndex = std::nullopt,
++                              bool knownFrame = true)
++  {
++    if (node.modinst && node.modinst->isBackground()) return std::nullopt;
+     if (v1() && instances.size() == maxInstances) {
+       throw std::runtime_error("The model exceeds the instance tracing limit");
+@@ -339,4 +676,5 @@ struct SceneTrace {
+                                      {"property", binding->name}});
+         }
++        if (branching(*binding)) break;
+       }
+       diameter = {{"value", node.scadrettoDiameterValue}, {"chain", std::move(chain)}};
+@@ -347,4 +685,6 @@ struct SceneTrace {
+                          {"iteration", iteration}, {"local", matrix(local)}, {"world", matrix(world)},
+                          {"operand", operand}, {"diameter", diameter}});
++    const auto index = occurrences.size();
++    occurrences.push_back({&node, parentIndex, index + 1, knownFrame, stableFrame && loops == 1});
+ 
+     if (v1() && (dynamic_cast<const CsgOpNode *>(&node) ||
+@@ -360,5 +700,15 @@ struct SceneTrace {
+     }
+ 
+-    for (const auto& child : node.children) visit(*child, node.index(), world, iteration);
++    // A pitch drag only crosses operation groups and one observed loop.
++    // Any transform or unobserved control path retains the numeric edit.
++    const auto transparent = !node.modinst || dynamic_cast<const RootNode *>(&node) || node.scadrettoRangeLoop ||
++                             dynamic_cast<const CsgOpNode *>(&node);
++    // Resize, hull, extrusion and other operations can reshape their children's frames.
++    const bool affineFrame = dynamic_cast<const TransformNode *>(&node) || dynamic_cast<const GroupNode *>(&node) ||
++                             dynamic_cast<const ListNode *>(&node) || dynamic_cast<const CsgOpNode *>(&node) ||
++                             dynamic_cast<const ColorNode *>(&node) || dynamic_cast<const RenderNode *>(&node) ||
++                             dynamic_cast<const AbstractIntersectionNode *>(&node);
++    return Scope{&node, world, std::move(iteration), index, stableFrame && transparent,
++                 loops + unsigned(node.scadrettoRangeLoop), knownFrame && affineFrame};
+   }
+ };
+@@ -369,5 +719,16 @@ void writeResult(const fs::path& directory, const json& result)
+   std::ofstream output(partial, std::ios::binary | std::ios::trunc);
+   output.exceptions(std::ios::badbit | std::ios::failbit);
+-  const auto serialized = result.dump(-1, ' ', false, json::error_handler_t::replace);
++  auto serialized = result.dump(-1, ' ', false, json::error_handler_t::replace);
++  if (serialized.size() >= maxManifestBytes && result.contains("propertyDefinitions")) {
++    // Property records are optional. Keep a large model visible and inspect-only.
++    auto reduced = result;
++    for (auto& instance : reduced["instances"]) {
++      for (const auto field : {"properties", "arguments", "definitionSpan"}) instance.erase(field);
++    }
++    reduced.erase("propertyDefinitions");
++    reduced.erase("argumentLists");
++    reduced["propertiesOmitted"] = true;
++    serialized = reduced.dump(-1, ' ', false, json::error_handler_t::replace);
++  }
+   if (result.contains("protocolVersion") && serialized.size() >= maxManifestBytes) {
+     throw std::runtime_error("The result manifest exceeds its size limit");
+@@ -548,5 +909,6 @@ int runJobV1(const json& request, const fs::path& directory)
+           : "The model exceeds the dependency tracing limits";
+         result["mesh"] = nullptr;
+-        for (const auto field : {"operands", "instances", "operations", "dependencyEdges"}) {
++        for (const auto field : {"operands", "instances", "operations", "dependencyEdges",
++                                 "propertyDefinitions", "argumentLists"}) {
+           result[field] = json::array();
+         }
+@@ -695,6 +1057,9 @@ int runJobV1(const json& request, const fs::path& directory)
+       SceneTrace trace{source, tree, evaluator, &operandPayload};
+       trace.visit(*root, nullptr, Transform3d::Identity(), {});
++      trace.attachDetails();
+       result["mesh"] = std::move(mesh);
+       result["instances"] = std::move(trace.instances);
++      result["propertyDefinitions"] = std::move(trace.propertyDefinitions);
++      result["argumentLists"] = std::move(trace.argumentLists);
+       result["operands"] = std::move(trace.operands);
+       result["operations"] = std::move(trace.operations);
+@@ -791,10 +1156,184 @@ int runJobM0(const std::string& requestPath, const fs::path& directory)
+ }  // namespace
+ 
++bool scadrettoTracing()
++{
++  return traceEnabled;
++}
++
++ScadrettoNodeTrace& scadrettoDetails(AbstractNode& node)
++{
++  if (!node.scadrettoDetails) node.scadrettoDetails = std::make_shared<ScadrettoNodeTrace>();
++  return *node.scadrettoDetails;
++}
++
++void scadrettoProperty(ScadrettoNodeTrace& trace, const char *semantic, const std::string& formal,
++                       double value, const Value *authored, double displayMultiplier,
++                       bool centered, const char *status)
++{
++  if (!std::isfinite(value) || trace.properties.size() >= 64) return;
++  const auto binding = authored ? authored->scadrettoBinding : nullptr;
++  const auto expression = binding ? binding->location : Location::NONE;
++  trace.properties.push_back({semantic, formal, status, value, displayMultiplier, centered,
++                              expression, binding, std::nullopt, false});
++}
++
++void scadrettoProperty(AbstractNode& node, const char *semantic, const std::string& formal,
++                       double value, const Value *authored, double displayMultiplier,
++                       bool centered, const char *status)
++{
++  if (!traceEnabled) return;
++  scadrettoProperty(scadrettoDetails(node), semantic, formal, value, authored, displayMultiplier,
++                    centered, status);
++}
++
++static bool directVector(const Value& value)
++{
++  const auto root = value.scadrettoBinding;
++  // A direct vector argument starts at the bound formal and argument, with no intervening lookup.
++  const auto argument = root && root->kind == "parameter" ? root->previous : nullptr;
++  const auto vector = argument && argument->kind == "argument" ? argument->previous : nullptr;
++  return value.type() == Value::Type::VECTOR && vector && vector->kind == "vector";
++}
++
++void scadrettoVectorProperties(AbstractNode& node, const std::string& formal,
++                              const Value& value, const std::vector<double>& evaluated,
++                              const std::vector<const char *>& semantics, bool centered)
++{
++  if (!traceEnabled) return;
++  const auto direct = directVector(value);
++  const auto count = value.type() == Value::Type::VECTOR ? value.toVector().size() : 0;
++  for (std::size_t index = 0; index < evaluated.size(); ++index) {
++    const Value *element = direct && index < count ? &value.toVector()[index] : nullptr;
++    const char *status = index >= count ? "default" : element ? "bound" : "computedVector";
++    scadrettoProperty(node, semantics[index], formal, evaluated[index], element, 1, centered, status);
++  }
++}
++
++void scadrettoIgnoreArgument(AbstractNode& node, const std::string& formal)
++{
++  if (!node.scadrettoDetails) return;
++  for (auto& argument : node.scadrettoDetails->arguments) {
++    if (argument.formal == formal && argument.status == "bound") argument.status = "ignored";
++  }
++}
++
+ void scadrettoMark(Value& value, const std::string& kind, const std::string& name,
+                    const Location& location)
+ {
+-  if (!traceEnabled || value.type() != Value::Type::NUMBER) return;
+-  value.scadrettoBinding = std::make_shared<ScadrettoBinding>(
+-    ScadrettoBinding{kind, name, location, value.scadrettoBinding});
++  if (!traceEnabled) return;
++  const auto type = value.type();
++  const bool boundRange = type == Value::Type::RANGE && value.scadrettoBinding;
++  if (type != Value::Type::NUMBER && type != Value::Type::VECTOR && !boundRange) return;
++  value.scadrettoBinding = makeBinding(kind, name, location, type == Value::Type::NUMBER ? value.toDouble() : 0,
++                                       value.scadrettoBinding);
++}
++
++void scadrettoMarkComputed(Value& value)
++{
++  if (!traceEnabled) return;
++  if (value.scadrettoBinding) value.scadrettoBinding = computedBinding(value.scadrettoBinding->origins);
++  if (value.type() != Value::Type::VECTOR) return;
++  auto& vector = value.toVectorNonConst();
++  // A shared vector still supplies direct bindings to its other owners.
++  if (vector.ptr.use_count() != 1) return;
++  for (auto& element : vector.ptr->vec) {
++    if (element.scadrettoBinding) element.scadrettoBinding = computedBinding(element.scadrettoBinding->origins);
++  }
++}
++
++void scadrettoMarkArithmetic(Value& result, const char *operation, const Location& location,
++                             const Value& left, const Value& right)
++{
++  if (!traceEnabled || result.type() != Value::Type::NUMBER ||
++      left.type() != Value::Type::NUMBER || right.type() != Value::Type::NUMBER) return;
++  result.scadrettoBinding = makeBinding(operation, "", location, result.toDouble(),
++                                        left.scadrettoBinding, right.scadrettoBinding);
++}
++
++void scadrettoMarkNegation(Value& result, const Location& location, const Value& operand)
++{
++  if (!traceEnabled || result.type() != Value::Type::NUMBER) return;
++  result.scadrettoBinding = makeBinding("negate", "", location, result.toDouble(), operand.scadrettoBinding);
++}
++
++void scadrettoMarkRange(Value& result, const Location& location, const Value& begin, const Value& end,
++                        const std::shared_ptr<const ScadrettoBinding>& step, bool explicitStep)
++{
++  if (!traceEnabled) return;
++  result.scadrettoBinding = makeBinding(explicitStep ? "rangeWithStep" : "range", "", location, 0,
++                                        begin.scadrettoBinding, end.scadrettoBinding, step);
++}
++
++void scadrettoMarkIteration(Value& value, const std::string& name, const Location& location,
++                            const Value& range)
++{
++  if (!traceEnabled) return;
++  value.scadrettoBinding = makeBinding("iteration", name, location, value.toDouble(), range.scadrettoBinding);
++}
++
++static bool sameLocation(const Location& left, const Location& right)
++{
++  return left.filePath() == right.filePath() && left.firstLine() == right.firstLine() &&
++         left.firstColumn() == right.firstColumn() && left.lastLine() == right.lastLine() &&
++         left.lastColumn() == right.lastColumn();
++}
++
++static bool independentOf(const ScadrettoBinding *root, const Location& target)
++{
++  if (!root) return false;
++  std::vector<const ScadrettoBinding *> pending{root};
++  std::unordered_set<const ScadrettoBinding *> visited;
++  constexpr std::size_t maxObservedInputs = 256;
++  while (!pending.empty()) {
++    const auto *binding = pending.back();
++    pending.pop_back();
++    if (!binding || sameLocation(binding->location, target)) return false;
++    if (!visited.insert(binding).second) continue;
++    if (visited.size() > maxObservedInputs) return false;
++
++    const auto& kind = binding->kind;
++    if (kind == "literal") {
++      if (!std::isfinite(binding->value)) return false;
++      continue;
++    }
++    const bool unary = directLink(kind) || kind == "negate";
++    const bool binary = kind == "add" || kind == "subtract" || kind == "multiply" || kind == "divide" ||
++                        kind == "range" || kind == "rangeWithStep";
++    if (!unary && !binary) return false;
++    pending.push_back(binding->previous.get());
++    if (binary) pending.push_back(binding->second.get());
++    if (kind == "rangeWithStep") pending.push_back(binding->third.get());
++  }
++  return true;
++}
++
++void scadrettoPitch(AbstractNode& node, const Value& vector)
++{
++  if (!traceEnabled || !directVector(vector) || vector.toVector().size() < 2) return;
++  const auto& values = vector.toVector();
++  const auto component = values[0].scadrettoBinding;
++  const auto sum = component && component->kind == "element" ? component->previous : nullptr;
++  if (!sum || sum->kind != "add" || !sameLocation(sum->location, component->location)) return;
++  const auto base = sum->previous;
++  const auto product = sum->second;
++  if (!base || base->kind != "lookup" || !product || product->kind != "multiply") return;
++  const auto iteration = product->previous;
++  const auto pitch = product->second;
++  if (!iteration || iteration->kind != "lookup" || !iteration->previous ||
++      iteration->previous->kind != "iteration" || !pitch || pitch->kind != "lookup") return;
++  const auto declaration = pitch->previous;
++  if (!declaration || declaration->kind != "assignment" || !declaration->previous ||
++      declaration->previous->kind != "literal" || !std::isfinite(pitch->value) ||
++      !std::isfinite(iteration->value)) return;
++
++  const auto& target = declaration->previous->location;
++  auto independent = independentOf(base.get(), target) &&
++    independentOf(iteration->previous->previous.get(), target);
++  for (std::size_t index = 1; index < values.size(); ++index) {
++    independent = independent && independentOf(values[index].scadrettoBinding.get(), target);
++  }
++  scadrettoDetails(node).properties.push_back(
++    {"pitch", declaration->name, "bound", pitch->value, 1, false, component->location,
++     pitch, iteration->value, independent});
+ }
+ 
+diff --git a/src/core/ScadrettoTrace.h b/src/core/ScadrettoTrace.h
+index c6ddfb1..a4f8c67 100644
+--- a/src/core/ScadrettoTrace.h
++++ b/src/core/ScadrettoTrace.h
+@@ -4,4 +4,5 @@
+ #include <cstddef>
+ #include <memory>
++#include <optional>
+ #include <string>
+ #include <vector>
+@@ -13,4 +14,7 @@ class Context;
+ class Value;
+ 
++// The authored literals that can supply a value, interned for one job.
++using ScadrettoOrigins = std::vector<const Location *>;
++
+ struct ScadrettoBinding {
+   std::string kind;
+@@ -18,6 +22,62 @@ struct ScadrettoBinding {
+   Location location;
+   std::shared_ptr<const ScadrettoBinding> previous;
++  std::shared_ptr<const ScadrettoBinding> second;
++  std::shared_ptr<const ScadrettoBinding> third;
++  double value = 0;
++  const ScadrettoOrigins *origins = nullptr;
++  // The syntax node of a variable read. The syntax tree outlives the trace.
++  const Location *site = nullptr;
++  unsigned depth = 1;
+ };
+ 
++struct ScadrettoArgument {
++  std::string name;
++  std::string formal;
++  std::string status;
++  Location expression;
++};
++
++struct ScadrettoProperty {
++  std::string semantic;
++  std::string formal;
++  std::string status;
++  double value;
++  double displayMultiplier;
++  bool centered;
++  Location expression;
++  std::shared_ptr<const ScadrettoBinding> binding;
++  std::optional<double> iteration;
++  bool pitchIndependent = false;
++};
++
++struct ScadrettoNodeTrace {
++  Location definition = Location::NONE;
++  std::vector<ScadrettoArgument> arguments;
++  std::vector<ScadrettoProperty> properties;
++};
++
++bool scadrettoTracing();
++ScadrettoNodeTrace& scadrettoDetails(AbstractNode& node);
++void scadrettoProperty(ScadrettoNodeTrace& trace, const char *semantic, const std::string& formal,
++                       double value, const Value *authored, double displayMultiplier = 1,
++                       bool centered = false, const char *status = "bound");
++void scadrettoProperty(AbstractNode& node, const char *semantic, const std::string& formal,
++                       double value, const Value *authored, double displayMultiplier = 1,
++                       bool centered = false, const char *status = "bound");
++void scadrettoVectorProperties(AbstractNode& node, const std::string& formal,
++                              const Value& value, const std::vector<double>& evaluated,
++                              const std::vector<const char *>& semantics, bool centered = false);
++void scadrettoIgnoreArgument(AbstractNode& node, const std::string& formal);
++void scadrettoPitch(AbstractNode& node, const Value& vector);
++void scadrettoMarkArithmetic(Value& result, const char *operation, const Location& location,
++                             const Value& left, const Value& right);
++void scadrettoMarkNegation(Value& result, const Location& location, const Value& operand);
++// Replaces the history of a call, index or comprehension result with its possible literals.
++void scadrettoMarkComputed(Value& value);
++void scadrettoMarkRange(Value& result, const Location& location, const Value& begin, const Value& end,
++                        const std::shared_ptr<const ScadrettoBinding>& step, bool explicitStep);
++void scadrettoMarkIteration(Value& value, const std::string& name, const Location& location,
++                            const Value& range);
++
+ void scadrettoMark(Value& value, const std::string& kind, const std::string& name,
+                    const Location& location);
+diff --git a/src/core/ScopeContext.cc b/src/core/ScopeContext.cc
+index 8517256..313ea99 100644
+--- a/src/core/ScopeContext.cc
++++ b/src/core/ScopeContext.cc
+@@ -74,6 +74,18 @@ UserModuleContext::UserModuleContext(const std::shared_ptr<const Context>& paren
+   set_variable("$children", Value(double(this->children.size())));
+   set_variable("$parent_modules", Value(double(StaticModuleNameStack::size())));
+-  apply_variables(
+-    Parameters::parse(std::move(arguments), loc, module->parameters, parent).to_context_frame());
++  auto parameters = Parameters::parse(std::move(arguments), loc, module->parameters, parent);
++  if (auto trace = parameters.scadrettoTrace()) {
++    trace->definition = module->location();
++    for (const auto& formal : module->parameters) {
++      const auto& name = formal->getName();
++      const auto& value = parameters[name];
++      if (value.type() != Value::Type::NUMBER) continue;
++      const auto binding = value.scadrettoBinding;
++      const auto status = !binding || binding->kind == "default" ? "default" : "bound";
++      scadrettoProperty(*trace, "moduleArgument", name, value.toDouble(), &value, 1, false, status);
++    }
++    scadrettoTrace = std::move(trace);
++  }
++  apply_variables(std::move(parameters).to_context_frame());
+ }
+ 
+diff --git a/src/core/ScopeContext.h b/src/core/ScopeContext.h
+index 9a490e6..c301cb2 100644
+--- a/src/core/ScopeContext.h
++++ b/src/core/ScopeContext.h
+@@ -41,4 +41,5 @@ public:
+   const Children *user_module_children() const override { return &children; }
+   std::vector<const std::shared_ptr<const Context> *> list_referenced_contexts() const override;
++  std::shared_ptr<struct ScadrettoNodeTrace> scadrettoTrace;
+ 
+ protected:
+diff --git a/src/core/TransformNode.cc b/src/core/TransformNode.cc
+index cea8c85..dffd784 100644
+--- a/src/core/TransformNode.cc
++++ b/src/core/TransformNode.cc
+@@ -26,4 +26,5 @@
+ 
+ #include "core/TransformNode.h"
++#include "core/ScadrettoTrace.h"
+ 
+ #include <algorithm>
+@@ -222,4 +223,17 @@ std::shared_ptr<AbstractNode> builtin_translate(const ModuleInstantiation *inst,
+         parameters["v"].toEchoStringNoThrow());
+   }
++  if (auto trace = parameters.scadrettoTrace()) {
++    node->scadrettoDetails = std::move(trace);
++    if (ok) {
++      scadrettoVectorProperties(*node, "v", parameters["v"],
++                                {translatevec[0], translatevec[1], translatevec[2]},
++                                {"translateX", "translateY", "translateZ"});
++      scadrettoPitch(*node, parameters["v"]);
++    } else {
++      for (const auto semantic : {"translateX", "translateY", "translateZ"}) {
++        scadrettoProperty(*node, semantic, "v", 0, &parameters["v"], 1, false, "invalid");
++      }
++    }
++  }
+ 
+   return children.instantiate(node);
+diff --git a/src/core/UserModule.cc b/src/core/UserModule.cc
+index 1917b87..cdb9c11 100644
+--- a/src/core/UserModule.cc
++++ b/src/core/UserModule.cc
+@@ -109,6 +109,7 @@ std::shared_ptr<AbstractNode> UserModule::instantiate(
+   std::shared_ptr<AbstractNode> ret;
+   try {
+-    ret = this->body->instantiateModules(
+-      *module_context, std::make_shared<GroupNode>(inst, std::string("module ") + this->name));
++    auto group = std::make_shared<GroupNode>(inst, std::string("module ") + this->name);
++    group->scadrettoDetails = module_context->scadrettoTrace;
++    ret = this->body->instantiateModules(*module_context, group);
+   } catch (EvaluationException& e) {
+     if (OpenSCAD::traceUsermoduleParameters) {
+diff --git a/src/core/Value.cc b/src/core/Value.cc
+index d91a8e7..4aa94c6 100644
+--- a/src/core/Value.cc
++++ b/src/core/Value.cc
+@@ -229,6 +229,14 @@ Value Value::clone() const
+   }
+   case Type::STRING:    return std::get<str_utf8_wrapper>(this->value).clone();
+-  case Type::RANGE:     return std::get<RangePtr>(this->value).clone();
+-  case Type::VECTOR:    return std::get<VectorType>(this->value).clone();
++  case Type::RANGE: {
++    Value copy(std::get<RangePtr>(this->value).clone());
++    copy.scadrettoBinding = this->scadrettoBinding;
++    return copy;
++  }
++  case Type::VECTOR: {
++    Value copy(std::get<VectorType>(this->value).clone());
++    copy.scadrettoBinding = this->scadrettoBinding;
++    return copy;
++  }
+   case Type::OBJECT:    return std::get<ObjectType>(this->value).clone();
+   case Type::FUNCTION:  return std::get<FunctionPtr>(this->value).clone();
+diff --git a/src/core/control.cc b/src/core/control.cc
+index 006962f..ddbfb2b 100644
+--- a/src/core/control.cc
++++ b/src/core/control.cc
+@@ -179,4 +179,5 @@ static std::shared_ptr<AbstractNode> builtin_for(const ModuleInstantiation *inst
+ {
+   auto node = lazyUnionNode(inst);
++  node->scadrettoRangeLoop = scadrettoTracing() && inst->arguments.size() == 1;
+   if (!inst->arguments.empty()) {
+     LcFor::forEach(inst->arguments, inst->location(), context,
+diff --git a/src/core/node.h b/src/core/node.h
+index 2a5ab45..4270bd1 100644
+--- a/src/core/node.h
++++ b/src/core/node.h
+@@ -61,5 +61,7 @@ public:
+   std::shared_ptr<const struct ScadrettoBinding> scadrettoDiameter;
+   double scadrettoDiameterValue = 0;
++  std::shared_ptr<struct ScadrettoNodeTrace> scadrettoDetails;
+   std::map<std::string, double> scadrettoIteration;
++  bool scadrettoRangeLoop = false;
+ 
+   // progress_mark is a running number used for progress indication
+diff --git a/src/core/primitives.cc b/src/core/primitives.cc
+index bf7df3d..a5bcbd9 100644
+--- a/src/core/primitives.cc
++++ b/src/core/primitives.cc
+@@ -111,6 +111,6 @@ static std::shared_ptr<AbstractNode> builtin_cube(const ModuleInstantiation *ins
+ 
+   const auto& size = parameters["size"];
++  bool converted = false;
+   if (size.isDefined()) {
+-    bool converted = false;
+     converted |= size.getDouble(node->x);
+     converted |= size.getDouble(node->y);
+@@ -134,4 +134,14 @@ static std::shared_ptr<AbstractNode> builtin_cube(const ModuleInstantiation *ins
+   }
+ 
++  if (auto trace = parameters.scadrettoTrace()) {
++    node->scadrettoDetails = std::move(trace);
++    if (converted && size.type() == Value::Type::VECTOR) {
++      scadrettoVectorProperties(*node, "size", size, {node->x, node->y, node->z},
++                                {"cubeSizeX", "cubeSizeY", "cubeSizeZ"}, node->center);
++    } else {
++      scadrettoProperty(*node, "cubeUniformSize", "size", node->x, converted ? &size : nullptr,
++                        1, node->center, converted ? "bound" : size.isDefined() ? "invalid" : "default");
++    }
++  }
+   return node;
+ }
+@@ -406,4 +416,15 @@ static std::shared_ptr<AbstractNode> builtin_sphere(const ModuleInstantiation *i
+   }
+ 
++  if (auto trace = parameters.scadrettoTrace()) {
++    node->scadrettoDetails = std::move(trace);
++    scadrettoProperty(*node, "sphereDiameter", dr_var, 2 * node->r,
++                      r ? &parameters[dr_var] : nullptr, dr_var == "r" ? 2 : 1, true,
++                      r ? "bound" : "default");
++    if (dr_var == "d") scadrettoIgnoreArgument(*node, "r");
++    const auto& fragments = parameters["$fn"];
++    if (fragments.type() == Value::Type::NUMBER && fragments.scadrettoBinding) {
++      scadrettoProperty(*node, "fragmentCount", "$fn", fragments.toDouble(), &fragments);
++    }
++  }
+   return node;
+ }
+@@ -533,4 +554,35 @@ static std::shared_ptr<AbstractNode> builtin_cylinder(const ModuleInstantiation
+     node->scadrettoDiameterValue = 2 * node->r1;
+   }
++  if (auto trace = parameters.scadrettoTrace()) {
++    node->scadrettoDetails = std::move(trace);
++    const auto& height = parameters["h"];
++    const auto heightSupplied = height.type() == Value::Type::NUMBER;
++    scadrettoProperty(*node, "cylinderHeight", "h", node->h, heightSupplied ? &height : nullptr,
++                      1, node->center, heightSupplied ? "bound" : "default");
++    if (!r1 && !r2) {
++      scadrettoProperty(*node, "cylinderDiameter", dr_var, 2 * node->r1,
++                        r ? &parameters[dr_var] : nullptr, dr_var == "r" ? 2 : 1,
++                        node->center, r ? "bound" : "default");
++    } else {
++      const auto bottom = r1 ? dr1_var : dr_var;
++      const auto top = r2 ? dr2_var : dr_var;
++      scadrettoProperty(*node, "cylinderBottomRadius", bottom, node->r1,
++                        bottom.empty() ? nullptr : &parameters[bottom],
++                        bottom == "d" || bottom == "d1" ? 0.5 : 1, node->center,
++                        bottom.empty() ? "default" : "bound");
++      scadrettoProperty(*node, "cylinderTopRadius", top, node->r2,
++                        top.empty() ? nullptr : &parameters[top],
++                        top == "d" || top == "d2" ? 0.5 : 1, node->center,
++                        top.empty() ? "default" : "bound");
++    }
++    if (dr_var == "d") scadrettoIgnoreArgument(*node, "r");
++    if (dr1_var == "d1") scadrettoIgnoreArgument(*node, "r1");
++    if (dr2_var == "d2") scadrettoIgnoreArgument(*node, "r2");
++    if (r && r1 && r2) scadrettoIgnoreArgument(*node, dr_var);
++    const auto& fragments = parameters["$fn"];
++    if (fragments.type() == Value::Type::NUMBER && fragments.scadrettoBinding) {
++      scadrettoProperty(*node, "fragmentCount", "$fn", fragments.toDouble(), &fragments);
++    }
++  }
+   return node;
+ }

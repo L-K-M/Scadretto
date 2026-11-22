@@ -1,4 +1,18 @@
 {
+  "argumentLists": [
+    [
+      {
+        "expression": {
+          "end": 6,
+          "fileID": 0,
+          "start": 5
+        },
+        "formal": "size",
+        "name": "",
+        "status": "bound"
+      }
+    ]
+  ],
   "buildSHA": "0000000000000000000000000000000000000000000000000000000000000000",
   "console": [],
   "dependencyEdges": [],
@@ -62,6 +76,7 @@
       ]
     },
     {
+      "arguments": 0,
       "diameter": null,
       "id": 2,
       "iteration": {},
@@ -86,6 +101,13 @@
       "name": "cube",
       "operand": 0,
       "parent": 1,
+      "properties": [
+        {
+          "definition": 0,
+          "dragVerified": true,
+          "value": 2.0
+        }
+      ],
       "span": {
         "end": 7,
         "fileID": 0,
@@ -174,6 +196,57 @@
     }
   ],
   "operations": [],
+  "propertyDefinitions": [
+    {
+      "centered": false,
+      "chain": [
+        {
+          "kind": "parameter",
+          "name": "size",
+          "span": {
+            "end": 6,
+            "fileID": 0,
+            "start": 5
+          }
+        },
+        {
+          "kind": "argument",
+          "name": "",
+          "span": {
+            "end": 6,
+            "fileID": 0,
+            "start": 5
+          }
+        },
+        {
+          "kind": "literal",
+          "name": "",
+          "span": {
+            "end": 6,
+            "fileID": 0,
+            "start": 5
+          }
+        }
+      ],
+      "displayMultiplier": 1.0,
+      "expression": {
+        "end": 6,
+        "fileID": 0,
+        "start": 5
+      },
+      "formal": "size",
+      "impactComplete": true,
+      "inputs": [
+        {
+          "end": 6,
+          "fileID": 0,
+          "start": 5
+        }
+      ],
+      "semantic": "cubeUniformSize",
+      "status": "bound"
+    }
+  ],
   "protocolVersion": 1,
   "requestID": "00000000-0000-0000-0000-000000000002",
   "status": "ok"
