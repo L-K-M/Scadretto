@@ -31,6 +31,10 @@ set is a lower bound and the editor must say so. The built-in scope's
 literals, such as `$fn = 0`, have no source bytes. They are never an
 origin, and their impact set is never complete.
 
+A complete set also needs a literal in the main snapshot and no read that
+feeds a range. A range decides how many occurrences run, which no property
+records.
+
 A drag is verified only for a complete set in a known frame. No other
 recorded property on the same ancestor and descendant path may consume
 the edited literal. Without that rule a pitch preview was wrong whenever
@@ -42,7 +46,8 @@ entry remains available for the verified literal.
 ## Bounds
 
 Releasing a provenance chain recurses once per link. Chains stop at 4,096
-links and emitted chains at 256. A recursive forwarding probe kept its
+links and emitted property chains at 256. The older `diameter` chain is
+emitted in full up to the first bound. A recursive forwarding probe kept its
 diameter literal at depth 83 and became read-only at depth 84.
 Computed results share one node per set of possible literals, so long
 lists retain no per-element history. A union of more than 32 literals
@@ -79,8 +84,8 @@ The Apple M4 Max development machine ran macOS 27.0.1 (26A434) with Xcode
 27.2 (27B52), SDK 27.2 and CMake 4.4.5. The OpenSCAD and Manifold revisions
 remain the ones recorded in [the engine spike](engine-spike.md).
 The worker SHA-256 was
-`d3cc8aaafb07275cbcd2dabddc15f22ab7f08cde63812701870572bc7b1be438`.
-Raw records are in `.build/engine/verification.AvIZx3st/v1/`.
+`60a9b08a19a8c3326286d84c6f3f525adf63fc4d369fbfa4f771928bd7f4332e`.
+Raw records are machine-local build output in `.build/engine/verification.UHSiPQXg/v1/`.
 
 The v1 verifier exercised real positional and named slots, an ignored
 radius, a superseded height, an unbound ninth argument, two-component
@@ -105,6 +110,14 @@ defaults, which both goldens avoided by setting `$fn`. The verifier now
 rejects a spanless input in every job, and failed on that worker first.
 The nested-module case renders 4,000 levels and failed with signal 11 on
 the recursive traversal first.
+
+A mutation check then found that a literal used as a range limit claimed
+a complete set, and an independent review found that a library's literal
+and pitch at iteration zero were marked draggable. Each has a verifier
+case that failed first. The corrected worker had no violation in 11,119
+mutations over generated consumer pairs, the fixtures and review probes.
+Each mutation replaced a writable literal and compared the reevaluation
+with the claimed value, complete set and verified occurrence drag.
 
 ## Cost against the worker without property records
 

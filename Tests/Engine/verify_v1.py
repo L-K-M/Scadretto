@@ -602,6 +602,17 @@ def check_impact_and_drag(args, environment, build):
          "translate", "translateX", False, False),
         ("implicit-fragments", b"$fn = 16;\nsphere(2);\nlinear_extrude(2) circle(3);\n",
          "sphere", "fragmentCount", False, False),
+        # A range decides how many occurrences run, which no property records.
+        ("range-end", b"n = 4;\nfor (i = [1:n]) translate([i * 9, 0, 0]) sphere(1);\ncube(n);\n",
+         "cube", "cubeUniformSize", False, False),
+        ("range-start", b"n = 4;\nfor (i = [n:9]) translate([i * 9, 0, 0]) sphere(1);\ncube(n);\n",
+         "cube", "cubeUniformSize", False, False),
+        ("range-step", b"n = 2;\nfor (i = [0:n:8]) translate([i, 0, 0]) sphere(1);\ncube(n);\n",
+         "cube", "cubeUniformSize", False, False),
+        ("range-variable", b"n = 4;\nr = [1:n];\nfor (i = r) translate([i * 9, 0, 0]) sphere(1);\ncube(n);\n",
+         "cube", "cubeUniformSize", False, False),
+        ("pitch-sets-range", plate.replace(b"[0 : count - 1]", b"[0 : pitch - 17]"),
+         "translate", "pitch", False, False),
     ]
     for name, source, node, semantic, complete, draggable in cases:
         logical = args.evidence / (name + ".scad")
@@ -616,6 +627,32 @@ def check_impact_and_drag(args, environment, build):
         check(item.get("impactComplete", False) is complete, f"{name}: wrong impact certainty")
         check(item.get("dragVerified", False) is draggable, f"{name}: wrong drag eligibility")
     print("Untraced consumers, dependent frames and partial impact sets passed")
+
+
+def check_write_back_exclusions(args, environment, build):
+    library = args.evidence / "owned-library.scad"
+    library.write_bytes(b"size = 3;\nmodule hole(d = size) { cylinder(h = 2, d = d); }\n")
+    for statement in (b"include", b"use"):
+        source = statement + b" <" + str(library).encode("utf-8") + b">\nhole();\n"
+        name = "library-" + statement.decode()
+        result = run_job(args.worker, args.evidence / name, source,
+                         request_for(source, args.evidence / (name + ".scad"), build), environment)
+        found = [item for record in result["instances"] for item in executed_properties(result, record)
+                 if item["semantic"] == "cylinderDiameter"]
+        check(found and all(item["inputs"] for item in found), f"{name}: the dependency's literal was not traced")
+        check(not any(item["impactComplete"] or item.get("dragVerified") for item in found),
+              f"{name}: a dependency's literal was presented as writable")
+
+    source = (args.fixtures / "mounting-plate.scad").read_bytes()
+    result = run_job(args.worker, args.evidence / "iteration-zero", source,
+                     request_for(source, args.evidence / "iteration-zero.scad", build), environment)
+    pitches = {item["pitch"]["iteration"]: item for record in result["instances"]
+               for item in executed_properties(result, record) if "pitch" in item}
+    check(sorted(pitches) == [0, 1, 2, 3], "The plate lost its pitch records")
+    for iteration, item in pitches.items():
+        check(item["impactComplete"] and item.get("dragVerified", False) is (iteration != 0),
+              f"iteration {iteration}: wrong pitch drag eligibility")
+    print("Dependency literals and iteration zero offered no drag")
 
 
 def check_builtin_defaults(args, environment, build):
@@ -711,6 +748,7 @@ def main():
     check_executed_properties(args, environment, build)
     check_impact_and_drag(args, environment, build)
     check_large_loop(args, environment, build)
+    check_write_back_exclusions(args, environment, build)
     check_builtin_defaults(args, environment, build)
     check_long_provenance(args, environment, build)
     check_nested_modules(args, environment, build)

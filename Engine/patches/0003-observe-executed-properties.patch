@@ -1,4 +1,4 @@
-From f514f26495f1117af604fe5147015f4b5983d9ed Mon Sep 17 00:00:00 2001
+From e8af70675678eaae315b9063d31a435e76e973f1 Mon Sep 17 00:00:00 2001
 From: Scadretto <scadretto@users.noreply.github.com>
 Date: Sun, 22 Nov 2026 12:11:48 +0100
 Subject: [PATCH] Observe executed properties and pitch inputs
@@ -9,7 +9,7 @@ Subject: [PATCH] Observe executed properties and pitch inputs
  src/core/Expression.cc     | 111 ++++++--
  src/core/Parameters.cc     |  42 ++-
  src/core/Parameters.h      |   6 +-
- src/core/ScadrettoTrace.cc | 549 ++++++++++++++++++++++++++++++++++++-
+ src/core/ScadrettoTrace.cc | 555 ++++++++++++++++++++++++++++++++++++-
  src/core/ScadrettoTrace.h  |  60 ++++
  src/core/ScopeContext.cc   |  16 +-
  src/core/ScopeContext.h    |   1 +
@@ -19,7 +19,7 @@ Subject: [PATCH] Observe executed properties and pitch inputs
  src/core/control.cc        |   1 +
  src/core/node.h            |   2 +
  src/core/primitives.cc     |  54 +++-
- 15 files changed, 825 insertions(+), 51 deletions(-)
+ 15 files changed, 831 insertions(+), 51 deletions(-)
 
 diff --git a/src/core/Arguments.cc b/src/core/Arguments.cc
 index 28a2cbe..5d64f42 100644
@@ -385,7 +385,7 @@ index 3199b2d..e205c58 100644
    bool valid(const std::string& name, const Value& value, Value::Type type);
    std::string caller = "";
 diff --git a/src/core/ScadrettoTrace.cc b/src/core/ScadrettoTrace.cc
-index 72b6580..a532073 100644
+index 72b6580..a3f245c 100644
 --- a/src/core/ScadrettoTrace.cc
 +++ b/src/core/ScadrettoTrace.cc
 @@ -14,7 +14,11 @@
@@ -554,7 +554,7 @@ index 72b6580..a532073 100644
 +
  std::string readFile(const fs::path& path, std::size_t limit)
  {
-@@ -300,8 +441,198 @@ struct SceneTrace {
+@@ -300,8 +441,204 @@ struct SceneTrace {
    }
  
 -  void visit(const AbstractNode& node, json parent, const Transform3d& parentWorld,
@@ -603,7 +603,9 @@ index 72b6580..a532073 100644
 +          if (!binding || !visited.insert(binding).second) continue;
 +          if (binding->site) explained.insert(binding->site);
 +          const auto& kind = binding->kind;
-+          if (kind == "element" || kind == "computed" || kind == "truncated") continue;
++          // A range also decides how many occurrences run, which no property records.
++          if (kind == "element" || kind == "computed" || kind == "truncated" || kind == "range" ||
++              kind == "rangeWithStep") continue;
 +          pending.push_back(binding->previous.get());
 +          pending.push_back(binding->second.get());
 +          pending.push_back(binding->third.get());
@@ -695,7 +697,9 @@ index 72b6580..a532073 100644
 +      auto properties = json::array();
 +      for (const auto& property : detail.properties) {
 +        const auto *literal = property.status == "bound" ? writableLiteral(property.binding.get()) : nullptr;
-+        const bool complete = literal && !untraced.count(literal) && !span(*literal).is_null();
++        // Only the main snapshot can be written, so only its literals have a provable impact.
++        const bool complete = literal && source.owns(*literal) && !untraced.count(literal) &&
++                              !span(*literal).is_null();
 +        json record = {{"definition", intern(propertyDefinitions, definitionIDs,
 +                                              propertyDefinition(property, complete))},
 +                       {"value", property.value}};
@@ -703,7 +707,9 @@ index 72b6580..a532073 100644
 +        bool dragVerified = complete && spatial && occurrence.knownFrame;
 +        if (property.iteration) {
 +          record["pitch"] = {{"iteration", *property.iteration}};
-+          dragVerified = dragVerified && occurrence.pitchFrame && property.pitchIndependent;
++          // A displacement at iteration zero cannot determine the pitch.
++          dragVerified = dragVerified && *property.iteration != 0 && occurrence.pitchFrame &&
++                         property.pitchIndependent;
 +        }
 +        if (dragVerified && !sharedOnPath(index, property, literal)) record["dragVerified"] = true;
 +        properties.push_back(std::move(record));
@@ -755,20 +761,20 @@ index 72b6580..a532073 100644
 +    if (node.modinst && node.modinst->isBackground()) return std::nullopt;
      if (v1() && instances.size() == maxInstances) {
        throw std::runtime_error("The model exceeds the instance tracing limit");
-@@ -339,4 +670,5 @@ struct SceneTrace {
+@@ -339,4 +676,5 @@ struct SceneTrace {
                                       {"property", binding->name}});
          }
 +        if (branching(*binding)) break;
        }
        diameter = {{"value", node.scadrettoDiameterValue}, {"chain", std::move(chain)}};
-@@ -347,4 +679,6 @@ struct SceneTrace {
+@@ -347,4 +685,6 @@ struct SceneTrace {
                           {"iteration", iteration}, {"local", matrix(local)}, {"world", matrix(world)},
                           {"operand", operand}, {"diameter", diameter}});
 +    const auto index = occurrences.size();
 +    occurrences.push_back({&node, parentIndex, index + 1, knownFrame, stableFrame && loops == 1});
  
      if (v1() && (dynamic_cast<const CsgOpNode *>(&node) ||
-@@ -360,5 +694,15 @@ struct SceneTrace {
+@@ -360,5 +700,15 @@ struct SceneTrace {
      }
  
 -    for (const auto& child : node.children) visit(*child, node.index(), world, iteration);
@@ -785,7 +791,7 @@ index 72b6580..a532073 100644
 +                 loops + unsigned(node.scadrettoRangeLoop), knownFrame && affineFrame};
    }
  };
-@@ -369,5 +713,16 @@ void writeResult(const fs::path& directory, const json& result)
+@@ -369,5 +719,16 @@ void writeResult(const fs::path& directory, const json& result)
    std::ofstream output(partial, std::ios::binary | std::ios::trunc);
    output.exceptions(std::ios::badbit | std::ios::failbit);
 -  const auto serialized = result.dump(-1, ' ', false, json::error_handler_t::replace);
@@ -803,7 +809,7 @@ index 72b6580..a532073 100644
 +  }
    if (result.contains("protocolVersion") && serialized.size() >= maxManifestBytes) {
      throw std::runtime_error("The result manifest exceeds its size limit");
-@@ -548,5 +903,6 @@ int runJobV1(const json& request, const fs::path& directory)
+@@ -548,5 +909,6 @@ int runJobV1(const json& request, const fs::path& directory)
            : "The model exceeds the dependency tracing limits";
          result["mesh"] = nullptr;
 -        for (const auto field : {"operands", "instances", "operations", "dependencyEdges"}) {
@@ -811,7 +817,7 @@ index 72b6580..a532073 100644
 +                                 "propertyDefinitions", "argumentLists"}) {
            result[field] = json::array();
          }
-@@ -695,6 +1051,9 @@ int runJobV1(const json& request, const fs::path& directory)
+@@ -695,6 +1057,9 @@ int runJobV1(const json& request, const fs::path& directory)
        SceneTrace trace{source, tree, evaluator, &operandPayload};
        trace.visit(*root, nullptr, Transform3d::Identity(), {});
 +      trace.attachDetails();
@@ -821,7 +827,7 @@ index 72b6580..a532073 100644
 +      result["argumentLists"] = std::move(trace.argumentLists);
        result["operands"] = std::move(trace.operands);
        result["operations"] = std::move(trace.operations);
-@@ -791,10 +1150,184 @@ int runJobM0(const std::string& requestPath, const fs::path& directory)
+@@ -791,10 +1156,184 @@ int runJobM0(const std::string& requestPath, const fs::path& directory)
  }  // namespace
  
 +bool scadrettoTracing()
