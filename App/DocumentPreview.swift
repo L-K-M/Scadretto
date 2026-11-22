@@ -2,12 +2,102 @@ import Foundation
 import ScadrettoCore
 import ScadrettoEngineClient
 import ScadrettoViewport
+import simd
+
+struct PreviewGeometry: Sendable {
+    let upload: ViewportMeshUpload
+    let picker: ViewportPicker?
+    let occurrences: [UInt32: ViewportOperand]
+    let bounds: [UInt32: SceneSnapshot.BoundingBox]
+
+    init?(scene: SceneSnapshot) {
+        guard let final = scene.mesh else { return nil }
+        let mesh = ViewportMesh(positions: final.positions, indices: final.indices)
+        upload = ViewportMeshUpload(mesh: mesh)
+        let meshes = Dictionary(uniqueKeysWithValues: scene.operands.map {
+            ($0.id, ViewportMesh(positions: $0.mesh.positions, indices: $0.mesh.indices))
+        })
+        bounds = Dictionary(uniqueKeysWithValues: scene.operands.map { ($0.id, $0.mesh.bounds) })
+        var subtracted: Set<UInt32> = []
+        for operation in scene.operations {
+            for child in operation.children where child.role == .subtracted {
+                subtracted.insert(child.instanceID)
+            }
+        }
+        var reversed: [UInt32: Bool] = [:]
+        var occurrences: [UInt32: ViewportOperand] = [:]
+        for instance in scene.instances {
+            let parentReversed = instance.parent.flatMap { reversed[$0] } ?? false
+            let isSubtracted = parentReversed != subtracted.contains(instance.id)
+            reversed[instance.id] = isSubtracted
+            if let meshID = instance.operand {
+                occurrences[instance.id] = ViewportOperand(id: instance.id, meshID: meshID,
+                                                           world: Self.matrix(instance.world),
+                                                           isSubtracted: isSubtracted)
+            }
+        }
+        self.occurrences = occurrences
+        picker = ViewportPicker(mesh: mesh, owners: final.triangleOwners, operandMeshes: meshes,
+                                occurrences: Array(occurrences.values))
+    }
+
+    func guide(for instanceID: UInt32) -> ViewportDiameterGuide? {
+        guard let operand = occurrences[instanceID], let bounds = bounds[operand.meshID],
+              Self.invertible(operand.world) else { return nil }
+        return ViewportDiameterGuide(
+            bottom: Self.point(SIMD3(0, 0, bounds.min.z), in: operand.world),
+            top: Self.point(SIMD3(0, 0, bounds.max.z), in: operand.world),
+            radialX: Self.xyz(operand.world.columns.0), radialY: Self.xyz(operand.world.columns.1)
+        )
+    }
+
+    func localPoint(_ worldPoint: SIMD3<Double>, on instanceID: UInt32) -> SIMD3<Double>? {
+        guard let operand = occurrences[instanceID], Self.invertible(operand.world) else { return nil }
+        return Self.point(worldPoint, in: operand.world.inverse)
+    }
+
+    func handle(for instanceID: UInt32, localPoint: SIMD3<Double>?, diameter: Double) -> ViewportDiameterHandle? {
+        guard let operand = occurrences[instanceID], let bounds = bounds[operand.meshID],
+              Self.invertible(operand.world) else { return nil }
+        var center = SIMD3(0.0, 0.0, (bounds.min.z + bounds.max.z) / 2)
+        var radial = SIMD3(1.0, 0.0, 0.0)
+        if let local = localPoint {
+            let direction = SIMD3(local.x, local.y, 0)
+            if simd_length(direction) > diameter * 0.01 {
+                radial = simd_normalize(direction)
+                if (bounds.min.z...bounds.max.z).contains(local.z) { center.z = local.z }
+            }
+        }
+        return ViewportDiameterHandle(center: Self.point(center, in: operand.world),
+                                      radialUnit: Self.xyz(operand.world * SIMD4(radial, 0)), diameter: diameter)
+    }
+
+    private static func matrix(_ values: [Double]) -> simd_double4x4 {
+        func column(_ index: Int) -> SIMD4<Double> {
+            SIMD4(values[index], values[index + 1], values[index + 2], values[index + 3])
+        }
+        return simd_double4x4(columns: (column(0), column(4), column(8), column(12)))
+    }
+
+    private static func invertible(_ matrix: simd_double4x4) -> Bool {
+        let scale = simd_length(matrix.columns.0) * simd_length(matrix.columns.1) * simd_length(matrix.columns.2)
+        return scale.isFinite && scale > 0 && abs(simd_determinant(matrix)) > scale * 1e-12
+    }
+
+    private static func point(_ point: SIMD3<Double>, in matrix: simd_double4x4) -> SIMD3<Double> {
+        xyz(matrix * SIMD4(point, 1))
+    }
+
+    private static func xyz(_ vector: SIMD4<Double>) -> SIMD3<Double> {
+        SIMD3(vector.x, vector.y, vector.z)
+    }
+}
 
 @MainActor
 final class DocumentPreview {
     enum Phase {
         case evaluating
-        case outcome(EvaluationOutcome, ViewportMeshUpload?)
+        case outcome(EvaluationOutcome, PreviewGeometry?)
         case failure(String)
         case cancelled
     }
@@ -74,6 +164,10 @@ final class DocumentPreview {
         currentID == source.requestID && outcome?.result.requestID == source.requestID && request?.key == source.key
     }
 
+    func acceptsWriteBack(from source: EvaluationResult) -> Bool {
+        acceptsNavigation(from: source) && dependencyCheck == nil
+    }
+
     private func begin(immediate: Bool) {
         guard let input else { return }
         task?.cancel()
@@ -113,15 +207,15 @@ final class DocumentPreview {
                 }
                 let prepared = await Task.detached(priority: .utility) {
                     let watch = DependencyWatch(result: result, onChange: changed)
-                    let upload = result.scene?.mesh.map {
-                        ViewportMeshUpload(mesh: ViewportMesh(positions: $0.positions, indices: $0.indices))
-                    }
-                    return (watch: watch, upload: upload)
+                    let geometry = result.scene.flatMap(PreviewGeometry.init)
+                    return (watch: watch, geometry: geometry)
                 }.value
                 guard let self, isCurrent(request, input: input), !Task.isCancelled,
                       result.requestID == id, result.key == request.key else { return }
 
-                // Route new watch events before the final dependency check.
+                // Retire the prior request's pending check before arming the
+                // new watch. A fresh recheck covers changes during the handoff.
+                stopWatchingDependencies()
                 dependencies = prepared.watch
                 dependencyRequest = id
                 let dependenciesAreCurrent = await Task.detached(priority: .utility) {
@@ -141,7 +235,7 @@ final class DocumentPreview {
                 case .rendered, .empty: lastGood = result
                 case .modelError, .unsupportedDimension: break
                 }
-                onUpdate?(.outcome(evaluation.outcome, prepared.upload))
+                onUpdate?(.outcome(evaluation.outcome, prepared.geometry))
             } catch {
                 guard let self, currentID == id, !Task.isCancelled else { return }
                 if case EngineFailure.crashed(_, let logs) = error { log = logs }
@@ -166,7 +260,9 @@ final class DocumentPreview {
             do { try await Task.sleep(for: .milliseconds(80)) }
             catch { return }
             let current = await Task.detached(priority: .utility) { dependencies.isCurrent() }.value
-            guard !current, let self, !Task.isCancelled, dependencyRequest == requestID else { return }
+            guard let self, !Task.isCancelled, dependencyRequest == requestID else { return }
+            dependencyCheck = nil
+            guard !current else { return }
             self.dependencies = nil
             self.dependencyRequest = nil
             changedDuringEvaluation()

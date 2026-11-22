@@ -51,20 +51,37 @@ public enum ViewportShader {
 /// revolution. Imprecise scroll zooms by `exp(deltaY * 0.2)`. Momentum-phase
 /// scroll events are ignored while a button drag is active so a finishing
 /// flick cannot fight a pan or orbit already in progress. A click is
-/// distinguished from a drag by a three-point threshold; click selection is
-/// out of scope for M2.
+/// distinguished from a drag by a three-point threshold.
 ///
 /// The camera survives `setMesh(_:)` revisions, per the plan's "preserve
 /// camera across reevaluations"; only the first non-empty mesh auto-frames.
 @MainActor
 public final class ViewportView: MTKView {
+    public struct PresentedFrame: Sendable {
+        public let sceneID: UUID
+        public let transform: ViewportTransform
+        fileprivate let drawableSize: CGSize
+        fileprivate let mapping: UInt64
+        fileprivate let sequence: UInt64
+        fileprivate let diameterHandle: ViewportDiameterHandle?
+    }
+
+    private struct DiameterDrag {
+        let frame: PresentedFrame
+        let handle: ViewportDiameterHandle
+        let startRadius: Double
+        var diameter: Double?
+    }
+
     /// Camera state in world coordinates. Read-only; drive it through
     /// `frameAll`, `setStandardView` or gestures.
-    public private(set) var camera = ViewportCamera()
+    public private(set) var camera = ViewportCamera() {
+        didSet { if camera != oldValue { projectionDidChange() } }
+    }
 
     /// Orthographic projection when true, perspective when false.
     public var orthographic = false {
-        didSet { needsDisplay = true }
+        didSet { if orthographic != oldValue { projectionDidChange() } }
     }
 
     /// Draws triangle edges over the shaded mesh, as upstream's Show Edges.
@@ -93,6 +110,43 @@ public final class ViewportView: MTKView {
     private var mouseDownPoint: NSPoint?
     private var lastDragPoint: NSPoint?
     private var activeButton = false
+    private var sceneID: UUID?
+    private var presentation: PresentedFrame?
+    private var pressedFrame: PresentedFrame?
+    private var mapping: UInt64 = 0
+    private var sequence: UInt64 = 0
+    private var presentationRetries = 0
+    private var presentationRetryTask: Task<Void, Never>?
+    private var diameterHandle: ViewportDiameterHandle?
+    private var diameterGuides: [ViewportDiameterGuide] = []
+    private var diameterDrag: DiameterDrag?
+
+    public var onSelection: ((PresentedFrame, CGPoint) -> Void)?
+    public var onPresentationChange: (() -> Void)?
+    public var onDiameterPreview: ((Double?) -> Void)?
+    public var onDiameterCommit: ((UUID, UUID, Double) -> Void)?
+    public var dragSnapIncrement: Double = 0 {
+        didSet {
+            if dragSnapIncrement != oldValue { cancelDiameterDrag() }
+        }
+    }
+
+    /// The current scene can be inspected while a new camera pose is drawing.
+    public var presentedSceneID: UUID? { frameOnCurrentDrawable?.sceneID }
+
+    public var presentedFrame: PresentedFrame? {
+        guard let frame = frameOnCurrentDrawable, frame.transform.camera == camera,
+              frame.transform.isOrthographic == orthographic else { return nil }
+        return frame
+    }
+
+    private var frameOnCurrentDrawable: PresentedFrame? {
+        guard !isSceneStale, let presentation, presentation.sceneID == sceneID,
+              presentation.transform.viewSize == bounds.size,
+              presentation.drawableSize == drawableSize,
+              presentation.mapping == mapping else { return nil }
+        return presentation
+    }
 
     /// View-pixel distance below which a press is a click, not a drag.
     private static let dragThreshold: Double = 3
@@ -134,8 +188,10 @@ public final class ViewportView: MTKView {
     /// camera and axes so navigation still works on a failed evaluation.
     /// The camera is preserved across revisions; the first non-empty mesh
     /// frames itself so a model is visible without a `frameAll` call.
-    public func setMesh(_ prepared: ViewportMeshUpload?) {
+    public func setMesh(_ prepared: ViewportMeshUpload?, sceneID: UUID? = nil) {
         upload = prepared ?? ViewportMeshUpload(mesh: ViewportMesh(positions: [], indices: []))
+        self.sceneID = sceneID
+        invalidatePresentation()
         renderer.upload(upload)
         if !hasAutoFramed { frameAll() }
         isSceneStale = false
@@ -149,21 +205,84 @@ public final class ViewportView: MTKView {
               let meshBounds = upload.bounds, meshBounds.radius > 0 else { return }
         camera.frameAll(meshBounds, aspect: boundsAspect)
         hasAutoFramed = true
-        needsDisplay = true
     }
 
     /// Aims the camera along a standard view direction, keeping the current
     /// center and zoom.
     public func setStandardView(_ view: ViewportStandardView) {
         camera.setStandardView(view)
-        needsDisplay = true
     }
 
     /// Marks or clears the stale-scene styling.
     public func setSceneStale(_ stale: Bool) {
         guard stale != isSceneStale else { return }
         isSceneStale = stale
+        if stale { invalidatePresentation() }
         needsDisplay = true
+    }
+
+    private func invalidatePresentation() {
+        mapping &+= 1
+        resetPresentationRetry()
+        let wasPresented = presentation != nil
+        presentation = nil
+        cancelDiameterDrag()
+        if wasPresented { onPresentationChange?() }
+    }
+
+    private func projectionDidChange() {
+        pressedFrame = nil
+        cancelDiameterDrag()
+        resetPresentationRetry()
+        needsDisplay = true
+    }
+
+    public func showDiameter(handle: ViewportDiameterHandle?, guides: [ViewportDiameterGuide]) {
+        if diameterHandle?.id != handle?.id {
+            cancelDiameterDrag()
+            resetPresentationRetry()
+        }
+        diameterHandle = handle
+        diameterGuides = guides
+        needsDisplay = true
+    }
+
+    private func didPresent(_ frame: PresentedFrame) {
+        guard frame.sceneID == sceneID, !isSceneStale, frame.mapping == mapping,
+              frame.transform.viewSize == bounds.size, frame.drawableSize == drawableSize,
+              presentation.map({ $0.sequence < frame.sequence }) ?? true else { return }
+        let wasPresented = presentation != nil
+        presentation = frame
+        if presentationIsCurrent { resetPresentationRetry() }
+        if !wasPresented { onPresentationChange?() }
+    }
+
+    private var presentationIsCurrent: Bool {
+        guard let frame = presentedFrame else { return false }
+        return frame.diameterHandle?.id == diameterHandle?.id
+    }
+
+    private func resetPresentationRetry() {
+        presentationRetryTask?.cancel()
+        presentationRetryTask = nil
+        presentationRetries = 0
+    }
+
+    private func retryUnconfirmedFrame() {
+        // An on-demand frame can be skipped or fail to acquire a drawable.
+        // Give a visible window a bounded chance to present the new mapping.
+        guard presentationRetryTask == nil, !presentationIsCurrent, !isSceneStale,
+              sceneID != nil, window?.isVisible == true, presentationRetries < 5 else { return }
+        let mapping = self.mapping
+        presentationRetryTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .milliseconds(40)) }
+            catch { return }
+            guard let self, self.mapping == mapping else { return }
+            presentationRetryTask = nil
+            guard !presentationIsCurrent, !isSceneStale, window?.isVisible == true else { return }
+            presentationRetries += 1
+            draw()
+        }
     }
 
     /// The view/projection mapping of the next frame, for hit testing and
@@ -190,9 +309,15 @@ public final class ViewportView: MTKView {
     // MARK: - Gestures
 
     public override func mouseDown(with event: NSEvent) {
+        pressedFrame = presentedFrame
         mouseDownPoint = viewPoint(for: event)
         lastDragPoint = mouseDownPoint
         activeButton = true
+        guard presentationIsCurrent, let frame = pressedFrame, let handle = frame.diameterHandle,
+              let point = mouseDownPoint, handle.contains(point, in: frame.transform),
+              let start = handle.radiusCoordinate(at: point, in: frame.transform) else { return }
+        diameterDrag = DiameterDrag(frame: frame, handle: handle, startRadius: start)
+        window?.makeFirstResponder(self)
     }
 
     public override func rightMouseDown(with event: NSEvent) {
@@ -210,6 +335,10 @@ public final class ViewportView: MTKView {
     }
 
     public override func mouseDragged(with event: NSEvent) {
+        if diameterDrag != nil {
+            updateDiameterDrag(at: viewPoint(for: event))
+            return
+        }
         handleDrag(event, role: dragRole(shift: event.modifierFlags.contains(.shift)))
     }
 
@@ -222,6 +351,21 @@ public final class ViewportView: MTKView {
     }
 
     public override func mouseUp(with event: NSEvent) {
+        if diameterDrag != nil {
+            updateDiameterDrag(at: viewPoint(for: event))
+            if let drag = diameterDrag, let diameter = drag.diameter,
+               let current = presentedFrame, current.sceneID == drag.frame.sceneID,
+               current.mapping == drag.frame.mapping, diameterHandle?.id == drag.handle.id {
+                cancelDiameterDrag()
+                onDiameterCommit?(current.sceneID, drag.handle.id, diameter)
+            } else {
+                cancelDiameterDrag()
+            }
+        } else if activeButton, dragDistance(event) < Self.dragThreshold, let frame = pressedFrame,
+                  frame.sequence == presentedFrame?.sequence {
+            onSelection?(frame, viewPoint(for: event))
+        }
+        pressedFrame = nil
         mouseDownPoint = nil
         lastDragPoint = nil
         activeButton = false
@@ -243,10 +387,42 @@ public final class ViewportView: MTKView {
         activeButton = false
     }
 
+    public override var acceptsFirstResponder: Bool { true }
+
+    public override func keyDown(with event: NSEvent) {
+        guard diameterDrag != nil, event.charactersIgnoringModifiers == "\u{1b}" else {
+            super.keyDown(with: event)
+            return
+        }
+        cancelDiameterDrag()
+    }
+
+    private func updateDiameterDrag(at point: CGPoint) {
+        guard var drag = diameterDrag else { return }
+        drag.diameter = drag.handle.radiusCoordinate(at: point, in: drag.frame.transform).flatMap { end in
+            drag.handle.resized(from: drag.startRadius, to: end, snap: dragSnapIncrement)
+        }
+        diameterDrag = drag
+        onDiameterPreview?(drag.diameter)
+        needsDisplay = true
+    }
+
+    private func cancelDiameterDrag() {
+        guard diameterDrag != nil else { return }
+        diameterDrag = nil
+        pressedFrame = nil
+        mouseDownPoint = nil
+        lastDragPoint = nil
+        activeButton = false
+        onDiameterPreview?(nil)
+        needsDisplay = true
+    }
+
     /// Scroll mapping per the contract: imprecise deltas (mouse wheel) zoom
     /// about the cursor; precise deltas (trackpad, Magic Mouse) orbit, or pan
     /// with Shift. `swapsOrbitAndPan` exchanges the two precise-scroll roles.
     public override func scrollWheel(with event: NSEvent) {
+        guard diameterDrag == nil else { return }
         if event.momentumPhase != [] && activeButton { return }
         let point = viewPoint(for: event)
         if event.hasPreciseScrollingDeltas {
@@ -257,12 +433,10 @@ public final class ViewportView: MTKView {
                 camera.panByScreenDelta(
                     SIMD2(event.scrollingDeltaX, -event.scrollingDeltaY),
                     transform: viewportTransform())
-                needsDisplay = true
             } else {
                 camera.orbitByDrag(
                     deltaX: event.scrollingDeltaX, deltaY: event.scrollingDeltaY,
                     viewSize: bounds.size)
-                needsDisplay = true
             }
         } else {
             zoomBy(factor: exp(event.scrollingDeltaY * 0.2), anchoredAt: point)
@@ -271,13 +445,13 @@ public final class ViewportView: MTKView {
 
     /// Pinch zoom about the cursor.
     public override func magnify(with event: NSEvent) {
+        guard diameterDrag == nil else { return }
         zoomBy(factor: 1 + event.magnification, anchoredAt: viewPoint(for: event))
     }
 
     public override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
-        // The drawable size and with it the pick/projection mapping change on
-        // backing-scale moves; rebuild it on the next frame.
+        invalidatePresentation()
         needsDisplay = true
     }
 
@@ -312,7 +486,6 @@ public final class ViewportView: MTKView {
         case .pan:
             camera.panByScreenDelta(delta, transform: viewportTransform())
         }
-        needsDisplay = true
     }
 
     private func zoomBy(factor: Double, anchoredAt point: CGPoint) {
@@ -324,28 +497,44 @@ public final class ViewportView: MTKView {
                 sceneRadius: upload.sceneRadius
             )
         }
-        needsDisplay = true
     }
 }
 
 extension ViewportView: MTKViewDelegate {
     public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
-        // Projection rebuilds from the current size on every frame, so only
-        // schedule a redraw under the new mapping.
+        invalidatePresentation()
         view.needsDisplay = true
     }
 
     public func draw(in view: MTKView) {
+        defer { retryUnconfirmedFrame() }
         guard let drawable = currentDrawable,
               let descriptor = currentRenderPassDescriptor,
               bounds.width > 0, bounds.height > 0 else { return }
+        let transform = viewportTransform()
+        let handle = isSceneStale ? nil : diameterHandle
+        let overlay = handle.map {
+            diameterOverlay(handle: $0, guides: diameterGuides, diameter: diameterDrag?.diameter ?? $0.diameter,
+                            transform: transform)
+        } ?? []
+        if let sceneID, !isSceneStale {
+            sequence &+= 1
+            let pixels = CGSize(width: drawable.texture.width, height: drawable.texture.height)
+            let frame = PresentedFrame(sceneID: sceneID, transform: transform, drawableSize: pixels,
+                                       mapping: mapping, sequence: sequence, diameterHandle: handle)
+            drawable.addPresentedHandler { [weak self] drawable in
+                guard drawable.presentedTime > 0 else { return }
+                Task { @MainActor in self?.didPresent(frame) }
+            }
+        }
         renderer.draw(
             in: descriptor,
             drawable: drawable,
-            transform: viewportTransform(),
+            transform: transform,
             showsEdges: showsEdges,
             showsAxes: showsAxes,
-            stale: isSceneStale
+            stale: isSceneStale,
+            overlay: overlay
         )
     }
 }
@@ -371,6 +560,7 @@ final class ViewportRenderer {
     private let edgePipeline: MTLRenderPipelineState
     private let linePipeline: MTLRenderPipelineState
     private let depthState: MTLDepthStencilState
+    private let overlayDepthState: MTLDepthStencilState
     private var vertexBuffer: MTLBuffer?
     private var indexBuffer: MTLBuffer?
     private var indexCount = 0
@@ -419,11 +609,15 @@ final class ViewportRenderer {
         let depth = MTLDepthStencilDescriptor()
         depth.depthCompareFunction = .less
         depth.isDepthWriteEnabled = true
+        let overlayDepth = MTLDepthStencilDescriptor()
+        overlayDepth.depthCompareFunction = .always
         guard let depthState = device.makeDepthStencilState(descriptor: depth),
+              let overlayDepthState = device.makeDepthStencilState(descriptor: overlayDepth),
               let queue = device.makeCommandQueue() else {
             throw ViewportError.renderStateUnavailable("depth stencil state or command queue")
         }
         self.depthState = depthState
+        self.overlayDepthState = overlayDepthState
         self.queue = queue
     }
 
@@ -451,7 +645,8 @@ final class ViewportRenderer {
     }
 
     func draw(in descriptor: MTLRenderPassDescriptor, drawable: CAMetalDrawable,
-              transform: ViewportTransform, showsEdges: Bool, showsAxes: Bool, stale: Bool) {
+              transform: ViewportTransform, showsEdges: Bool, showsAxes: Bool, stale: Bool,
+              overlay: [ViewportVertex]) {
         guard let commands = queue.makeCommandBuffer(),
               let encoder = commands.makeRenderCommandEncoder(descriptor: descriptor) else { return }
 
@@ -493,6 +688,17 @@ final class ViewportRenderer {
             encoder.setVertexBytes(&uniforms, length: MemoryLayout<ViewportUniforms>.stride, index: 1)
             encoder.setFragmentBytes(&uniforms, length: MemoryLayout<ViewportUniforms>.stride, index: 1)
             encoder.drawPrimitives(type: .line, vertexStart: 0, vertexCount: 6)
+        }
+
+        if !overlay.isEmpty, let buffer = overlay.withUnsafeBytes({ bytes in
+            bytes.baseAddress.flatMap { device.makeBuffer(bytes: $0, length: bytes.count, options: .storageModeShared) }
+        }) {
+            encoder.setDepthStencilState(overlayDepthState)
+            encoder.setRenderPipelineState(linePipeline)
+            encoder.setVertexBuffer(buffer, offset: 0, index: 0)
+            encoder.setVertexBytes(&uniforms, length: MemoryLayout<ViewportUniforms>.stride, index: 1)
+            encoder.setFragmentBytes(&uniforms, length: MemoryLayout<ViewportUniforms>.stride, index: 1)
+            encoder.drawPrimitives(type: .line, vertexStart: 0, vertexCount: overlay.count)
         }
 
         encoder.endEncoding()

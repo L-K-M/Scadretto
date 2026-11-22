@@ -226,6 +226,203 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
+    func testKeyboardDiameterEditOnThirdBoreSurvivesSaveUndoRedoAndReopen() throws {
+        let app = launch(arguments: ["-dragSnapIncrement", "0.5"])
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Keyboard Diameter.scad")
+        // An equal-valued literal on an unrelated solid inside the plate must
+        // not be rewritten by the shared-parameter edit.
+        let extra = "\ntranslate([100, 8, 0]) cylinder(h = 6, d = 4);\n"
+        let originalText = String(decoding: try fixture("mounting-plate"), as: UTF8.self) + extra
+        XCTAssertEqual(originalText.components(separatedBy: "hole_d = 4;").count - 1, 1,
+                       "The fixture must contain exactly one shared hole diameter literal")
+        let editedText = originalText.replacingOccurrences(of: "hole_d = 4;", with: "hole_d = 5;")
+        let original = Data(originalText.utf8)
+        let edited = Data(editedText.utf8)
+        try original.write(to: url)
+
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("Preview ready", in: status, timeout: 15)
+
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        XCTAssertTrue(viewport.waitForExistence(timeout: 6))
+
+        try selectThirdBore(in: viewport, app: app)
+
+        XCTAssertEqual(app.staticTexts["targetScope"].firstMatch.value as? String, "Shared parameter · 4 cutters")
+        let field = app.textFields["diameterField"].firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        let writable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: field)
+        XCTAssertEqual(XCTWaiter.wait(for: [writable], timeout: 8), .completed,
+                       "The diameter field must enable once the literal is verified")
+        XCTAssertEqual(field.value as? String, "4")
+
+        let (grip, outward) = diameterDragCoordinates(in: viewport)
+        grip.click(forDuration: 0.2, thenDragTo: outward)
+        waitForText("hole_d = 5;", in: editor)
+        XCTAssertEqual(editor.value as? String, editedText)
+        choose("Undo Change Diameter", from: "Edit", in: app)
+        waitForText("hole_d = 4;", in: editor)
+        XCTAssertEqual(editor.value as? String, originalText)
+        waitForText("Preview ready", in: status, timeout: 15)
+        let writableAfterUndo = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: field)
+        XCTAssertEqual(XCTWaiter.wait(for: [writableAfterUndo], timeout: 8), .completed)
+
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("5")
+        XCTAssertEqual(field.value as? String, "5")
+        field.typeKey(.return, modifierFlags: [])
+        waitForText("Source change · 4 → 5", in: app.staticTexts["editStatus"].firstMatch, timeout: 8)
+        XCTAssertEqual(editor.value as? String, editedText)
+        XCTAssertEqual(try Data(contentsOf: url), original)
+
+        choose("Save", from: "File", in: app)
+        XCTAssertEqual(try Data(contentsOf: url), edited)
+
+        choose("Undo", from: "Edit", in: app, prefix: true)
+        waitForText("hole_d = 4;", in: editor)
+        choose("Save", from: "File", in: app)
+        XCTAssertEqual(try Data(contentsOf: url), original)
+
+        choose("Redo", from: "Edit", in: app, prefix: true)
+        waitForText("hole_d = 5;", in: editor)
+        choose("Save", from: "File", in: app)
+        XCTAssertEqual(try Data(contentsOf: url), edited)
+
+        choose("Close", from: "File", in: app)
+        let reopened = open(url, in: app)
+        waitForText("hole_d = 5;", in: reopened)
+        waitForText("Preview ready", in: status, timeout: 15)
+        XCTAssertEqual(try Data(contentsOf: url), edited)
+    }
+
+    @MainActor
+    func testViewportDragAndSaveFiveBores() throws {
+        let app = launch(arguments: ["-dragSnapIncrement", "0.5"])
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Dragged Mounting Plate.scad")
+        let original = try fixture("mounting-plate")
+        let originalText = String(decoding: original, as: UTF8.self)
+        let diameterText = originalText.replacingOccurrences(of: "hole_d = 4;", with: "hole_d = 5;")
+        let finalText = diameterText.replacingOccurrences(of: "count = 4;", with: "count = 5;")
+        try original.write(to: url)
+
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        let field = app.textFields["diameterField"].firstMatch
+        waitForText("Preview ready · 1052 triangles", in: status, timeout: 15)
+        choose("Save", from: "File", in: app)
+        XCTAssertEqual(try Data(contentsOf: url), original)
+
+        try selectThirdBore(in: viewport, app: app)
+        waitForText("Shared parameter · 4 cutters", in: app.staticTexts["targetScope"].firstMatch)
+        waitForText("4", in: field)
+        let (grip, outward) = diameterDragCoordinates(in: viewport)
+        grip.click()
+        XCTAssertEqual(editor.value as? String, originalText)
+        XCTAssertEqual(field.value as? String, "4")
+        XCTAssertEqual(try Data(contentsOf: url), original)
+        app.menuBarItems["Edit"].click()
+        XCTAssertFalse(app.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "Undo")).firstMatch.isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+
+        editor.click()
+        editor.typeKey(.downArrow, modifierFlags: .command)
+        editor.typeKey(.leftArrow, modifierFlags: [])
+        editor.typeKey(.delete, modifierFlags: [])
+        waitForText("Parser error", in: status, timeout: 15)
+        XCTAssertFalse(field.isEnabled)
+        choose("Undo", from: "Edit", in: app, prefix: true)
+        waitForText("Preview ready · 1052 triangles", in: status, timeout: 15)
+        XCTAssertEqual(editor.value as? String, originalText)
+
+        let writable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: field)
+        XCTAssertEqual(XCTWaiter.wait(for: [writable], timeout: 8), .completed)
+        grip.click(forDuration: 0.2, thenDragTo: outward)
+        waitForText("hole_d = 5;", in: editor)
+        XCTAssertEqual(editor.value as? String, diameterText)
+        choose("Undo Change Diameter", from: "Edit", in: app)
+        waitForText("hole_d = 4;", in: editor)
+        XCTAssertEqual(editor.value as? String, originalText)
+        choose("Redo Change Diameter", from: "Edit", in: app)
+        waitForText("hole_d = 5;", in: editor)
+
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        for _ in 0..<3 { editor.typeKey(.downArrow, modifierFlags: []) }
+        editor.typeKey(.leftArrow, modifierFlags: .command)
+        for _ in 0..<8 { editor.typeKey(.rightArrow, modifierFlags: []) }
+        editor.typeKey(.rightArrow, modifierFlags: .shift)
+        editor.typeText("5")
+        waitForText("Preview ready · 1312 triangles", in: status, timeout: 15)
+        waitForText("Shared parameter · 5 cutters", in: app.staticTexts["targetScope"].firstMatch)
+        XCTAssertEqual(editor.value as? String, finalText)
+        choose("Save", from: "File", in: app)
+        let saved = try Data(contentsOf: url)
+        XCTAssertEqual(saved, Data(finalText.utf8))
+        let acceptedFile = XCTAttachment(data: saved, uniformTypeIdentifier: "public.source-code")
+        acceptedFile.name = "Saved Mounting Plate.scad"
+        acceptedFile.lifetime = .keepAlways
+        add(acceptedFile)
+        choose("Close", from: "File", in: app)
+        let reopened = open(url, in: app)
+        waitForText("Preview ready · 1312 triangles", in: status, timeout: 15)
+        XCTAssertEqual(reopened.value as? String, finalText)
+        XCTAssertEqual(try Data(contentsOf: url), saved)
+        try selectThirdBore(in: viewport, app: app, afterDiameterEdit: true)
+        waitForText("Shared parameter · 5 cutters", in: app.staticTexts["targetScope"].firstMatch)
+        XCTAssertEqual(field.value as? String, "5")
+        let screenshot = XCTAttachment(screenshot: viewport.screenshot())
+        screenshot.name = "Reopened Five-Bore Preview"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    private static let plateViewportSize = CGSize(width: 608, height: 638)
+
+    @MainActor
+    private func selectThirdBore(in viewport: XCUIElement, app: XCUIApplication, afterDiameterEdit: Bool = false) throws {
+        // Projected centroids of final triangles 352 (original) and 307
+        // (saved five-bore variant) in the initial 608 × 638 viewport.
+        let size = viewport.frame.size
+        let expected = Self.plateViewportSize
+        let matchesViewport = abs(size.width - expected.width) <= 1 && abs(size.height - expected.height) <= 1
+        _ = try XCTUnwrap(matchesViewport ? size : nil,
+                          "The bore ray requires a 608 × 638 point viewport. Measured \(size).")
+        let point = afterDiameterEdit ? CGPoint(x: 280.75186, y: 303.55458) : CGPoint(x: 283.52664, y: 303.54620)
+        let bore = plateCoordinate(point, in: viewport)
+        let selection = app.staticTexts["inspectorSelection"].firstMatch
+        for _ in 0..<8 {
+            bore.click()
+            let matched = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "value CONTAINS %@ AND value CONTAINS %@", "mounting_hole", "i = 2"),
+                object: selection
+            )
+            if XCTWaiter.wait(for: [matched], timeout: 1.5) == .completed { return }
+        }
+        XCTFail("Clicking the third bore must select its instance in viewport \(viewport.frame)")
+    }
+
+    @MainActor
+    private func diameterDragCoordinates(in viewport: XCUIElement) -> (XCUICoordinate, XCUICoordinate) {
+        (plateCoordinate(CGPoint(x: 283.52062, y: 303.54250), in: viewport),
+         plateCoordinate(CGPoint(x: 282.11575, y: 302.67948), in: viewport))
+    }
+
+    @MainActor
+    private func plateCoordinate(_ point: CGPoint, in viewport: XCUIElement) -> XCUICoordinate {
+        let size = Self.plateViewportSize
+        return viewport.coordinate(withNormalizedOffset: CGVector(dx: point.x / size.width, dy: point.y / size.height))
+    }
+
+    @MainActor
     func testInvalidUTF8ReportsOffsetWithoutOpeningDocument() throws {
         let app = launch()
         defer { app.terminate() }
@@ -253,9 +450,10 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
-    private func launch() -> XCUIApplication {
+    private func launch(arguments: [String] = []) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.launchArguments += arguments
         app.launch()
         app.activate()
         return app

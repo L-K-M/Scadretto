@@ -45,9 +45,9 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 **Depends on M2.** Build the narrowest complete interaction through normal application entry points.
 
-- [ ] Connect the cylinder diameter property, call chain and verified authoring spans from the M2 trace to the edit planner. Connect final-surface hit testing to source highlighting and a scope-aware inspector.
-- [ ] Implement a diameter field, a diameter handle, affected-instance highlights and one undoable write to a shared literal. Preview with an overlay. On release, verify the patch, update the text view and reevaluate. Implement Escape, zero movement and stale-gesture rejection.
-- [ ] Add separate integration tests for keyboard entry, real viewport drag, and reopen in the reference CLI. Replay the same interaction with an identical local literal in an unrelated call to prove the correct declaration is chosen.
+- [x] Connect the cylinder diameter property, call chain and verified authoring spans from the M2 trace to the edit planner. Connect final-surface hit testing to source highlighting and a scope-aware inspector.
+- [x] Implement a diameter field, a diameter handle, affected-instance highlights and one undoable write to a shared literal. Preview with an overlay. On release, verify the patch, update the text view and reevaluate. Implement Escape, zero movement and stale-gesture rejection.
+- [x] Add separate integration tests for keyboard entry, real viewport drag, and reopen in the reference CLI. Replay the same interaction with an identical local literal in an unrelated call to prove the correct declaration is chosen.
 
 **Exit:** Steps 1–5 of the mounting-plate walkthrough in file 06 pass. Also run step 7 from a fresh baseline with the M3 diameter handle. Dragging the third hole changes one literal and four bores. Typing changes the count. Source, inspector and geometry agree after undo and reopen. This is the first demonstrable product milestone.
 

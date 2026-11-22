@@ -105,6 +105,11 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
         view.addItem(withTitle: "Show Axes", action: #selector(ScadrettoDocument.toggleAxes(_:)), keyEquivalent: "")
         view.addItem(withTitle: "Swap Orbit and Pan", action: #selector(ScadrettoDocument.toggleOrbitPan(_:)),
                      keyEquivalent: "")
+        let snap = addMenu("Drag Snap", to: view)
+        for (title, step) in [("Off", 0.0), ("0.25 model units", 0.25), ("0.5 model units", 0.5), ("1 model unit", 1.0)] {
+            snap.addItem(withTitle: title, action: #selector(ScadrettoDocument.setDragSnap(_:)),
+                         keyEquivalent: "").representedObject = step
+        }
 
         let model = addMenu("Model", to: menu)
         model.addItem(withTitle: "Retry Preview", action: #selector(ScadrettoDocument.retryPreview(_:)), keyEquivalent: "r")

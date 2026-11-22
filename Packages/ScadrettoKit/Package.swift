@@ -28,7 +28,9 @@ let package = Package(
         .testTarget(name: "ScadrettoCoreTests", dependencies: ["ScadrettoCore"]),
         .testTarget(name: "ScadrettoSyntaxTests", dependencies: ["ScadrettoSyntax", "ScadrettoCore"]),
         .target(name: "ScadrettoEngineClient", dependencies: ["ScadrettoCore"]),
-        .testTarget(name: "ScadrettoEngineClientTests", dependencies: ["ScadrettoEngineClient", "ScadrettoCore"]),
+        .testTarget(name: "ScadrettoEngineClientTests", dependencies: [
+            "ScadrettoEngineClient", "ScadrettoCore", "ScadrettoSyntax", "ScadrettoViewport",
+        ]),
         .target(name: "ScadrettoViewport"),
         .testTarget(name: "ScadrettoViewportTests", dependencies: ["ScadrettoViewport"]),
     ]

@@ -169,6 +169,29 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         if editor.hasMarkedText() { editor.unmarkText() }
     }
 
+    var isComposing: Bool { editor.hasMarkedText() }
+
+    private(set) var currentSyntax: SyntaxSnapshot?
+    var onSyntaxReady: (() -> Void)?
+
+    func highlightSource(_ range: NSRange) {
+        guard !isComposing else { return }
+        let originalX = scroll.contentView.bounds.minX
+        let tokenRect = editor.layoutManager.flatMap { layout in
+            editor.textContainer.map { container in
+                let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+                return layout.boundingRect(forGlyphRange: glyphs, in: container)
+                    .offsetBy(dx: editor.textContainerOrigin.x, dy: editor.textContainerOrigin.y)
+            }
+        }
+        editor.setSelectedRange(range)
+        editor.scrollRangeToVisible(range)
+        if let tokenRect, tokenRect.minX >= originalX, tokenRect.maxX <= originalX + scroll.contentView.bounds.width {
+            scroll.contentView.scroll(to: NSPoint(x: originalX, y: scroll.contentView.bounds.minY))
+            scroll.reflectScrolledClipView(scroll.contentView)
+        }
+    }
+
     func reveal(_ range: NSRange?) {
         if let range {
             editor.setSelectedRange(range)
@@ -192,8 +215,10 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         parseTask = Task { [weak self] in
             do {
                 let syntax = try await parser.parse(snapshot)
-                guard !Task.isCancelled, self?.snapshot?.revision == syntax.revision else { return }
-                self?.paint(syntax, with: snapshot.buffer)
+                guard let self, !Task.isCancelled, self.snapshot?.revision == syntax.revision else { return }
+                currentSyntax = syntax
+                paint(syntax, with: snapshot.buffer)
+                onSyntaxReady?()
             } catch {
                 guard !Task.isCancelled, self?.snapshot?.revision == snapshot.revision else { return }
                 self?.status.stringValue = "Syntax highlighting unavailable"

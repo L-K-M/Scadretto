@@ -10,7 +10,8 @@ import struct
 import subprocess
 import time
 
-from verify_spike import check, render_reference, symmetric_difference
+from verify_spike import (DIFFERENCE_ABS_TOLERANCE, DIFFERENCE_REL_TOLERANCE, check,
+                          measure_plate, render_reference, symmetric_difference)
 
 PROTOCOL = 1
 FIXED_DOCUMENT = "00000000-0000-0000-0000-000000000001"
@@ -378,11 +379,38 @@ def check_request_and_trace_limits(args, environment, build):
           "failed instance tracing published a partial scene")
 
 
+def check_saved_plate(args, environment, build):
+    original = (args.fixtures / "mounting-plate.scad").read_bytes()
+    source = args.saved_plate.read_bytes()
+    expected = original.replace(b"hole_d = 4;", b"hole_d = 5;").replace(b"count = 4;", b"count = 5;")
+    check(source == expected, "Saved plate differs from the exact diameter and count edit")
+    job = args.evidence / "app-saved-plate"
+    result = run_job(args.worker, job, source, request_for(source, args.saved_plate, build), environment)
+    mesh = mesh_geometry(job, result["mesh"])
+    check(mesh is not None, "Saved plate produced no solid")
+    reference = render_reference(args.reference, args.saved_plate, job / "reference.stl", environment)
+    worker_volume = measure_plate(mesh, 5, 5, 20)
+    reference_volume = measure_plate(reference, 5, 5, 20)
+    difference = symmetric_difference(args.oracle, job, mesh, reference)
+    check(difference <= min(DIFFERENCE_ABS_TOLERANCE, worker_volume * DIFFERENCE_REL_TOLERANCE),
+          f"Saved plate differs from the pinned reference by {difference}")
+    cutters = [record for record in result["instances"] if record["name"] == "cylinder"]
+    centers = [record["world"][12] for record in cutters]
+    check(centers == [15, 35, 55, 75, 95], f"Saved plate has different cutter centers: {centers}")
+    check(all(record["diameter"]["value"] == 5 for record in cutters), "Saved plate lost the shared diameter edit")
+    changed = [index for index, (before, after) in enumerate(zip(original, source)) if before != after]
+    write_json(job / "comparison.json", {"sha256": checksum(source), "changedByteOffsets": changed,
+               "centersOnX": centers, "workerVolume": worker_volume, "referenceVolume": reference_volume,
+               "symmetricDifferenceVolume": difference})
+    print(f"App-saved plate verified at offsets {changed}, with five bores and reference difference {difference:.9g}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     for field in ("worker", "reference", "oracle", "resources", "fixtures", "goldens", "evidence"):
         parser.add_argument("--" + field, type=lambda value: Path(value).resolve(), required=True)
     parser.add_argument("--record", action="store_true")
+    parser.add_argument("--saved-plate", type=lambda value: Path(value).resolve())
     args = parser.parse_args()
     args.evidence.mkdir(parents=True, exist_ok=True)
     home = args.evidence / "home"
@@ -400,6 +428,8 @@ def main():
     check_goldens(args, environment, build)
     check_live_inputs(args, environment, build)
     check_lifetime_pipe(args, environment, build)
+    if args.saved_plate is not None:
+        check_saved_plate(args, environment, build)
     print("v1 worker protocol goldens, provenance, warnings, empty scene and dependency recovery passed")
 
 

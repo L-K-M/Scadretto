@@ -6,6 +6,11 @@ import CoreGraphics
 public struct ViewportRay: Equatable, Sendable {
     public var origin: SIMD3<Double>
     public var direction: SIMD3<Double>
+
+    public init(origin: SIMD3<Double>, direction: SIMD3<Double>) {
+        self.origin = origin
+        self.direction = direction
+    }
 }
 
 /// The view/projection mapping of one presented frame.
@@ -86,10 +91,16 @@ public struct ViewportTransform: Sendable {
     /// The world-space ray through a view point: origin on the near plane for
     /// orthographic projections, at the eye for perspective.
     public func ray(throughViewPoint point: CGPoint) -> ViewportRay {
-        let near = worldPoint(atViewPoint: point, depth: 0)
-        let far = worldPoint(atViewPoint: point, depth: 1)
-        let origin = isOrthographic ? near : camera.eye
-        return ViewportRay(origin: origin, direction: simd_normalize(far - near))
+        let forward = simd_normalize(camera.forward)
+        if isOrthographic {
+            return ViewportRay(origin: worldPoint(atViewPoint: point, depth: 0), direction: forward)
+        }
+        // Form the eye-space direction directly from the projection scale.
+        // Subtracting unprojected world points loses precision far from zero.
+        let x = (2 * point.x / viewSize.width - 1) / projection.columns.0.x
+        let y = (1 - 2 * point.y / viewSize.height) / projection.columns.1.y
+        let direction = forward + x * camera.right + y * camera.screenUp
+        return ViewportRay(origin: camera.eye, direction: simd_normalize(direction))
     }
 
     /// Intersects the view ray through `point` with the plane through the
