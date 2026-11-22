@@ -1,0 +1,170 @@
+#!/bin/bash
+set -euo pipefail
+
+upstream=$1
+prefix=$2
+scratch=$3
+jobs=$4
+recipe="$(cd "$(dirname "$0")" && pwd -P)"
+dependency_lock="$recipe/dependencies.lock"
+archives="$(cd "$recipe/.." && pwd -P)/.build/engine/downloads"
+macos_target=${MACOSX_DEPLOYMENT_TARGET:?}
+: "${SDKROOT:?Set SDKROOT to the macOS SDK from xcrun --show-sdk-path}"
+export CFLAGS="-O2 -mmacosx-version-min=$macos_target"
+export CXXFLAGS="$CFLAGS"
+export CPPFLAGS="-I$prefix/include"
+export LDFLAGS="-L$prefix/lib -Wl,-headerpad_max_install_names -mmacosx-version-min=$macos_target"
+export PKG_CONFIG_LIBDIR="$prefix/lib/pkgconfig:$prefix/share/pkgconfig"
+unset PKG_CONFIG_PATH CMAKE_PREFIX_PATH CMAKE_INCLUDE_PATH CMAKE_LIBRARY_PATH
+mkdir -p "$prefix/lib/pkgconfig" "$scratch/sources"
+while read -r name sha _; do
+    archive="$archives/$sha"
+    printf '%s  %s\n' "$sha" "$archive" | shasum -a 256 --check
+    if [[ ! -f "$scratch/sources/$name/.extracted" ]]; then
+        mkdir -p "$scratch/sources/$name"
+        tar -xf "$archive" --strip-components 1 -C "$scratch/sources/$name"
+        touch "$scratch/sources/$name/.extracted"
+    fi
+done < "$dependency_lock"
+
+sources="$scratch/sources"
+
+# Xcode supplies the headers and link stubs without pkg-config metadata.
+sdk_pc() {
+    local package=$1
+    local version_define=$2
+    local header=$3
+    local libs=$4
+    local includes=$5
+    local version
+    version="$(awk -v key="$version_define" '$2 == key {gsub(/"/, "", $3); print $3; exit}' "$SDKROOT/$header")"
+    [[ -n "$version" ]]
+    cat > "$prefix/lib/pkgconfig/$package.pc" <<PC
+Name: $package
+Description: Xcode SDK system library
+Version: $version
+Libs: $libs
+Cflags: $includes
+PC
+}
+sdk_pc libxml-2.0 LIBXML_DOTTED_VERSION usr/include/libxml2/libxml/xmlversion.h -lxml2 "-I'$SDKROOT/usr/include/libxml2'"
+sdk_pc zlib ZLIB_VERSION usr/include/zlib.h -lz ""
+
+finish() {
+    touch "$prefix/.$1-installed"
+}
+installed() {
+    [[ -f "$prefix/.$1-installed" ]]
+}
+
+cmake_install() {
+    local name=$1
+    shift
+    if installed "$name"; then return; fi
+    cmake -S "$sources/$name" -B "$scratch/build-$name" -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$prefix" \
+        -DCMAKE_PREFIX_PATH="$prefix" '-DCMAKE_IGNORE_PREFIX_PATH=/usr/local;/opt/homebrew' \
+        -DCMAKE_OSX_SYSROOT="$SDKROOT" -DCMAKE_OSX_ARCHITECTURES=arm64 \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET="$macos_target" \
+        -DCMAKE_SHARED_LINKER_FLAGS=-Wl,-headerpad_max_install_names "$@"
+    cmake --build "$scratch/build-$name" --parallel "$jobs"
+    cmake --install "$scratch/build-$name"
+    finish "$name"
+}
+
+autoconf_install() (
+    local name=$1
+    local configure=$2
+    shift 2
+    if installed "$name"; then return; fi
+    mkdir -p "$scratch/build-$name"
+    cd "$scratch/build-$name"
+    "$sources/$name/$configure" --prefix="$prefix" "$@"
+    make -j "$jobs"
+    make install
+    finish "$name"
+)
+
+# Reuse the pin's native compiler flags for Meson libraries.
+meson_config="$scratch/macos-arm64.txt"
+sed -e "s,@MAC_OSX_VERSION_MIN@,$macos_target,g" -e "s,@DEPLOYDIR@,$prefix,g" \
+    "$upstream/scripts/macos-arm64.txt.in" > "$meson_config"
+meson_install() {
+    local name=$1
+    shift
+    if installed "$name"; then return; fi
+    meson setup --reconfigure "$scratch/build-$name" "$sources/$name" --cross-file "$meson_config" \
+        --prefix "$prefix" --libdir lib --buildtype release --wrap-mode nodownload "$@"
+    meson compile -C "$scratch/build-$name" -j "$jobs"
+    meson install -C "$scratch/build-$name" --no-rebuild
+    finish "$name"
+}
+
+cmake_install double-conversion -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF
+cmake_install eigen -DEIGEN_BUILD_TESTING=OFF -DEIGEN_BUILD_DOC=OFF -DEIGEN_BUILD_BLAS=OFF -DEIGEN_BUILD_LAPACK=OFF -DCMAKE_Fortran_COMPILER=NOTFOUND
+autoconf_install gmp configure --enable-cxx --enable-shared --disable-static
+autoconf_install mpfr configure --with-gmp="$prefix" --enable-shared --disable-static
+am_cv_func_iconv_works=yes autoconf_install gettext gettext-runtime/configure \
+    --with-included-gettext --with-included-glib --with-included-libunistring \
+    --disable-java --disable-csharp --enable-shared --disable-static
+cmake_install pcre2 -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON -DPCRE2_BUILD_TESTS=OFF \
+    -DPCRE2_BUILD_PCRE2GREP=OFF
+cmake_install freetype -DBUILD_SHARED_LIBS=OFF -DFT_DISABLE_ZLIB=ON -DFT_DISABLE_BZIP2=ON \
+    -DFT_DISABLE_PNG=ON -DFT_DISABLE_HARFBUZZ=ON -DFT_DISABLE_BROTLI=ON -DFT_DISABLE_HVF=ON
+meson_install harfbuzz --default-library static -Dfreetype=enabled -Dgraphite2=disabled \
+    -Dgobject=disabled -Dcairo=disabled -Dicu=disabled -Dcoretext=disabled -Dglib=disabled \
+    -Dchafa=disabled -Dpng=disabled -Draster=disabled -Dvector=disabled -Dgpu=disabled \
+    -Dutilities=disabled -Dtests=disabled -Ddocs=disabled
+meson_install fontconfig --default-library shared -Dxml-backend=libxml2 -Dnls=disabled \
+    -Dtests=disabled -Ddoc=disabled -Dtools=enabled -Dcache-build=disabled
+autoconf_install libffi configure --enable-static --disable-shared --disable-docs
+# The macOS 27 SDK exposes pipe2() even when the deployment target predates
+# it. Keep GLib's portable fallback so a call on macOS 14 cannot hit a weak
+# import that is missing at runtime.
+if [[ ! -f "$sources/glib/.scadretto-pipe2-disabled" ]]; then
+    glib_config="$sources/glib/meson.build"
+    if [[ ! -f "$glib_config.original" ]]; then
+        cp "$glib_config" "$glib_config.original"
+    fi
+    if ! grep -q "^  'pipe2',\$" "$glib_config.original"; then
+        printf '%s\n' 'GLib pipe2 probe moved. Recheck the deployment-target fallback.' >&2
+        exit 1
+    fi
+    sed "/^  'pipe2',\$/d" "$glib_config.original" > "$glib_config"
+    if grep -q "^  'pipe2',\$" "$glib_config"; then
+        printf '%s\n' 'GLib pipe2 probe was not removed.' >&2
+        exit 1
+    fi
+    touch "$sources/glib/.scadretto-pipe2-disabled"
+fi
+meson_install glib --default-library shared -Ddocumentation=false -Dman-pages=disabled \
+    -Ddtrace=disabled -Dtests=false -Dintrospection=disabled -Dsysprof=disabled
+if ! installed openssl; then
+    (
+        mkdir -p "$scratch/build-openssl"
+        cd "$scratch/build-openssl"
+        "$sources/openssl/Configure" darwin64-arm64-cc --prefix="$prefix" --libdir=lib \
+            no-shared no-tests no-module no-apps
+        make -j "$jobs"
+        make install_sw
+    )
+    finish openssl
+fi
+cmake_install libzip -DBUILD_SHARED_LIBS=ON -DBUILD_TOOLS=OFF -DBUILD_REGRESS=OFF \
+    -DBUILD_EXAMPLES=OFF -DBUILD_DOC=OFF -DENABLE_BZIP2=OFF -DENABLE_LZMA=OFF \
+    -DENABLE_ZSTD=OFF -DENABLE_GNUTLS=OFF -DENABLE_MBEDTLS=OFF \
+    -DOPENSSL_ROOT_DIR="$prefix" -DOPENSSL_USE_STATIC_LIBS=ON
+if ! installed boost; then
+    (
+        cd "$sources/boost"
+        ./bootstrap.sh --prefix="$prefix" --with-libraries=regex,program_options,container
+        ./b2 -j "$jobs" toolset=clang architecture=arm address-model=64 target-os=darwin \
+            link=static variant=release "cxxflags=$CXXFLAGS" "linkflags=$LDFLAGS" \
+            --build-dir="$scratch/build-boost" install
+    )
+    finish boost
+fi
+cmake_install cgal -DWITH_CGAL_Qt6=OFF -DWITH_CGAL_ImageIO=OFF \
+    -DGMP_INCLUDE_DIR="$prefix/include" -DGMP_LIBRARIES="$prefix/lib/libgmp.dylib" \
+    -DGMPXX_LIBRARIES="$prefix/lib/libgmpxx.dylib" -DMPFR_INCLUDE_DIR="$prefix/include" \
+    -DMPFR_LIBRARIES="$prefix/lib/libmpfr.dylib"

@@ -6,6 +6,21 @@ Xcode, SDK, CMake and engine revisions in M0.
 
 ## Development
 
+On an Apple silicon development Mac, build and verify the pinned headless
+engine first:
+
+```sh
+Scripts/bootstrap-macos
+Scripts/build-engine
+Scripts/verify-engine
+```
+
+Bootstrap checks the native build tools and fetches the pinned source.
+The build stages the two executables and their runtime libraries under
+`.build/engine/`. Verification records its evidence there. See
+[the engine decision record](Docs/Decisions/engine-spike.md) for the
+build flags, observed runtime trace and geometry checks.
+
 Install the [shared release tool](https://github.com/L-K-M/release-tool) for
 `lkm-build` and `lkm-release`. Once M1 has added the shared `Scadretto` scheme
 in `Scadretto.xcodeproj`, use these commands from the repository:
@@ -20,9 +35,8 @@ the build directory. The engine and worker have separate milestone scripts.
 Use the [verification guide](plan/06-Verification-and-Release.md#build-and-verification-entry-points)
 for their entry points and the native test plan.
 
-GitHub Actions runs repository script checks on PRs and pushes to `main`.
-Add the pinned engine checks to CI in M0 and the package tests and app build
-in M1. Native UI and minimum-OS checks follow the verification guide.
+GitHub Actions runs repository script checks and pinned engine verification
+on PRs and pushes to `main`. M1 adds the package tests and app build. Native UI and minimum-OS checks follow the verification guide.
 
 ## Pull requests
 
