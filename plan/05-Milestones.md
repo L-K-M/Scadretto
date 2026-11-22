@@ -55,10 +55,10 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 **Depends on M3.** Keep an explicit support table beside the planner tests.
 
-- [ ] Add the remaining cube/sphere/cylinder bindings, explicit module arguments, transform vector edits, active-file named numeric parameters and the eligibility checks from file 02.
-- [ ] Implement explicit local offsets and prefix insertion at verified syntax boundaries. Exercise combined transforms, center semantics, negative scales and singular transforms. Disable ambiguous implicit signatures and computed lists.
-- [ ] Implement impact tracking and selection reconciliation for shared calls, modules, shadowed names and repeated instances. Add the restricted pitch handle and numeric fallback for iteration zero.
-- [ ] Support nested booleans, ghost selection, rim ambiguity and outline fallback. Keep expressions inspectable when they have no approved rewrite.
+- [x] Add the remaining cube/sphere/cylinder bindings, explicit module arguments, transform vector edits, active-file named numeric parameters and the eligibility checks from file 02.
+- [x] Implement explicit local offsets and prefix insertion at verified syntax boundaries. Exercise combined transforms, center semantics, negative scales and singular transforms. Disable ambiguous implicit signatures and computed lists.
+- [x] Implement impact tracking and selection reconciliation for shared calls, modules, shadowed names and repeated instances. Add the restricted pitch handle and numeric fallback for iteration zero.
+- [x] Support nested booleans, ghost selection, rim ambiguity and outline fallback. Keep expressions inspectable when they have no approved rewrite.
 
 **Exit:** All seven walkthrough steps in file 06 pass in order, including the pitch drag in step 6 and its cancellation in step 7. The Scope, Expressions, Primitive properties, Transforms and Procedural picking rows of the regression matrix pass. Repeated edits preserve user formatting and formulas. No single-instance action rewrites a shared generator by accident.
 

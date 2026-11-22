@@ -91,6 +91,13 @@ failed before its fix. A later mutation check of the worker showed that
 guides chosen by property name or equal value could point the wrong way.
 Their tests compare each guide with reevaluation, and failed first.
 
+An independent review before the PR, in two parts, reported nine defects.
+Seven were fixed. All but the one-frame stale handle have a regression
+test that failed first, natively for a drag whose release was lost. The
+other two write nothing wrong and are listed under Limits. The inspector's
+use of the retargeting and long-literal rules is covered by package tests
+of those rules, not by a native test.
+
 ## Native verification
 
 The Apple M4 Max development machine ran macOS 27.0.1 (26A434) with Xcode
@@ -102,15 +109,15 @@ The app bundled worker SHA-256
 xcodebuild -project Scadretto.xcodeproj -scheme Scadretto \
   -destination 'platform=macOS,arch=arm64' -parallel-testing-enabled NO \
   -derivedDataPath "$PWD/.build/m4/DerivedData" \
-  -resultBundlePath "$PWD/.build/m4/ui-suite-06.xcresult" \
+  -resultBundlePath "$PWD/.build/m4/ui-suite-08.xcresult" \
   CODE_SIGN_IDENTITY='Apple Development' test
-Scripts/verify-engine --saved-plate .build/m4/ui-suite-06-attachments/saved-plate.scad
+Scripts/verify-engine --saved-plate .build/m4/ui-suite-08-attachments/saved-plate.scad
 ```
 
 The run split that `test` action into `build-for-testing` and
-`test-without-building`. All 10 UI tests passed in 397 seconds. They drive
-the real app through the Open panel, mouse picks and drags, the inspector,
-menus, save and reopen.
+`test-without-building`. All 12 UI tests passed in 476 seconds. They drive
+the real app through the Open panel, mouse picks and drags, the outline,
+the inspector, menus, save and reopen. `.build/` paths are machine-local.
 
 Walkthrough steps 1 to 5 saved a plate that differs from the fixture only
 in `hole_d = 5;` and `count = 5;`. The unmodified reference rendered it
@@ -129,17 +136,19 @@ Earlier runs failed, and their recordings gave these causes:
 - One Undo menu click had no effect and no cause was found. Six repeats
   of that test and the final suite passed.
 
-A later focused run passed two tests. An enclosed cutter was selected
-through the outline after a click at its position picked the cube around
-it. Its ghost was drawn, and `4,5` typed under a `de_DE` app locale saved
-as `d = 4.5`. During a held pitch drag on bore 2, the screenshot showed
-guides on bores 1 and 3 in proportion to their iteration and none on
-bore 0.
+An enclosed cutter was selected through the outline after a click at its
+position picked the cube around it. Its ghost was drawn, and `4,5` typed
+under a `de_DE` app locale saved as `d = 4.5`. During a held pitch drag on
+bore 2, the screenshot showed guides on bores 1 and 3 in proportion to
+their iteration and none on bore 0.
 
 Text typed for one property is dropped when another is chosen, because
 showing the new value replaces the field editor's text and the field
 sends its action only on Return. The native test checks that outcome. It
 also passed without an explicit `abortEditing` call, which was removed.
 
-Not exercised natively: a comma-decimal system locale, a Retina display
-and macOS 14.
+The run logged one priority-inversion warning that has not been traced.
+M5's responsiveness work owns it.
+
+Not exercised natively: the menu of coincident or rim candidates, a
+comma-decimal system locale, a Retina display and macOS 14.
