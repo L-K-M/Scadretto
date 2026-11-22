@@ -113,12 +113,19 @@ final class ScadrettoUITests: XCTestCase {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appending(path: "Dependencies.scad")
-        let include = directory.appending(path: "part.scad")
-        try Data("include <part.scad>\n".utf8).write(to: url)
+        let library = directory.appending(path: "parts", directoryHint: .isDirectory)
+        let include = library.appending(path: "part.scad")
+        try Data("include <parts/part.scad>\n".utf8).write(to: url)
 
         _ = open(url, in: app)
         let status = app.staticTexts["renderStatus"].firstMatch
-        waitForText("Could not resolve part.scad", in: status, timeout: 15)
+        let missing = "Could not resolve parts/part.scad"
+        waitForText(missing, in: status, timeout: 15)
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: false)
+        let directoryOnly = XCTNSPredicateExpectation(predicate: NSPredicate(format: "NOT value CONTAINS %@", missing),
+                                                      object: status)
+        directoryOnly.isInverted = true
+        XCTAssertEqual(XCTWaiter.wait(for: [directoryOnly], timeout: 0.75), .completed)
         try Data("cube(2);\n".utf8).write(to: include, options: .atomic)
         waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
         try FileManager.default.removeItem(at: include)
