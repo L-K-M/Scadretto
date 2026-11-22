@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import shutil
 import struct
@@ -18,6 +19,13 @@ FIXED_DOCUMENT = "00000000-0000-0000-0000-000000000001"
 FIXED_REQUEST = "00000000-0000-0000-0000-000000000002"
 FIXED_BUILD = "0" * 64
 HEADER = b"SCADMESH" + struct.pack("<II", 1, 0)
+# The worker without property records renders this loop within the manifest limit.
+LARGE_LOOP_HOLES = 3_000
+# Deep enough that recursive release of one chain overflows an 8 MiB stack.
+TAIL_RECURSION_DEPTH = 200_000
+# main's worker peaks at 54 MiB here. Retained element chains took it past 900 MiB.
+COMPUTED_LIST_LENGTH = 500_000
+COMPUTED_LIST_PEAK_BYTES = 256 * 1024 * 1024
 
 
 def checksum(data):
@@ -121,6 +129,17 @@ def mesh_signature(root, descriptor):
     return sorted(faces)
 
 
+def executed_properties(result, record):
+    """Join an occurrence's values with the definitions shared by its call site."""
+    definitions = result.get("propertyDefinitions", [])
+    return [{**definitions[item["definition"]], **item} for item in record.get("properties", [])]
+
+
+def executed_arguments(result, record):
+    index = record.get("arguments")
+    return [] if index is None else result["argumentLists"][index]
+
+
 def canonical(root, result):
     instances = {item["id"]: index for index, item in enumerate(result["instances"])}
     files = {item["id"]: index for index, item in enumerate(sorted(
@@ -143,10 +162,13 @@ def canonical(root, result):
             None if diameter is None else (diameter["value"], chain(diameter["chain"])),
             span(record.get("definitionSpan")),
             [(item["name"], item["formal"], item["status"], span(item.get("expression")))
-             for item in record.get("arguments", [])],
+             for item in executed_arguments(result, record)],
             [(item["semantic"], item["formal"], item["status"], item["value"], item["displayMultiplier"],
-              item["centered"], span(item.get("expression")), chain(item["chain"]), item.get("pitch"))
-             for item in record.get("properties", [])],
+              item["centered"], span(item.get("expression")), chain(item["chain"]), item.get("pitch"),
+              sorted(repr(span(value)) for value in item["inputs"]), item["impactComplete"],
+              item.get("dragVerified", False))
+             for item in executed_properties(result, record)],
+            record.get("opaqueFrame", False),
         ))
     operations = sorted((instances[operation["instanceID"]], [
         (instances[child["instanceID"]], child["role"]) for child in operation["children"]
@@ -159,7 +181,8 @@ def canonical(root, result):
     file_data = sorted((item["kind"], item["logicalPath"], item["sha256"], item["byteLength"], item["writable"])
                        for item in result["files"])
     return (result["status"], result["detail"], file_data, rows, operations, edges, diagnostics, console,
-            result["droppedConsoleMessages"], mesh_signature(root, result.get("mesh")))
+            result["droppedConsoleMessages"], result.get("propertiesOmitted", False),
+            mesh_signature(root, result.get("mesh")))
 
 
 def check_goldens(args, environment, build):
@@ -439,8 +462,8 @@ def check_executed_properties(args, environment, build):
         check(len(matches) == 1, f"Unable to identify the executed call {spelling!r}")
         return matches[0]
 
-    def prop(record, semantic):
-        matches = [item for item in record.get("properties", []) if item["semantic"] == semantic]
+    def prop(result, record, semantic):
+        matches = [item for item in executed_properties(result, record) if item["semantic"] == semantic]
         check(len(matches) == 1, f"{record['name']} has no unique property {semantic}")
         return matches[0]
 
@@ -455,50 +478,50 @@ def check_executed_properties(args, environment, build):
     signatures = evaluate("signatures", source, compare=True)
     cube = called(signatures, source, b"cube([4, 6, 8]")
     for axis, dimension in zip("XYZ", (4, 6, 8)):
-        property = prop(cube, "cubeSize" + axis)
+        property = prop(signatures, cube, "cubeSize" + axis)
         assert_property(property, source, formal="size", value=dimension, token=str(dimension).encode())
         check(property["centered"], "Centered cube lost its origin convention")
     sphere = called(signatures, source, b"sphere(r = 2)")
-    assert_property(prop(sphere, "sphereDiameter"), source, formal="r", value=4, multiplier=2, token=b"2")
+    assert_property(prop(signatures, sphere, "sphereDiameter"), source, formal="r", value=4, multiplier=2, token=b"2")
     for spelling in [b"cylinder(8, 2)", b"cylinder(h = 8, 2)"]:
         cylinder = called(signatures, source, spelling)
-        assert_property(prop(cylinder, "cylinderHeight"), source, formal="h", value=8, token=b"8")
-        assert_property(prop(cylinder, "cylinderBottomRadius"), source, formal="r1", value=2, token=b"2")
-        check(prop(cylinder, "cylinderTopRadius")["status"] == "default", "An absent cylinder end became writable")
+        assert_property(prop(signatures, cylinder, "cylinderHeight"), source, formal="h", value=8, token=b"8")
+        assert_property(prop(signatures, cylinder, "cylinderBottomRadius"), source, formal="r1", value=2, token=b"2")
+        check(prop(signatures, cylinder, "cylinderTopRadius")["status"] == "default", "An absent cylinder end became writable")
     positional = called(signatures, source, b"cylinder(8, 2, 3, false, 5)")
-    assert_property(prop(positional, "cylinderTopRadius"), source, formal="r2", value=3, token=b"3")
-    check(any(a["formal"] == "r" and a["status"] == "ignored" for a in positional["arguments"]),
+    assert_property(prop(signatures, positional, "cylinderTopRadius"), source, formal="r2", value=3, token=b"3")
+    check(any(a["formal"] == "r" and a["status"] == "ignored" for a in executed_arguments(signatures, positional)),
           "Uniform radius looked writable after both ends overrode it")
     alias = called(signatures, source, b"cylinder(d = 8, r = 1)")
-    assert_property(prop(alias, "cylinderDiameter"), source, formal="d", value=8, token=b"8")
-    check(any(a["formal"] == "r" and a["status"] == "ignored" for a in alias["arguments"]),
+    assert_property(prop(signatures, alias, "cylinderDiameter"), source, formal="d", value=8, token=b"8")
+    check(any(a["formal"] == "r" and a["status"] == "ignored" for a in executed_arguments(signatures, alias)),
           "Losing radius alias was not identified")
     tapered = called(signatures, source, b"cylinder(r = 2, r2 = 4)")
-    assert_property(prop(tapered, "cylinderBottomRadius"), source, formal="r", value=2, token=b"2")
-    assert_property(prop(tapered, "cylinderTopRadius"), source, formal="r2", value=4, token=b"4")
+    assert_property(prop(signatures, tapered, "cylinderBottomRadius"), source, formal="r", value=2, token=b"2")
+    assert_property(prop(signatures, tapered, "cylinderTopRadius"), source, formal="r2", value=4, token=b"4")
     overwritten = called(signatures, source, b"cylinder(8, 2, h = 7)")
-    assert_property(prop(overwritten, "cylinderHeight"), source, formal="h", value=7, token=b"7")
-    check(any(a["formal"] == "h" and a["status"] == "superseded" for a in overwritten["arguments"]),
+    assert_property(prop(signatures, overwritten, "cylinderHeight"), source, formal="h", value=7, token=b"7")
+    check(any(a["formal"] == "h" and a["status"] == "superseded" for a in executed_arguments(signatures, overwritten)),
           "Earlier positional height was not marked superseded")
     unbound = called(signatures, source, b"cylinder(3, 2, 3, false, 4, 6, 8, 10, 1)")
-    check(unbound["arguments"][-1]["status"] == "unbound", "Extra positional argument was bound")
+    check(executed_arguments(signatures, unbound)[-1]["status"] == "unbound", "Extra positional argument was bound")
     moved = called(signatures, source, b"translate([10, 0])")
-    assert_property(prop(moved, "translateX"), source, formal="v", value=10, token=b"10")
-    check(prop(moved, "translateZ")["status"] == "default", "Two-component translate offered a Z literal")
+    assert_property(prop(signatures, moved, "translateX"), source, formal="v", value=10, token=b"10")
+    check(prop(signatures, moved, "translateZ")["status"] == "default", "Two-component translate offered a Z literal")
     moved = called(signatures, source, b"translate([-3, 0, 0])")
-    assert_property(prop(moved, "translateX"), source, formal="v", value=-3, token=b"-3")
+    assert_property(prop(signatures, moved, "translateX"), source, formal="v", value=-3, token=b"-3")
     invalid = called(signatures, source, b"translate(5)")
-    check(all(item["status"] == "invalid" for item in invalid["properties"]), "Scalar translate became writable")
+    check(all(item["status"] == "invalid" for item in executed_properties(signatures, invalid)), "Scalar translate became writable")
     closer = called(signatures, source, b"sphere(d = 4, $fn = 12)")
-    assert_property(prop(sphere, "fragmentCount"), source, formal="$fn", value=16, token=b"16")
-    assert_property(prop(closer, "fragmentCount"), source, formal="$fn", value=12, token=b"12")
+    assert_property(prop(signatures, sphere, "fragmentCount"), source, formal="$fn", value=16, token=b"16")
+    assert_property(prop(signatures, closer, "fragmentCount"), source, formal="$fn", value=12, token=b"12")
 
     shadow = b"module cylinder(d) { cube(d); }\nsize = 4;\ncylinder(size);\n"
     shadowed = evaluate("shadow", shadow, compare=True)
     call = called(shadowed, shadow, b"cylinder(size)")
-    check("cylinderDiameter" not in [item["semantic"] for item in call["properties"]],
+    check("cylinderDiameter" not in [item["semantic"] for item in executed_properties(shadowed, call)],
           "A user module was mistaken for a built-in cylinder")
-    assert_property(prop(call, "moduleArgument"), shadow, formal="d", value=4, token=b"4")
+    assert_property(prop(shadowed, call, "moduleArgument"), shadow, formal="d", value=4, token=b"4")
     check(call["definitionSpan"]["fileID"] == 0, "The user module definition was lost")
 
     library = b"lib_size = 3;\nmodule library_hole(d = lib_size) { cylinder(d = d); }\n"
@@ -506,7 +529,7 @@ def check_executed_properties(args, environment, build):
     uses_library = b"use <library.scad>\nlib_size = 90;\nlibrary_hole();\n"
     from_library = evaluate("from-library", uses_library, compare=True)
     cutter = next(record for record in from_library["instances"] if record["name"] == "cylinder")
-    property = prop(cutter, "cylinderDiameter")
+    property = prop(from_library, cutter, "cylinderDiameter")
     leaf = property["chain"][-1]["span"]
     check(property["value"] == 3 and leaf["fileID"] != 0 and text(library, leaf) == b"3",
           "Definition-site default used the caller's equal-named declaration")
@@ -524,10 +547,100 @@ def check_executed_properties(args, environment, build):
         translations = [record for record in result["instances"] if record["name"] == "translate"
                         and record["iteration"].get("i") == 2]
         check(len(translations) == 1, f"{name}: missing the third loop occurrence")
-        pitch = prop(translations[0], "pitch")
+        pitch = prop(result, translations[0], "pitch")
         assert_property(pitch, source, formal="pitch", value=20, token=b"20")
-        check(pitch["pitch"] == {"iteration": 2, "dragVerified": stable}, f"{name}: wrong pitch drag eligibility")
+        check(pitch["pitch"] == {"iteration": 2}, f"{name}: wrong pitch iteration")
+        check(pitch.get("dragVerified", False) is stable, f"{name}: wrong pitch drag eligibility")
     print("Observed property arguments, aliases, scopes, vectors and pitch independence passed")
+
+
+def check_large_loop(args, environment, build):
+    plate = (args.fixtures / "mounting-plate.scad").read_bytes()
+    source = plate.replace(b"count = 4;", b"count = %d;" % LARGE_LOOP_HOLES)
+    logical = args.evidence / "large-loop.scad"
+    job = args.evidence / "properties-large-loop"
+    result = run_job(args.worker, job, source, request_for(source, logical, build), environment)
+    size = (job / "result.json").stat().st_size
+    check(result["detail"] == "rendered", "Property tracing rejected a model the engine can render")
+    cutters = [record for record in result["instances"] if record["name"] == "cylinder"]
+    check(len(cutters) == LARGE_LOOP_HOLES and all(executed_properties(result, record) for record in cutters),
+          "A large loop lost its occurrence properties")
+    print(f"{LARGE_LOOP_HOLES} holes kept their properties in a {size} byte manifest")
+
+
+def check_impact_and_drag(args, environment, build):
+    plate = (args.fixtures / "mounting-plate.scad").read_bytes()
+    call = b"            mounting_hole(d = hole_d);"
+
+    def child(prefix):
+        return plate.replace(call, b"            " + prefix + b" mounting_hole(d = hole_d);")
+
+    # name, source, instance, semantic, impact is complete, drag matches re-evaluation
+    cases = [
+        ("pitch-alone", plate, "translate", "pitch", True, True),
+        ("shared-diameter", plate, "cylinder", "cylinderDiameter", True, True),
+        ("child-move-reads-pitch", child(b"translate([pitch / 4, 0, 0])"), "translate", "pitch", True, False),
+        ("child-rotation-reads-pitch", child(b"rotate([0, 0, pitch])"), "translate", "pitch", False, False),
+        ("child-size-reads-pitch", plate.replace(b"d = d);", b"d = pitch / 5);"), "translate", "pitch", True, False),
+        ("nested-moves-share-literal", b"x = 10;\ntranslate([x, 0, 0]) translate([x, 0, 0]) cube(2);\n",
+         "translate", "translateX", True, False),
+        ("parent-move-shares-size", b"s = 5;\ntranslate([s, 0, 0]) cube(s);\n",
+         "cube", "cubeUniformSize", True, False),
+        ("opaque-rotation", b"s = 5;\ncube(s);\ntranslate([20, 0, 0]) rotate([0, 0, s]) cube(2);\n",
+         "cube", "cubeUniformSize", False, False),
+        ("condition", b"s = 5;\nif (s > 1) cube(s);\n", "cube", "cubeUniformSize", False, False),
+        ("function-result", b"s = 5;\nfunction size() = s;\ncube(size());\nrotate(size()) cube(1);\n",
+         "cube", "cubeUniformSize", False, False),
+        ("indexed-vector", b"s = 5;\nv = [s, 1];\ntranslate([v[0], 0, 0]) rotate(v) cube(1);\n",
+         "translate", "translateX", False, False),
+        ("implicit-fragments", b"$fn = 16;\nsphere(2);\nlinear_extrude(2) circle(3);\n",
+         "sphere", "fragmentCount", False, False),
+    ]
+    for name, source, node, semantic, complete, draggable in cases:
+        logical = args.evidence / (name + ".scad")
+        result = run_job(args.worker, args.evidence / ("impact-" + name), source,
+                         request_for(source, logical, build), environment)
+        records = [item for record in result["instances"] if record["name"] == node
+                   and record["iteration"].get("i", 2) == 2
+                   for item in executed_properties(result, record) if item["semantic"] == semantic]
+        check(records, f"{name}: no {semantic} property")
+        # Instances follow execution order, so the target precedes any unrelated shape.
+        item = records[0]
+        check(item.get("impactComplete", False) is complete, f"{name}: wrong impact certainty")
+        check(item.get("dragVerified", False) is draggable, f"{name}: wrong drag eligibility")
+    print("Untraced consumers, dependent frames and partial impact sets passed")
+
+
+def check_long_provenance(args, environment, build):
+    programs = {
+        "passed-argument": "function walk(i, kept) = i == 0 ? kept : walk(i - 1, kept);\ncube(walk(%d, 2));\n",
+        "accumulator": "function walk(i, sum) = i == 0 ? sum : walk(i - 1, sum + 1);\ncube(min(2, walk(%d, 1)));\n",
+        "c-style": "v = [for (i = 0, kept = 1; i <= %d; i = i + 1, kept = kept * 1) kept];\ncube(2 * v[0]);\n",
+    }
+    for name, program in programs.items():
+        source = (program % TAIL_RECURSION_DEPTH).encode("utf-8")
+        logical = args.evidence / (name + ".scad")
+        result = run_job(args.worker, args.evidence / ("deep-" + name), source,
+                         request_for(source, logical, build), environment)
+        check(result["detail"] == "rendered", f"{name}: a long binding chain lost the model")
+    print(f"{TAIL_RECURSION_DEPTH} linked evaluations released their provenance safely")
+
+
+def check_computed_list_memory(args, environment, build):
+    source = ("function f(x) = x * 2 + 1;\nv = [for (i = [0:%d]) f(i)];\ncube(1 + len(v) / 500000);\n"
+              % (COMPUTED_LIST_LENGTH - 1)).encode("utf-8")
+    job = args.evidence / "computed-list"
+    job.mkdir()
+    (job / "main.scad").write_bytes(source)
+    write_json(job / "request.json", request_for(source, args.evidence / "computed-list.scad", build))
+    with subprocess.Popen([str(args.worker), "--scadretto-job", str(job / "request.json")],
+                          stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                          cwd=job, env={**environment, "TMPDIR": str(job)}) as process:
+        _, status, usage = os.wait4(process.pid, 0)
+        process.returncode = os.waitstatus_to_exitcode(status)
+    check(process.returncode == 0, f"A computed list ended the worker with {process.returncode}")
+    check(usage.ru_maxrss < COMPUTED_LIST_PEAK_BYTES, f"A computed list retained {usage.ru_maxrss} bytes")
+    print(f"{COMPUTED_LIST_LENGTH} computed elements peaked at {usage.ru_maxrss} bytes")
 
 
 def main():
@@ -553,6 +666,10 @@ def main():
     check_goldens(args, environment, build)
     check_live_inputs(args, environment, build)
     check_executed_properties(args, environment, build)
+    check_impact_and_drag(args, environment, build)
+    check_large_loop(args, environment, build)
+    check_long_provenance(args, environment, build)
+    check_computed_list_memory(args, environment, build)
     check_lifetime_pipe(args, environment, build)
     if args.saved_plate is not None:
         check_saved_plate(args, environment, build)

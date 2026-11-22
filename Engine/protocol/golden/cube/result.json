@@ -1,35 +1,21 @@
 {
+  "argumentLists": [
+    [
+      {
+        "expression": {
+          "end": 6,
+          "fileID": 0,
+          "start": 5
+        },
+        "formal": "size",
+        "name": "",
+        "status": "bound"
+      }
+    ]
+  ],
   "buildSHA": "0000000000000000000000000000000000000000000000000000000000000000",
   "console": [],
-  "dependencyEdges": [
-    {
-      "instanceID": 2,
-      "property": "cubeUniformSize",
-      "span": {
-        "end": 6,
-        "fileID": 0,
-        "start": 5
-      }
-    },
-    {
-      "instanceID": 2,
-      "property": "cubeUniformSize",
-      "span": {
-        "end": 6,
-        "fileID": 0,
-        "start": 5
-      }
-    },
-    {
-      "instanceID": 2,
-      "property": "cubeUniformSize",
-      "span": {
-        "end": 6,
-        "fileID": 0,
-        "start": 5
-      }
-    }
-  ],
+  "dependencyEdges": [],
   "detail": "rendered",
   "diagnostics": [],
   "droppedConsoleMessages": 0,
@@ -90,19 +76,7 @@
       ]
     },
     {
-      "arguments": [
-        {
-          "expression": {
-            "end": 6,
-            "fileID": 0,
-            "start": 5
-          },
-          "formal": "size",
-          "name": "",
-          "status": "bound"
-        }
-      ],
-      "definitionSpan": null,
+      "arguments": 0,
       "diameter": null,
       "id": 2,
       "iteration": {},
@@ -129,45 +103,8 @@
       "parent": 1,
       "properties": [
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "parameter",
-              "name": "size",
-              "span": {
-                "end": 6,
-                "fileID": 0,
-                "start": 5
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "",
-              "span": {
-                "end": 6,
-                "fileID": 0,
-                "start": 5
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 6,
-                "fileID": 0,
-                "start": 5
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 6,
-            "fileID": 0,
-            "start": 5
-          },
-          "formal": "size",
-          "semantic": "cubeUniformSize",
-          "status": "bound",
+          "definition": 0,
+          "dragVerified": true,
           "value": 2.0
         }
       ],
@@ -259,6 +196,57 @@
     }
   ],
   "operations": [],
+  "propertyDefinitions": [
+    {
+      "centered": false,
+      "chain": [
+        {
+          "kind": "parameter",
+          "name": "size",
+          "span": {
+            "end": 6,
+            "fileID": 0,
+            "start": 5
+          }
+        },
+        {
+          "kind": "argument",
+          "name": "",
+          "span": {
+            "end": 6,
+            "fileID": 0,
+            "start": 5
+          }
+        },
+        {
+          "kind": "literal",
+          "name": "",
+          "span": {
+            "end": 6,
+            "fileID": 0,
+            "start": 5
+          }
+        }
+      ],
+      "displayMultiplier": 1.0,
+      "expression": {
+        "end": 6,
+        "fileID": 0,
+        "start": 5
+      },
+      "formal": "size",
+      "impactComplete": true,
+      "inputs": [
+        {
+          "end": 6,
+          "fileID": 0,
+          "start": 5
+        }
+      ],
+      "semantic": "cubeUniformSize",
+      "status": "bound"
+    }
+  ],
   "protocolVersion": 1,
   "requestID": "00000000-0000-0000-0000-000000000002",
   "status": "ok"

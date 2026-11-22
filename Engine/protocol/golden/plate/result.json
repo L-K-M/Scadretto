@@ -1,350 +1,68 @@
 {
+  "argumentLists": [
+    [
+      {
+        "expression": {
+          "end": 218,
+          "fileID": 0,
+          "start": 215
+        },
+        "formal": "size",
+        "name": "",
+        "status": "bound"
+      }
+    ],
+    [
+      {
+        "expression": {
+          "end": 298,
+          "fileID": 0,
+          "start": 284
+        },
+        "formal": "v",
+        "name": "",
+        "status": "bound"
+      }
+    ],
+    [
+      {
+        "expression": {
+          "end": 345,
+          "fileID": 0,
+          "start": 339
+        },
+        "formal": "d",
+        "name": "d",
+        "status": "bound"
+      }
+    ],
+    [
+      {
+        "expression": {
+          "end": 177,
+          "fileID": 0,
+          "start": 166
+        },
+        "formal": "h",
+        "name": "h",
+        "status": "bound"
+      },
+      {
+        "expression": {
+          "end": 184,
+          "fileID": 0,
+          "start": 183
+        },
+        "formal": "d",
+        "name": "d",
+        "status": "bound"
+      }
+    ]
+  ],
   "buildSHA": "0000000000000000000000000000000000000000000000000000000000000000",
   "console": [],
   "dependencyEdges": [
     {
-      "instanceID": 3,
-      "property": "cubeSizeX",
-      "span": {
-        "end": 218,
-        "fileID": 0,
-        "start": 215
-      }
-    },
-    {
-      "instanceID": 3,
-      "property": "cubeSizeX",
-      "span": {
-        "end": 218,
-        "fileID": 0,
-        "start": 215
-      }
-    },
-    {
-      "instanceID": 3,
-      "property": "cubeSizeY",
-      "span": {
-        "end": 222,
-        "fileID": 0,
-        "start": 220
-      }
-    },
-    {
-      "instanceID": 3,
-      "property": "cubeSizeY",
-      "span": {
-        "end": 222,
-        "fileID": 0,
-        "start": 220
-      }
-    },
-    {
-      "instanceID": 3,
-      "property": "cubeSizeZ",
-      "span": {
-        "end": 231,
-        "fileID": 0,
-        "start": 224
-      }
-    },
-    {
-      "instanceID": 3,
-      "property": "cubeSizeZ",
-      "span": {
-        "end": 231,
-        "fileID": 0,
-        "start": 224
-      }
-    },
-    {
-      "instanceID": 3,
-      "property": "cubeSizeZ",
-      "span": {
-        "end": 120,
-        "fileID": 0,
-        "start": 119
-      }
-    },
-    {
-      "instanceID": 3,
-      "property": "cubeSizeZ",
-      "span": {
-        "end": 120,
-        "fileID": 0,
-        "start": 119
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 284
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 284
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 289
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 293
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 290,
-        "fileID": 0,
-        "start": 289
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 263,
-        "fileID": 0,
-        "start": 248
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 263,
-        "fileID": 0,
-        "start": 248
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 262,
-        "fileID": 0,
-        "start": 253
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 262,
-        "fileID": 0,
-        "start": 261
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 258,
-        "fileID": 0,
-        "start": 253
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 86,
-        "fileID": 0,
-        "start": 85
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 86,
-        "fileID": 0,
-        "start": 85
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 250,
-        "fileID": 0,
-        "start": 249
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 286,
-        "fileID": 0,
-        "start": 284
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 107,
-        "fileID": 0,
-        "start": 105
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateX",
-      "span": {
-        "end": 107,
-        "fileID": 0,
-        "start": 105
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateY",
-      "span": {
-        "end": 302,
-        "fileID": 0,
-        "start": 300
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateY",
-      "span": {
-        "end": 302,
-        "fileID": 0,
-        "start": 300
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateZ",
-      "span": {
-        "end": 306,
-        "fileID": 0,
-        "start": 304
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "translateZ",
-      "span": {
-        "end": 306,
-        "fileID": 0,
-        "start": 304
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "pitch",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 293
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "pitch",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 5,
-      "property": "pitch",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 6,
-      "property": "moduleArgument",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 6,
-      "property": "moduleArgument",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 6,
-      "property": "moduleArgument",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 6,
-      "property": "moduleArgument",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
-      "instanceID": 6,
-      "property": "moduleArgument",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
       "instanceID": 7,
       "property": "d",
       "span": {
@@ -410,429 +128,6 @@
     {
       "instanceID": 7,
       "property": "",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 176
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 173,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 120,
-        "fileID": 0,
-        "start": 119
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 120,
-        "fileID": 0,
-        "start": 119
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 184,
-        "fileID": 0,
-        "start": 183
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 184,
-        "fileID": 0,
-        "start": 183
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 184,
-        "fileID": 0,
-        "start": 183
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "fragmentCount",
-      "span": {
-        "end": 63,
-        "fileID": 0,
-        "start": 61
-      }
-    },
-    {
-      "instanceID": 7,
-      "property": "fragmentCount",
-      "span": {
-        "end": 63,
-        "fileID": 0,
-        "start": 61
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 284
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 284
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 289
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 293
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 290,
-        "fileID": 0,
-        "start": 289
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 263,
-        "fileID": 0,
-        "start": 248
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 263,
-        "fileID": 0,
-        "start": 248
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 262,
-        "fileID": 0,
-        "start": 253
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 262,
-        "fileID": 0,
-        "start": 261
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 258,
-        "fileID": 0,
-        "start": 253
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 86,
-        "fileID": 0,
-        "start": 85
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 86,
-        "fileID": 0,
-        "start": 85
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 250,
-        "fileID": 0,
-        "start": 249
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 286,
-        "fileID": 0,
-        "start": 284
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 107,
-        "fileID": 0,
-        "start": 105
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateX",
-      "span": {
-        "end": 107,
-        "fileID": 0,
-        "start": 105
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateY",
-      "span": {
-        "end": 302,
-        "fileID": 0,
-        "start": 300
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateY",
-      "span": {
-        "end": 302,
-        "fileID": 0,
-        "start": 300
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateZ",
-      "span": {
-        "end": 306,
-        "fileID": 0,
-        "start": 304
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "translateZ",
-      "span": {
-        "end": 306,
-        "fileID": 0,
-        "start": 304
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "pitch",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 293
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "pitch",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 8,
-      "property": "pitch",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 9,
-      "property": "moduleArgument",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 9,
-      "property": "moduleArgument",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 9,
-      "property": "moduleArgument",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 9,
-      "property": "moduleArgument",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
-      "instanceID": 9,
-      "property": "moduleArgument",
       "span": {
         "end": 75,
         "fileID": 0,
@@ -912,429 +207,6 @@
       }
     },
     {
-      "instanceID": 10,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 176
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 173,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 120,
-        "fileID": 0,
-        "start": 119
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 120,
-        "fileID": 0,
-        "start": 119
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 184,
-        "fileID": 0,
-        "start": 183
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 184,
-        "fileID": 0,
-        "start": 183
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 184,
-        "fileID": 0,
-        "start": 183
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "fragmentCount",
-      "span": {
-        "end": 63,
-        "fileID": 0,
-        "start": 61
-      }
-    },
-    {
-      "instanceID": 10,
-      "property": "fragmentCount",
-      "span": {
-        "end": 63,
-        "fileID": 0,
-        "start": 61
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 284
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 284
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 289
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 293
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 290,
-        "fileID": 0,
-        "start": 289
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 263,
-        "fileID": 0,
-        "start": 248
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 263,
-        "fileID": 0,
-        "start": 248
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 262,
-        "fileID": 0,
-        "start": 253
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 262,
-        "fileID": 0,
-        "start": 261
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 258,
-        "fileID": 0,
-        "start": 253
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 86,
-        "fileID": 0,
-        "start": 85
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 86,
-        "fileID": 0,
-        "start": 85
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 250,
-        "fileID": 0,
-        "start": 249
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 286,
-        "fileID": 0,
-        "start": 284
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 107,
-        "fileID": 0,
-        "start": 105
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateX",
-      "span": {
-        "end": 107,
-        "fileID": 0,
-        "start": 105
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateY",
-      "span": {
-        "end": 302,
-        "fileID": 0,
-        "start": 300
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateY",
-      "span": {
-        "end": 302,
-        "fileID": 0,
-        "start": 300
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateZ",
-      "span": {
-        "end": 306,
-        "fileID": 0,
-        "start": 304
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "translateZ",
-      "span": {
-        "end": 306,
-        "fileID": 0,
-        "start": 304
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "pitch",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 293
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "pitch",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 11,
-      "property": "pitch",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 12,
-      "property": "moduleArgument",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 12,
-      "property": "moduleArgument",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 12,
-      "property": "moduleArgument",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 12,
-      "property": "moduleArgument",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
-      "instanceID": 12,
-      "property": "moduleArgument",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
       "instanceID": 13,
       "property": "d",
       "span": {
@@ -1400,429 +272,6 @@
     {
       "instanceID": 13,
       "property": "",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 176
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 173,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 120,
-        "fileID": 0,
-        "start": 119
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 120,
-        "fileID": 0,
-        "start": 119
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 184,
-        "fileID": 0,
-        "start": 183
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 184,
-        "fileID": 0,
-        "start": 183
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 184,
-        "fileID": 0,
-        "start": 183
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "fragmentCount",
-      "span": {
-        "end": 63,
-        "fileID": 0,
-        "start": 61
-      }
-    },
-    {
-      "instanceID": 13,
-      "property": "fragmentCount",
-      "span": {
-        "end": 63,
-        "fileID": 0,
-        "start": 61
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 284
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 284
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 289
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 293
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 290,
-        "fileID": 0,
-        "start": 289
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 263,
-        "fileID": 0,
-        "start": 248
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 263,
-        "fileID": 0,
-        "start": 248
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 262,
-        "fileID": 0,
-        "start": 253
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 262,
-        "fileID": 0,
-        "start": 261
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 258,
-        "fileID": 0,
-        "start": 253
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 86,
-        "fileID": 0,
-        "start": 85
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 86,
-        "fileID": 0,
-        "start": 85
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 250,
-        "fileID": 0,
-        "start": 249
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 286,
-        "fileID": 0,
-        "start": 284
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 107,
-        "fileID": 0,
-        "start": 105
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateX",
-      "span": {
-        "end": 107,
-        "fileID": 0,
-        "start": 105
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateY",
-      "span": {
-        "end": 302,
-        "fileID": 0,
-        "start": 300
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateY",
-      "span": {
-        "end": 302,
-        "fileID": 0,
-        "start": 300
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateZ",
-      "span": {
-        "end": 306,
-        "fileID": 0,
-        "start": 304
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "translateZ",
-      "span": {
-        "end": 306,
-        "fileID": 0,
-        "start": 304
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "pitch",
-      "span": {
-        "end": 298,
-        "fileID": 0,
-        "start": 293
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "pitch",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 14,
-      "property": "pitch",
-      "span": {
-        "end": 98,
-        "fileID": 0,
-        "start": 96
-      }
-    },
-    {
-      "instanceID": 15,
-      "property": "moduleArgument",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 15,
-      "property": "moduleArgument",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 15,
-      "property": "moduleArgument",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 15,
-      "property": "moduleArgument",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
-      "instanceID": 15,
-      "property": "moduleArgument",
       "span": {
         "end": 75,
         "fileID": 0,
@@ -1899,159 +348,6 @@
         "end": 75,
         "fileID": 0,
         "start": 74
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 177,
-        "fileID": 0,
-        "start": 176
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 173,
-        "fileID": 0,
-        "start": 166
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 120,
-        "fileID": 0,
-        "start": 119
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderHeight",
-      "span": {
-        "end": 120,
-        "fileID": 0,
-        "start": 119
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 184,
-        "fileID": 0,
-        "start": 183
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 184,
-        "fileID": 0,
-        "start": 183
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 184,
-        "fileID": 0,
-        "start": 183
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 345,
-        "fileID": 0,
-        "start": 339
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "cylinderDiameter",
-      "span": {
-        "end": 75,
-        "fileID": 0,
-        "start": 74
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "fragmentCount",
-      "span": {
-        "end": 63,
-        "fileID": 0,
-        "start": 61
-      }
-    },
-    {
-      "instanceID": 16,
-      "property": "fragmentCount",
-      "span": {
-        "end": 63,
-        "fileID": 0,
-        "start": 61
       }
     }
   ],
@@ -2164,19 +460,7 @@
       ]
     },
     {
-      "arguments": [
-        {
-          "expression": {
-            "end": 218,
-            "fileID": 0,
-            "start": 215
-          },
-          "formal": "size",
-          "name": "",
-          "status": "bound"
-        }
-      ],
-      "definitionSpan": null,
+      "arguments": 0,
       "diameter": null,
       "id": 3,
       "iteration": {},
@@ -2203,120 +487,18 @@
       "parent": 2,
       "properties": [
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 218,
-                "fileID": 0,
-                "start": 215
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 218,
-                "fileID": 0,
-                "start": 215
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 218,
-            "fileID": 0,
-            "start": 215
-          },
-          "formal": "size",
-          "semantic": "cubeSizeX",
-          "status": "bound",
+          "definition": 0,
+          "dragVerified": true,
           "value": 120.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 222,
-                "fileID": 0,
-                "start": 220
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 222,
-                "fileID": 0,
-                "start": 220
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 222,
-            "fileID": 0,
-            "start": 220
-          },
-          "formal": "size",
-          "semantic": "cubeSizeY",
-          "status": "bound",
+          "definition": 1,
+          "dragVerified": true,
           "value": 40.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 231,
-                "fileID": 0,
-                "start": 224
-              }
-            },
-            {
-              "kind": "lookup",
-              "name": "plate_h",
-              "span": {
-                "end": 231,
-                "fileID": 0,
-                "start": 224
-              }
-            },
-            {
-              "kind": "assignment",
-              "name": "plate_h",
-              "span": {
-                "end": 120,
-                "fileID": 0,
-                "start": 119
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 120,
-                "fileID": 0,
-                "start": 119
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 231,
-            "fileID": 0,
-            "start": 224
-          },
-          "formal": "size",
-          "semantic": "cubeSizeZ",
-          "status": "bound",
+          "definition": 2,
+          "dragVerified": true,
           "value": 6.0
         }
       ],
@@ -2394,19 +576,7 @@
       ]
     },
     {
-      "arguments": [
-        {
-          "expression": {
-            "end": 298,
-            "fileID": 0,
-            "start": 284
-          },
-          "formal": "v",
-          "name": "",
-          "status": "bound"
-        }
-      ],
-      "definitionSpan": null,
+      "arguments": 1,
       "diameter": null,
       "id": 5,
       "iteration": {
@@ -2435,148 +605,25 @@
       "parent": 4,
       "properties": [
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 298,
-                "fileID": 0,
-                "start": 284
-              }
-            },
-            {
-              "kind": "add",
-              "name": "",
-              "span": {
-                "end": 298,
-                "fileID": 0,
-                "start": 284
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 298,
-            "fileID": 0,
-            "start": 284
-          },
-          "formal": "v",
-          "semantic": "translateX",
-          "status": "bound",
+          "definition": 3,
           "value": 15.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 302,
-                "fileID": 0,
-                "start": 300
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 302,
-                "fileID": 0,
-                "start": 300
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 302,
-            "fileID": 0,
-            "start": 300
-          },
-          "formal": "v",
-          "semantic": "translateY",
-          "status": "bound",
+          "definition": 4,
+          "dragVerified": true,
           "value": 20.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 306,
-                "fileID": 0,
-                "start": 304
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 306,
-                "fileID": 0,
-                "start": 304
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 306,
-            "fileID": 0,
-            "start": 304
-          },
-          "formal": "v",
-          "semantic": "translateZ",
-          "status": "bound",
+          "definition": 5,
+          "dragVerified": true,
           "value": -1.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "lookup",
-              "name": "pitch",
-              "span": {
-                "end": 298,
-                "fileID": 0,
-                "start": 293
-              }
-            },
-            {
-              "kind": "assignment",
-              "name": "pitch",
-              "span": {
-                "end": 98,
-                "fileID": 0,
-                "start": 96
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 98,
-                "fileID": 0,
-                "start": 96
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 298,
-            "fileID": 0,
-            "start": 284
-          },
-          "formal": "pitch",
+          "definition": 6,
+          "dragVerified": true,
           "pitch": {
-            "dragVerified": true,
             "iteration": 0.0
           },
-          "semantic": "pitch",
-          "status": "bound",
           "value": 20.0
         }
       ],
@@ -2605,18 +652,7 @@
       ]
     },
     {
-      "arguments": [
-        {
-          "expression": {
-            "end": 345,
-            "fileID": 0,
-            "start": 339
-          },
-          "formal": "d",
-          "name": "d",
-          "status": "bound"
-        }
-      ],
+      "arguments": 2,
       "definitionSpan": {
         "end": 146,
         "fileID": 0,
@@ -2650,63 +686,7 @@
       "parent": 5,
       "properties": [
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "parameter",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "lookup",
-              "name": "hole_d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "assignment",
-              "name": "hole_d",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 345,
-            "fileID": 0,
-            "start": 339
-          },
-          "formal": "d",
-          "semantic": "moduleArgument",
-          "status": "bound",
+          "definition": 7,
           "value": 4.0
         }
       ],
@@ -2735,29 +715,7 @@
       ]
     },
     {
-      "arguments": [
-        {
-          "expression": {
-            "end": 177,
-            "fileID": 0,
-            "start": 166
-          },
-          "formal": "h",
-          "name": "h",
-          "status": "bound"
-        },
-        {
-          "expression": {
-            "end": 184,
-            "fileID": 0,
-            "start": 183
-          },
-          "formal": "d",
-          "name": "d",
-          "status": "bound"
-        }
-      ],
-      "definitionSpan": null,
+      "arguments": 3,
       "diameter": {
         "chain": [
           {
@@ -2862,165 +820,16 @@
       "parent": 6,
       "properties": [
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "parameter",
-              "name": "h",
-              "span": {
-                "end": 177,
-                "fileID": 0,
-                "start": 166
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "h",
-              "span": {
-                "end": 177,
-                "fileID": 0,
-                "start": 166
-              }
-            },
-            {
-              "kind": "add",
-              "name": "",
-              "span": {
-                "end": 177,
-                "fileID": 0,
-                "start": 166
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 177,
-            "fileID": 0,
-            "start": 166
-          },
-          "formal": "h",
-          "semantic": "cylinderHeight",
-          "status": "bound",
+          "definition": 8,
           "value": 8.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "parameter",
-              "name": "d",
-              "span": {
-                "end": 184,
-                "fileID": 0,
-                "start": 183
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "d",
-              "span": {
-                "end": 184,
-                "fileID": 0,
-                "start": 183
-              }
-            },
-            {
-              "kind": "lookup",
-              "name": "d",
-              "span": {
-                "end": 184,
-                "fileID": 0,
-                "start": 183
-              }
-            },
-            {
-              "kind": "parameter",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "lookup",
-              "name": "hole_d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "assignment",
-              "name": "hole_d",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 184,
-            "fileID": 0,
-            "start": 183
-          },
-          "formal": "d",
-          "semantic": "cylinderDiameter",
-          "status": "bound",
+          "definition": 9,
+          "dragVerified": true,
           "value": 4.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "assignment",
-              "name": "$fn",
-              "span": {
-                "end": 63,
-                "fileID": 0,
-                "start": 61
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 63,
-                "fileID": 0,
-                "start": 61
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 63,
-            "fileID": 0,
-            "start": 61
-          },
-          "formal": "$fn",
-          "semantic": "fragmentCount",
-          "status": "bound",
+          "definition": 10,
           "value": 64.0
         }
       ],
@@ -3049,19 +858,7 @@
       ]
     },
     {
-      "arguments": [
-        {
-          "expression": {
-            "end": 298,
-            "fileID": 0,
-            "start": 284
-          },
-          "formal": "v",
-          "name": "",
-          "status": "bound"
-        }
-      ],
-      "definitionSpan": null,
+      "arguments": 1,
       "diameter": null,
       "id": 8,
       "iteration": {
@@ -3090,148 +887,25 @@
       "parent": 4,
       "properties": [
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 298,
-                "fileID": 0,
-                "start": 284
-              }
-            },
-            {
-              "kind": "add",
-              "name": "",
-              "span": {
-                "end": 298,
-                "fileID": 0,
-                "start": 284
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 298,
-            "fileID": 0,
-            "start": 284
-          },
-          "formal": "v",
-          "semantic": "translateX",
-          "status": "bound",
+          "definition": 3,
           "value": 35.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 302,
-                "fileID": 0,
-                "start": 300
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 302,
-                "fileID": 0,
-                "start": 300
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 302,
-            "fileID": 0,
-            "start": 300
-          },
-          "formal": "v",
-          "semantic": "translateY",
-          "status": "bound",
+          "definition": 4,
+          "dragVerified": true,
           "value": 20.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 306,
-                "fileID": 0,
-                "start": 304
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 306,
-                "fileID": 0,
-                "start": 304
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 306,
-            "fileID": 0,
-            "start": 304
-          },
-          "formal": "v",
-          "semantic": "translateZ",
-          "status": "bound",
+          "definition": 5,
+          "dragVerified": true,
           "value": -1.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "lookup",
-              "name": "pitch",
-              "span": {
-                "end": 298,
-                "fileID": 0,
-                "start": 293
-              }
-            },
-            {
-              "kind": "assignment",
-              "name": "pitch",
-              "span": {
-                "end": 98,
-                "fileID": 0,
-                "start": 96
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 98,
-                "fileID": 0,
-                "start": 96
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 298,
-            "fileID": 0,
-            "start": 284
-          },
-          "formal": "pitch",
+          "definition": 6,
+          "dragVerified": true,
           "pitch": {
-            "dragVerified": true,
             "iteration": 1.0
           },
-          "semantic": "pitch",
-          "status": "bound",
           "value": 20.0
         }
       ],
@@ -3260,18 +934,7 @@
       ]
     },
     {
-      "arguments": [
-        {
-          "expression": {
-            "end": 345,
-            "fileID": 0,
-            "start": 339
-          },
-          "formal": "d",
-          "name": "d",
-          "status": "bound"
-        }
-      ],
+      "arguments": 2,
       "definitionSpan": {
         "end": 146,
         "fileID": 0,
@@ -3305,63 +968,7 @@
       "parent": 8,
       "properties": [
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "parameter",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "lookup",
-              "name": "hole_d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "assignment",
-              "name": "hole_d",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 345,
-            "fileID": 0,
-            "start": 339
-          },
-          "formal": "d",
-          "semantic": "moduleArgument",
-          "status": "bound",
+          "definition": 7,
           "value": 4.0
         }
       ],
@@ -3390,29 +997,7 @@
       ]
     },
     {
-      "arguments": [
-        {
-          "expression": {
-            "end": 177,
-            "fileID": 0,
-            "start": 166
-          },
-          "formal": "h",
-          "name": "h",
-          "status": "bound"
-        },
-        {
-          "expression": {
-            "end": 184,
-            "fileID": 0,
-            "start": 183
-          },
-          "formal": "d",
-          "name": "d",
-          "status": "bound"
-        }
-      ],
-      "definitionSpan": null,
+      "arguments": 3,
       "diameter": {
         "chain": [
           {
@@ -3517,165 +1102,16 @@
       "parent": 9,
       "properties": [
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "parameter",
-              "name": "h",
-              "span": {
-                "end": 177,
-                "fileID": 0,
-                "start": 166
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "h",
-              "span": {
-                "end": 177,
-                "fileID": 0,
-                "start": 166
-              }
-            },
-            {
-              "kind": "add",
-              "name": "",
-              "span": {
-                "end": 177,
-                "fileID": 0,
-                "start": 166
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 177,
-            "fileID": 0,
-            "start": 166
-          },
-          "formal": "h",
-          "semantic": "cylinderHeight",
-          "status": "bound",
+          "definition": 8,
           "value": 8.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "parameter",
-              "name": "d",
-              "span": {
-                "end": 184,
-                "fileID": 0,
-                "start": 183
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "d",
-              "span": {
-                "end": 184,
-                "fileID": 0,
-                "start": 183
-              }
-            },
-            {
-              "kind": "lookup",
-              "name": "d",
-              "span": {
-                "end": 184,
-                "fileID": 0,
-                "start": 183
-              }
-            },
-            {
-              "kind": "parameter",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "lookup",
-              "name": "hole_d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "assignment",
-              "name": "hole_d",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 184,
-            "fileID": 0,
-            "start": 183
-          },
-          "formal": "d",
-          "semantic": "cylinderDiameter",
-          "status": "bound",
+          "definition": 9,
+          "dragVerified": true,
           "value": 4.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "assignment",
-              "name": "$fn",
-              "span": {
-                "end": 63,
-                "fileID": 0,
-                "start": 61
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 63,
-                "fileID": 0,
-                "start": 61
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 63,
-            "fileID": 0,
-            "start": 61
-          },
-          "formal": "$fn",
-          "semantic": "fragmentCount",
-          "status": "bound",
+          "definition": 10,
           "value": 64.0
         }
       ],
@@ -3704,19 +1140,7 @@
       ]
     },
     {
-      "arguments": [
-        {
-          "expression": {
-            "end": 298,
-            "fileID": 0,
-            "start": 284
-          },
-          "formal": "v",
-          "name": "",
-          "status": "bound"
-        }
-      ],
-      "definitionSpan": null,
+      "arguments": 1,
       "diameter": null,
       "id": 11,
       "iteration": {
@@ -3745,148 +1169,25 @@
       "parent": 4,
       "properties": [
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 298,
-                "fileID": 0,
-                "start": 284
-              }
-            },
-            {
-              "kind": "add",
-              "name": "",
-              "span": {
-                "end": 298,
-                "fileID": 0,
-                "start": 284
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 298,
-            "fileID": 0,
-            "start": 284
-          },
-          "formal": "v",
-          "semantic": "translateX",
-          "status": "bound",
+          "definition": 3,
           "value": 55.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 302,
-                "fileID": 0,
-                "start": 300
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 302,
-                "fileID": 0,
-                "start": 300
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 302,
-            "fileID": 0,
-            "start": 300
-          },
-          "formal": "v",
-          "semantic": "translateY",
-          "status": "bound",
+          "definition": 4,
+          "dragVerified": true,
           "value": 20.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 306,
-                "fileID": 0,
-                "start": 304
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 306,
-                "fileID": 0,
-                "start": 304
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 306,
-            "fileID": 0,
-            "start": 304
-          },
-          "formal": "v",
-          "semantic": "translateZ",
-          "status": "bound",
+          "definition": 5,
+          "dragVerified": true,
           "value": -1.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "lookup",
-              "name": "pitch",
-              "span": {
-                "end": 298,
-                "fileID": 0,
-                "start": 293
-              }
-            },
-            {
-              "kind": "assignment",
-              "name": "pitch",
-              "span": {
-                "end": 98,
-                "fileID": 0,
-                "start": 96
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 98,
-                "fileID": 0,
-                "start": 96
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 298,
-            "fileID": 0,
-            "start": 284
-          },
-          "formal": "pitch",
+          "definition": 6,
+          "dragVerified": true,
           "pitch": {
-            "dragVerified": true,
             "iteration": 2.0
           },
-          "semantic": "pitch",
-          "status": "bound",
           "value": 20.0
         }
       ],
@@ -3915,18 +1216,7 @@
       ]
     },
     {
-      "arguments": [
-        {
-          "expression": {
-            "end": 345,
-            "fileID": 0,
-            "start": 339
-          },
-          "formal": "d",
-          "name": "d",
-          "status": "bound"
-        }
-      ],
+      "arguments": 2,
       "definitionSpan": {
         "end": 146,
         "fileID": 0,
@@ -3960,63 +1250,7 @@
       "parent": 11,
       "properties": [
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "parameter",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "lookup",
-              "name": "hole_d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "assignment",
-              "name": "hole_d",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 345,
-            "fileID": 0,
-            "start": 339
-          },
-          "formal": "d",
-          "semantic": "moduleArgument",
-          "status": "bound",
+          "definition": 7,
           "value": 4.0
         }
       ],
@@ -4045,29 +1279,7 @@
       ]
     },
     {
-      "arguments": [
-        {
-          "expression": {
-            "end": 177,
-            "fileID": 0,
-            "start": 166
-          },
-          "formal": "h",
-          "name": "h",
-          "status": "bound"
-        },
-        {
-          "expression": {
-            "end": 184,
-            "fileID": 0,
-            "start": 183
-          },
-          "formal": "d",
-          "name": "d",
-          "status": "bound"
-        }
-      ],
-      "definitionSpan": null,
+      "arguments": 3,
       "diameter": {
         "chain": [
           {
@@ -4172,165 +1384,16 @@
       "parent": 12,
       "properties": [
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "parameter",
-              "name": "h",
-              "span": {
-                "end": 177,
-                "fileID": 0,
-                "start": 166
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "h",
-              "span": {
-                "end": 177,
-                "fileID": 0,
-                "start": 166
-              }
-            },
-            {
-              "kind": "add",
-              "name": "",
-              "span": {
-                "end": 177,
-                "fileID": 0,
-                "start": 166
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 177,
-            "fileID": 0,
-            "start": 166
-          },
-          "formal": "h",
-          "semantic": "cylinderHeight",
-          "status": "bound",
+          "definition": 8,
           "value": 8.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "parameter",
-              "name": "d",
-              "span": {
-                "end": 184,
-                "fileID": 0,
-                "start": 183
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "d",
-              "span": {
-                "end": 184,
-                "fileID": 0,
-                "start": 183
-              }
-            },
-            {
-              "kind": "lookup",
-              "name": "d",
-              "span": {
-                "end": 184,
-                "fileID": 0,
-                "start": 183
-              }
-            },
-            {
-              "kind": "parameter",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "lookup",
-              "name": "hole_d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "assignment",
-              "name": "hole_d",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 184,
-            "fileID": 0,
-            "start": 183
-          },
-          "formal": "d",
-          "semantic": "cylinderDiameter",
-          "status": "bound",
+          "definition": 9,
+          "dragVerified": true,
           "value": 4.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "assignment",
-              "name": "$fn",
-              "span": {
-                "end": 63,
-                "fileID": 0,
-                "start": 61
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 63,
-                "fileID": 0,
-                "start": 61
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 63,
-            "fileID": 0,
-            "start": 61
-          },
-          "formal": "$fn",
-          "semantic": "fragmentCount",
-          "status": "bound",
+          "definition": 10,
           "value": 64.0
         }
       ],
@@ -4359,19 +1422,7 @@
       ]
     },
     {
-      "arguments": [
-        {
-          "expression": {
-            "end": 298,
-            "fileID": 0,
-            "start": 284
-          },
-          "formal": "v",
-          "name": "",
-          "status": "bound"
-        }
-      ],
-      "definitionSpan": null,
+      "arguments": 1,
       "diameter": null,
       "id": 14,
       "iteration": {
@@ -4400,148 +1451,25 @@
       "parent": 4,
       "properties": [
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 298,
-                "fileID": 0,
-                "start": 284
-              }
-            },
-            {
-              "kind": "add",
-              "name": "",
-              "span": {
-                "end": 298,
-                "fileID": 0,
-                "start": 284
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 298,
-            "fileID": 0,
-            "start": 284
-          },
-          "formal": "v",
-          "semantic": "translateX",
-          "status": "bound",
+          "definition": 3,
           "value": 75.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 302,
-                "fileID": 0,
-                "start": 300
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 302,
-                "fileID": 0,
-                "start": 300
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 302,
-            "fileID": 0,
-            "start": 300
-          },
-          "formal": "v",
-          "semantic": "translateY",
-          "status": "bound",
+          "definition": 4,
+          "dragVerified": true,
           "value": 20.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "element",
-              "name": "",
-              "span": {
-                "end": 306,
-                "fileID": 0,
-                "start": 304
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 306,
-                "fileID": 0,
-                "start": 304
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 306,
-            "fileID": 0,
-            "start": 304
-          },
-          "formal": "v",
-          "semantic": "translateZ",
-          "status": "bound",
+          "definition": 5,
+          "dragVerified": true,
           "value": -1.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "lookup",
-              "name": "pitch",
-              "span": {
-                "end": 298,
-                "fileID": 0,
-                "start": 293
-              }
-            },
-            {
-              "kind": "assignment",
-              "name": "pitch",
-              "span": {
-                "end": 98,
-                "fileID": 0,
-                "start": 96
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 98,
-                "fileID": 0,
-                "start": 96
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 298,
-            "fileID": 0,
-            "start": 284
-          },
-          "formal": "pitch",
+          "definition": 6,
+          "dragVerified": true,
           "pitch": {
-            "dragVerified": true,
             "iteration": 3.0
           },
-          "semantic": "pitch",
-          "status": "bound",
           "value": 20.0
         }
       ],
@@ -4570,18 +1498,7 @@
       ]
     },
     {
-      "arguments": [
-        {
-          "expression": {
-            "end": 345,
-            "fileID": 0,
-            "start": 339
-          },
-          "formal": "d",
-          "name": "d",
-          "status": "bound"
-        }
-      ],
+      "arguments": 2,
       "definitionSpan": {
         "end": 146,
         "fileID": 0,
@@ -4615,63 +1532,7 @@
       "parent": 14,
       "properties": [
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "parameter",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "lookup",
-              "name": "hole_d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "assignment",
-              "name": "hole_d",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 345,
-            "fileID": 0,
-            "start": 339
-          },
-          "formal": "d",
-          "semantic": "moduleArgument",
-          "status": "bound",
+          "definition": 7,
           "value": 4.0
         }
       ],
@@ -4700,29 +1561,7 @@
       ]
     },
     {
-      "arguments": [
-        {
-          "expression": {
-            "end": 177,
-            "fileID": 0,
-            "start": 166
-          },
-          "formal": "h",
-          "name": "h",
-          "status": "bound"
-        },
-        {
-          "expression": {
-            "end": 184,
-            "fileID": 0,
-            "start": 183
-          },
-          "formal": "d",
-          "name": "d",
-          "status": "bound"
-        }
-      ],
-      "definitionSpan": null,
+      "arguments": 3,
       "diameter": {
         "chain": [
           {
@@ -4827,165 +1666,16 @@
       "parent": 15,
       "properties": [
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "parameter",
-              "name": "h",
-              "span": {
-                "end": 177,
-                "fileID": 0,
-                "start": 166
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "h",
-              "span": {
-                "end": 177,
-                "fileID": 0,
-                "start": 166
-              }
-            },
-            {
-              "kind": "add",
-              "name": "",
-              "span": {
-                "end": 177,
-                "fileID": 0,
-                "start": 166
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 177,
-            "fileID": 0,
-            "start": 166
-          },
-          "formal": "h",
-          "semantic": "cylinderHeight",
-          "status": "bound",
+          "definition": 8,
           "value": 8.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "parameter",
-              "name": "d",
-              "span": {
-                "end": 184,
-                "fileID": 0,
-                "start": 183
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "d",
-              "span": {
-                "end": 184,
-                "fileID": 0,
-                "start": 183
-              }
-            },
-            {
-              "kind": "lookup",
-              "name": "d",
-              "span": {
-                "end": 184,
-                "fileID": 0,
-                "start": 183
-              }
-            },
-            {
-              "kind": "parameter",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "argument",
-              "name": "d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "lookup",
-              "name": "hole_d",
-              "span": {
-                "end": 345,
-                "fileID": 0,
-                "start": 339
-              }
-            },
-            {
-              "kind": "assignment",
-              "name": "hole_d",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 75,
-                "fileID": 0,
-                "start": 74
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 184,
-            "fileID": 0,
-            "start": 183
-          },
-          "formal": "d",
-          "semantic": "cylinderDiameter",
-          "status": "bound",
+          "definition": 9,
+          "dragVerified": true,
           "value": 4.0
         },
         {
-          "centered": false,
-          "chain": [
-            {
-              "kind": "assignment",
-              "name": "$fn",
-              "span": {
-                "end": 63,
-                "fileID": 0,
-                "start": 61
-              }
-            },
-            {
-              "kind": "literal",
-              "name": "",
-              "span": {
-                "end": 63,
-                "fileID": 0,
-                "start": 61
-              }
-            }
-          ],
-          "displayMultiplier": 1.0,
-          "expression": {
-            "end": 63,
-            "fileID": 0,
-            "start": 61
-          },
-          "formal": "$fn",
-          "semantic": "fragmentCount",
-          "status": "bound",
+          "definition": 10,
           "value": 64.0
         }
       ],
@@ -5116,6 +1806,590 @@
         }
       ],
       "instanceID": 2
+    }
+  ],
+  "propertyDefinitions": [
+    {
+      "centered": false,
+      "chain": [
+        {
+          "kind": "element",
+          "name": "",
+          "span": {
+            "end": 218,
+            "fileID": 0,
+            "start": 215
+          }
+        },
+        {
+          "kind": "literal",
+          "name": "",
+          "span": {
+            "end": 218,
+            "fileID": 0,
+            "start": 215
+          }
+        }
+      ],
+      "displayMultiplier": 1.0,
+      "expression": {
+        "end": 218,
+        "fileID": 0,
+        "start": 215
+      },
+      "formal": "size",
+      "impactComplete": true,
+      "inputs": [
+        {
+          "end": 218,
+          "fileID": 0,
+          "start": 215
+        }
+      ],
+      "semantic": "cubeSizeX",
+      "status": "bound"
+    },
+    {
+      "centered": false,
+      "chain": [
+        {
+          "kind": "element",
+          "name": "",
+          "span": {
+            "end": 222,
+            "fileID": 0,
+            "start": 220
+          }
+        },
+        {
+          "kind": "literal",
+          "name": "",
+          "span": {
+            "end": 222,
+            "fileID": 0,
+            "start": 220
+          }
+        }
+      ],
+      "displayMultiplier": 1.0,
+      "expression": {
+        "end": 222,
+        "fileID": 0,
+        "start": 220
+      },
+      "formal": "size",
+      "impactComplete": true,
+      "inputs": [
+        {
+          "end": 222,
+          "fileID": 0,
+          "start": 220
+        }
+      ],
+      "semantic": "cubeSizeY",
+      "status": "bound"
+    },
+    {
+      "centered": false,
+      "chain": [
+        {
+          "kind": "element",
+          "name": "",
+          "span": {
+            "end": 231,
+            "fileID": 0,
+            "start": 224
+          }
+        },
+        {
+          "kind": "lookup",
+          "name": "plate_h",
+          "span": {
+            "end": 231,
+            "fileID": 0,
+            "start": 224
+          }
+        },
+        {
+          "kind": "assignment",
+          "name": "plate_h",
+          "span": {
+            "end": 120,
+            "fileID": 0,
+            "start": 119
+          }
+        },
+        {
+          "kind": "literal",
+          "name": "",
+          "span": {
+            "end": 120,
+            "fileID": 0,
+            "start": 119
+          }
+        }
+      ],
+      "displayMultiplier": 1.0,
+      "expression": {
+        "end": 231,
+        "fileID": 0,
+        "start": 224
+      },
+      "formal": "size",
+      "impactComplete": true,
+      "inputs": [
+        {
+          "end": 120,
+          "fileID": 0,
+          "start": 119
+        }
+      ],
+      "semantic": "cubeSizeZ",
+      "status": "bound"
+    },
+    {
+      "centered": false,
+      "chain": [
+        {
+          "kind": "element",
+          "name": "",
+          "span": {
+            "end": 298,
+            "fileID": 0,
+            "start": 284
+          }
+        },
+        {
+          "kind": "add",
+          "name": "",
+          "span": {
+            "end": 298,
+            "fileID": 0,
+            "start": 284
+          }
+        }
+      ],
+      "displayMultiplier": 1.0,
+      "expression": {
+        "end": 298,
+        "fileID": 0,
+        "start": 284
+      },
+      "formal": "v",
+      "impactComplete": false,
+      "inputs": [
+        {
+          "end": 86,
+          "fileID": 0,
+          "start": 85
+        },
+        {
+          "end": 98,
+          "fileID": 0,
+          "start": 96
+        },
+        {
+          "end": 107,
+          "fileID": 0,
+          "start": 105
+        },
+        {
+          "end": 250,
+          "fileID": 0,
+          "start": 249
+        },
+        {
+          "end": 262,
+          "fileID": 0,
+          "start": 261
+        }
+      ],
+      "semantic": "translateX",
+      "status": "bound"
+    },
+    {
+      "centered": false,
+      "chain": [
+        {
+          "kind": "element",
+          "name": "",
+          "span": {
+            "end": 302,
+            "fileID": 0,
+            "start": 300
+          }
+        },
+        {
+          "kind": "literal",
+          "name": "",
+          "span": {
+            "end": 302,
+            "fileID": 0,
+            "start": 300
+          }
+        }
+      ],
+      "displayMultiplier": 1.0,
+      "expression": {
+        "end": 302,
+        "fileID": 0,
+        "start": 300
+      },
+      "formal": "v",
+      "impactComplete": true,
+      "inputs": [
+        {
+          "end": 302,
+          "fileID": 0,
+          "start": 300
+        }
+      ],
+      "semantic": "translateY",
+      "status": "bound"
+    },
+    {
+      "centered": false,
+      "chain": [
+        {
+          "kind": "element",
+          "name": "",
+          "span": {
+            "end": 306,
+            "fileID": 0,
+            "start": 304
+          }
+        },
+        {
+          "kind": "literal",
+          "name": "",
+          "span": {
+            "end": 306,
+            "fileID": 0,
+            "start": 304
+          }
+        }
+      ],
+      "displayMultiplier": 1.0,
+      "expression": {
+        "end": 306,
+        "fileID": 0,
+        "start": 304
+      },
+      "formal": "v",
+      "impactComplete": true,
+      "inputs": [
+        {
+          "end": 306,
+          "fileID": 0,
+          "start": 304
+        }
+      ],
+      "semantic": "translateZ",
+      "status": "bound"
+    },
+    {
+      "centered": false,
+      "chain": [
+        {
+          "kind": "lookup",
+          "name": "pitch",
+          "span": {
+            "end": 298,
+            "fileID": 0,
+            "start": 293
+          }
+        },
+        {
+          "kind": "assignment",
+          "name": "pitch",
+          "span": {
+            "end": 98,
+            "fileID": 0,
+            "start": 96
+          }
+        },
+        {
+          "kind": "literal",
+          "name": "",
+          "span": {
+            "end": 98,
+            "fileID": 0,
+            "start": 96
+          }
+        }
+      ],
+      "displayMultiplier": 1.0,
+      "expression": {
+        "end": 298,
+        "fileID": 0,
+        "start": 284
+      },
+      "formal": "pitch",
+      "impactComplete": true,
+      "inputs": [
+        {
+          "end": 98,
+          "fileID": 0,
+          "start": 96
+        }
+      ],
+      "semantic": "pitch",
+      "status": "bound"
+    },
+    {
+      "centered": false,
+      "chain": [
+        {
+          "kind": "parameter",
+          "name": "d",
+          "span": {
+            "end": 345,
+            "fileID": 0,
+            "start": 339
+          }
+        },
+        {
+          "kind": "argument",
+          "name": "d",
+          "span": {
+            "end": 345,
+            "fileID": 0,
+            "start": 339
+          }
+        },
+        {
+          "kind": "lookup",
+          "name": "hole_d",
+          "span": {
+            "end": 345,
+            "fileID": 0,
+            "start": 339
+          }
+        },
+        {
+          "kind": "assignment",
+          "name": "hole_d",
+          "span": {
+            "end": 75,
+            "fileID": 0,
+            "start": 74
+          }
+        },
+        {
+          "kind": "literal",
+          "name": "",
+          "span": {
+            "end": 75,
+            "fileID": 0,
+            "start": 74
+          }
+        }
+      ],
+      "displayMultiplier": 1.0,
+      "expression": {
+        "end": 345,
+        "fileID": 0,
+        "start": 339
+      },
+      "formal": "d",
+      "impactComplete": true,
+      "inputs": [
+        {
+          "end": 75,
+          "fileID": 0,
+          "start": 74
+        }
+      ],
+      "semantic": "moduleArgument",
+      "status": "bound"
+    },
+    {
+      "centered": false,
+      "chain": [
+        {
+          "kind": "parameter",
+          "name": "h",
+          "span": {
+            "end": 177,
+            "fileID": 0,
+            "start": 166
+          }
+        },
+        {
+          "kind": "argument",
+          "name": "h",
+          "span": {
+            "end": 177,
+            "fileID": 0,
+            "start": 166
+          }
+        },
+        {
+          "kind": "add",
+          "name": "",
+          "span": {
+            "end": 177,
+            "fileID": 0,
+            "start": 166
+          }
+        }
+      ],
+      "displayMultiplier": 1.0,
+      "expression": {
+        "end": 177,
+        "fileID": 0,
+        "start": 166
+      },
+      "formal": "h",
+      "impactComplete": false,
+      "inputs": [
+        {
+          "end": 120,
+          "fileID": 0,
+          "start": 119
+        },
+        {
+          "end": 177,
+          "fileID": 0,
+          "start": 176
+        }
+      ],
+      "semantic": "cylinderHeight",
+      "status": "bound"
+    },
+    {
+      "centered": false,
+      "chain": [
+        {
+          "kind": "parameter",
+          "name": "d",
+          "span": {
+            "end": 184,
+            "fileID": 0,
+            "start": 183
+          }
+        },
+        {
+          "kind": "argument",
+          "name": "d",
+          "span": {
+            "end": 184,
+            "fileID": 0,
+            "start": 183
+          }
+        },
+        {
+          "kind": "lookup",
+          "name": "d",
+          "span": {
+            "end": 184,
+            "fileID": 0,
+            "start": 183
+          }
+        },
+        {
+          "kind": "parameter",
+          "name": "d",
+          "span": {
+            "end": 345,
+            "fileID": 0,
+            "start": 339
+          }
+        },
+        {
+          "kind": "argument",
+          "name": "d",
+          "span": {
+            "end": 345,
+            "fileID": 0,
+            "start": 339
+          }
+        },
+        {
+          "kind": "lookup",
+          "name": "hole_d",
+          "span": {
+            "end": 345,
+            "fileID": 0,
+            "start": 339
+          }
+        },
+        {
+          "kind": "assignment",
+          "name": "hole_d",
+          "span": {
+            "end": 75,
+            "fileID": 0,
+            "start": 74
+          }
+        },
+        {
+          "kind": "literal",
+          "name": "",
+          "span": {
+            "end": 75,
+            "fileID": 0,
+            "start": 74
+          }
+        }
+      ],
+      "displayMultiplier": 1.0,
+      "expression": {
+        "end": 184,
+        "fileID": 0,
+        "start": 183
+      },
+      "formal": "d",
+      "impactComplete": true,
+      "inputs": [
+        {
+          "end": 75,
+          "fileID": 0,
+          "start": 74
+        }
+      ],
+      "semantic": "cylinderDiameter",
+      "status": "bound"
+    },
+    {
+      "centered": false,
+      "chain": [
+        {
+          "kind": "assignment",
+          "name": "$fn",
+          "span": {
+            "end": 63,
+            "fileID": 0,
+            "start": 61
+          }
+        },
+        {
+          "kind": "literal",
+          "name": "",
+          "span": {
+            "end": 63,
+            "fileID": 0,
+            "start": 61
+          }
+        }
+      ],
+      "displayMultiplier": 1.0,
+      "expression": {
+        "end": 63,
+        "fileID": 0,
+        "start": 61
+      },
+      "formal": "$fn",
+      "impactComplete": false,
+      "inputs": [
+        {
+          "end": 63,
+          "fileID": 0,
+          "start": 61
+        }
+      ],
+      "semantic": "fragmentCount",
+      "status": "bound"
     }
   ],
   "protocolVersion": 1,

@@ -51,9 +51,12 @@ failure cannot publish a scene.
 | `droppedConsoleMessages` | Count of messages excluded by the capture limit. |
 | `mesh` | Final mesh descriptor or null. |
 | `operands` | Array of operand records containing `id` and `mesh` descriptor. |
-| `instances` | Executed occurrences containing `id`, optional `parent`, `name`, optional `span` and `definitionSpan`, `iteration` map (numeric values), column-major affine matrices `local` and `world`, optional operand ID `operand`, and optional `diameter`, `arguments` and `properties`. |
+| `instances` | Executed occurrences containing `id`, optional `parent`, `name`, optional `span` and `definitionSpan`, `iteration` map (numeric values), column-major affine matrices `local` and `world`, optional operand ID `operand`, and optional `diameter`, `arguments`, `properties` and `opaqueFrame`. |
 | `operations` | Records containing `instanceID` and ordered `children` with `instanceID` and `role` (`positive`, `subtracted`, `intersection`). |
-| `dependencyEdges` | Records with a source `span`, an `instanceID` and a `property` string. |
+| `dependencyEdges` | Records with a source `span`, an `instanceID` and a `property` string. They cover the `diameter` chains. |
+| `propertyDefinitions` | Optional table of the property fields that executions of a call site share. An index identifies an entry within one result. |
+| `argumentLists` | Optional table of argument arrays. An instance refers to one array by index. |
+| `propertiesOmitted` | Optional `true` when property detail did not fit the manifest. The scene is then inspect-only. |
 | `lookups` | Records with optional `requestingFileID`, lookup `name`, ordered absolute `candidates`, optional selected `winner` candidate, and optional `resolvedWinner` giving its canonical path at evaluation time. |
 
 Spans are `{fileID, start, end}` in the original file bytes, including BOM.
@@ -64,28 +67,48 @@ are available for diagnostics and navigation. A dependency edge represents one
 binding step, so separate steps can point to the same source range. The
 worker reports `modelError` if it cannot retain a complete dependency search.
 
-The optional `arguments` array records `name`, `formal`, `status` and
-`expression` span for supplied arguments. A positional argument has an empty
-`name`. An unbound argument has an empty `formal`. Status is `bound`,
-`superseded`, `unbound` or `ignored`. These records follow source argument
-order. Built-in defaults are represented by the applicable property status.
+An instance's optional `arguments` is an index into `argumentLists`. Each
+argument records `name`, `formal`, `status` and an `expression` span. A
+positional argument has an empty `name`. An unbound argument has an empty
+`formal`. Status is `bound`, `superseded`, `unbound` or `ignored`. These
+records follow source argument order. Built-in defaults are represented by
+the applicable property status.
 
-Each optional `properties` entry carries `semantic`, `formal`, `status`,
-finite `value`, `displayMultiplier`, `centered`, an optional `expression`
-span and an ordered `chain` from the supplied value to its observed origin.
+Each entry of an instance's optional `properties` carries a `definition`
+index, a finite `value`, an optional `dragVerified` flag and, for pitch,
+`pitch: {iteration}`. The indexed definition carries:
+
+- `semantic`, `formal`, `status`, `displayMultiplier` and `centered`.
+- An optional `expression` span and an ordered `chain` from the supplied
+  value toward its observed origin. A chain holds at most 256 links.
+- `inputs`, the literal spans that can supply the value through observed
+  operations. An instance is affected by a literal if any of its
+  properties lists that literal.
+- `impactComplete`, true only for a property with a writable literal whose
+  evaluated reads all lead to recorded properties. When false, other uses
+  of the literal are unknown and the affected set is a lower bound.
+
 The displayed scalar equals the authored scalar times the multiplier.
 Statuses are `bound`, `default`, `computedVector` or `invalid`. A bound
-value can still be an inspectable expression. A branching arithmetic step
-ends the chain, and its observed dependencies appear in `dependencyEdges`.
-`diameter` retains its original `value` and `chain` fields. Each chain link
-carries a `kind`, `name` and optional `span`.
+value can still be an inspectable expression. `diameter` retains its
+original `value` and `chain` fields. Each chain link carries a `kind`,
+`name` and optional `span`. A branching arithmetic step ends a chain. A
+`computed` link stands for a call, index, member or comprehension result.
+A `truncated` link marks the depth limit. Both end write-back.
 
 Semantics cover uniform and axis-specific cube sizes, sphere diameter,
 cylinder height, uniform diameter and separate end radii, fragment count,
-translation vector components, module arguments and pitch. Pitch includes
-`pitch: {iteration, dragVerified}` when evaluated in a range loop. The flag
-describes dependency and frame independence. Iteration zero offers numeric
-entry because spatial displacement cannot determine pitch there.
+translation vector components, module arguments and pitch. Pitch is
+recorded when evaluated in a range loop.
+
+`dragVerified` means a drag preview of that property matches reevaluation.
+It requires a complete impact set, a known frame, and no other recorded
+property on the same ancestor and descendant path that consumes the
+literal. Pitch also requires that its base, range and other components
+stay fixed. Iteration zero still offers numeric entry only, because a
+displacement cannot determine pitch there. An instance with `opaqueFrame`
+lies below an operation whose placement the trace cannot represent, so it
+offers no spatial handle.
 
 ## Binary mesh payloads
 
