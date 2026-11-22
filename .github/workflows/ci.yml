@@ -76,3 +76,19 @@ jobs:
           name: engine-verification
           path: .build/engine/verification.*/**
           include-hidden-files: true
+
+  document:
+    name: Source package and document app
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run package tests
+        run: swift test --package-path Packages/ScadrettoKit
+      - name: Build app and UI test bundle
+        run: |
+          xcodebuild -project Scadretto.xcodeproj -scheme Scadretto \
+            -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO \
+            build-for-testing

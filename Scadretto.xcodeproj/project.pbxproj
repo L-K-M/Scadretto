@@ -1,0 +1,493 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		074318A108FA4B47D97BF8D8 /* editor-bom-crlf.scad in Resources */ = {isa = PBXBuildFile; fileRef = E8E477BFBAF95B1641A1F784 /* editor-bom-crlf.scad */; };
+		0BCBF4FDB930EBE4CD854632 /* ScadrettoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC5FDCF42FE991552F3F3E1B /* ScadrettoUITests.swift */; };
+		1BD9F8B3CB8555DD73B2F12A /* ScadrettoSyntax in Frameworks */ = {isa = PBXBuildFile; productRef = BCD167B455E3C7D983C91905 /* ScadrettoSyntax */; };
+		40F9B0835DA56AE1C81ADCD3 /* ScadrettoDocumentBase.m in Sources */ = {isa = PBXBuildFile; fileRef = CC7169339397A5290B227212 /* ScadrettoDocumentBase.m */; };
+		69926DA9DECD33CC429B2E09 /* ScadrettoCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0D6AEED0CB0DC0C3D2A11CFC /* ScadrettoCore */; };
+		7510EDA39840F4E6811C4D6B /* SourceWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F3D6412F155EB359337E727 /* SourceWindowController.swift */; };
+		B3BAEE938B3DE7BEAC1FB1EE /* ScadrettoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */; };
+		F6C1EB529D983B5238B37644 /* ScadrettoDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BB55BAD86B153C539296444 /* ScadrettoDocument.swift */; };
+		FEEB9832B98CF17B34D6752A /* editor-bom-crlf-edited.scad in Resources */ = {isa = PBXBuildFile; fileRef = 884C485CF77F5109F0C48E35 /* editor-bom-crlf-edited.scad */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		FC712EFC75D35E4E165C72FA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0B182FE343B7C3CFCC951830 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6BED3FC4B792912EBE6A34D3;
+			remoteInfo = Scadretto;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0DCE9ABD2847FE35D7D90660 /* ScadrettoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ScadrettoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3A5B00664D3FEE649417C49A /* ScadrettoDocumentBase.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ScadrettoDocumentBase.h; sourceTree = "<group>"; };
+		3F3D6412F155EB359337E727 /* SourceWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceWindowController.swift; sourceTree = "<group>"; };
+		6BB55BAD86B153C539296444 /* ScadrettoDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScadrettoDocument.swift; sourceTree = "<group>"; };
+		73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScadrettoApp.swift; sourceTree = "<group>"; };
+		884C485CF77F5109F0C48E35 /* editor-bom-crlf-edited.scad */ = {isa = PBXFileReference; path = "editor-bom-crlf-edited.scad"; sourceTree = "<group>"; };
+		A95057B6AF7BE264494E7378 /* ScadrettoKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ScadrettoKit; path = Packages/ScadrettoKit; sourceTree = SOURCE_ROOT; };
+		CC7169339397A5290B227212 /* ScadrettoDocumentBase.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ScadrettoDocumentBase.m; sourceTree = "<group>"; };
+		E8E477BFBAF95B1641A1F784 /* editor-bom-crlf.scad */ = {isa = PBXFileReference; path = "editor-bom-crlf.scad"; sourceTree = "<group>"; };
+		EC5FDCF42FE991552F3F3E1B /* ScadrettoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScadrettoUITests.swift; sourceTree = "<group>"; };
+		FB4D77D56B49D6D963EB85C0 /* Scadretto.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Scadretto.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		F9499E3BFB67993BCE2F8F5D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				69926DA9DECD33CC429B2E09 /* ScadrettoCore in Frameworks */,
+				1BD9F8B3CB8555DD73B2F12A /* ScadrettoSyntax in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0614383765A3857154C7ED49 /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				EC5FDCF42FE991552F3F3E1B /* ScadrettoUITests.swift */,
+			);
+			name = UITests;
+			path = Tests/UITests;
+			sourceTree = "<group>";
+		};
+		22B57D7D7CE00EC968F4E50B /* App */ = {
+			isa = PBXGroup;
+			children = (
+				73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */,
+				6BB55BAD86B153C539296444 /* ScadrettoDocument.swift */,
+				3A5B00664D3FEE649417C49A /* ScadrettoDocumentBase.h */,
+				CC7169339397A5290B227212 /* ScadrettoDocumentBase.m */,
+				3F3D6412F155EB359337E727 /* SourceWindowController.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		3152839C1AD1B319F9FBCBFE /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				A95057B6AF7BE264494E7378 /* ScadrettoKit */,
+			);
+			path = Packages;
+			sourceTree = "<group>";
+		};
+		631E53CB88A5B7A02FEABA92 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				FB4D77D56B49D6D963EB85C0 /* Scadretto.app */,
+				0DCE9ABD2847FE35D7D90660 /* ScadrettoUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A54876A25DE371FFB7F3E339 /* Fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				884C485CF77F5109F0C48E35 /* editor-bom-crlf-edited.scad */,
+				E8E477BFBAF95B1641A1F784 /* editor-bom-crlf.scad */,
+			);
+			name = Fixtures;
+			path = Tests/Fixtures;
+			sourceTree = "<group>";
+		};
+		F5A1C3A8FD1A23FAA7AEACC9 = {
+			isa = PBXGroup;
+			children = (
+				22B57D7D7CE00EC968F4E50B /* App */,
+				A54876A25DE371FFB7F3E339 /* Fixtures */,
+				3152839C1AD1B319F9FBCBFE /* Packages */,
+				0614383765A3857154C7ED49 /* UITests */,
+				631E53CB88A5B7A02FEABA92 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6BED3FC4B792912EBE6A34D3 /* Scadretto */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 087173AB4836DC8559985F3F /* Build configuration list for PBXNativeTarget "Scadretto" */;
+			buildPhases = (
+				20A6CFDBE2012296126670BB /* Sources */,
+				F9499E3BFB67993BCE2F8F5D /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Scadretto;
+			packageProductDependencies = (
+				0D6AEED0CB0DC0C3D2A11CFC /* ScadrettoCore */,
+				BCD167B455E3C7D983C91905 /* ScadrettoSyntax */,
+			);
+			productName = Scadretto;
+			productReference = FB4D77D56B49D6D963EB85C0 /* Scadretto.app */;
+			productType = "com.apple.product-type.application";
+		};
+		6F7517F2DC8C157F9C945A0A /* ScadrettoUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E46F57F12BABD343AD676C26 /* Build configuration list for PBXNativeTarget "ScadrettoUITests" */;
+			buildPhases = (
+				B38BEF4C946D453202860A34 /* Sources */,
+				474F1AB044E3859064EB3CF2 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BCD44243515609BF19DFDAA4 /* PBXTargetDependency */,
+			);
+			name = ScadrettoUITests;
+			packageProductDependencies = (
+			);
+			productName = ScadrettoUITests;
+			productReference = 0DCE9ABD2847FE35D7D90660 /* ScadrettoUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0B182FE343B7C3CFCC951830 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					6BED3FC4B792912EBE6A34D3 = {
+						ProvisioningStyle = Manual;
+					};
+					6F7517F2DC8C157F9C945A0A = {
+						ProvisioningStyle = Manual;
+						TestTargetID = 6BED3FC4B792912EBE6A34D3;
+					};
+				};
+			};
+			buildConfigurationList = CA458DE0EF3CFE932D5B417C /* Build configuration list for PBXProject "Scadretto" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = F5A1C3A8FD1A23FAA7AEACC9;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				0988EFE770E5E4702E05EBC8 /* XCLocalSwiftPackageReference "Packages/ScadrettoKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 631E53CB88A5B7A02FEABA92 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6BED3FC4B792912EBE6A34D3 /* Scadretto */,
+				6F7517F2DC8C157F9C945A0A /* ScadrettoUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		474F1AB044E3859064EB3CF2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FEEB9832B98CF17B34D6752A /* editor-bom-crlf-edited.scad in Resources */,
+				074318A108FA4B47D97BF8D8 /* editor-bom-crlf.scad in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		20A6CFDBE2012296126670BB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B3BAEE938B3DE7BEAC1FB1EE /* ScadrettoApp.swift in Sources */,
+				F6C1EB529D983B5238B37644 /* ScadrettoDocument.swift in Sources */,
+				40F9B0835DA56AE1C81ADCD3 /* ScadrettoDocumentBase.m in Sources */,
+				7510EDA39840F4E6811C4D6B /* SourceWindowController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B38BEF4C946D453202860A34 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0BCBF4FDB930EBE4CD854632 /* ScadrettoUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		BCD44243515609BF19DFDAA4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6BED3FC4B792912EBE6A34D3 /* Scadretto */;
+			targetProxy = FC712EFC75D35E4E165C72FA /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2B962931CD117FD729A33258 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.lkm.Scadretto.UITests;
+				SDKROOT = macosx;
+				TEST_TARGET_NAME = Scadretto;
+			};
+			name = Debug;
+		};
+		5D1D47302CEB3649F75EA66B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.lkm.Scadretto.UITests;
+				SDKROOT = macosx;
+				TEST_TARGET_NAME = Scadretto;
+			};
+			name = Release;
+		};
+		842171BE986022580C2EF83D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lkm.Scadretto;
+				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = App/ScadrettoDocumentBase.h;
+			};
+			name = Debug;
+		};
+		9A9CF28780C28DC04DB1C961 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A7B8E76579F7DF634537A374 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		D4E33DA64D1C3CD437F772F2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lkm.Scadretto;
+				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = App/ScadrettoDocumentBase.h;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		087173AB4836DC8559985F3F /* Build configuration list for PBXNativeTarget "Scadretto" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				842171BE986022580C2EF83D /* Debug */,
+				D4E33DA64D1C3CD437F772F2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CA458DE0EF3CFE932D5B417C /* Build configuration list for PBXProject "Scadretto" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A7B8E76579F7DF634537A374 /* Debug */,
+				9A9CF28780C28DC04DB1C961 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E46F57F12BABD343AD676C26 /* Build configuration list for PBXNativeTarget "ScadrettoUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2B962931CD117FD729A33258 /* Debug */,
+				5D1D47302CEB3649F75EA66B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		0988EFE770E5E4702E05EBC8 /* XCLocalSwiftPackageReference "Packages/ScadrettoKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/ScadrettoKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0D6AEED0CB0DC0C3D2A11CFC /* ScadrettoCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ScadrettoCore;
+		};
+		BCD167B455E3C7D983C91905 /* ScadrettoSyntax */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ScadrettoSyntax;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 0B182FE343B7C3CFCC951830 /* Project object */;
+}

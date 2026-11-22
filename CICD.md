@@ -22,8 +22,8 @@ The build stages the two executables and their runtime libraries under
 build flags, observed runtime trace and geometry checks.
 
 Install the [shared release tool](https://github.com/L-K-M/release-tool) for
-`lkm-build` and `lkm-release`. Once M1 has added the shared `Scadretto` scheme
-in `Scadretto.xcodeproj`, use these commands from the repository:
+`lkm-build` and `lkm-release`. Use the shared `Scadretto` scheme in
+`Scadretto.xcodeproj` from the repository:
 
 ```sh
 Scripts/build.sh --debug
@@ -35,8 +35,16 @@ the build directory. The engine and worker have separate milestone scripts.
 Use the [verification guide](plan/06-Verification-and-Release.md#build-and-verification-entry-points)
 for their entry points and the native test plan.
 
-GitHub Actions runs repository script checks and pinned engine verification
-on PRs and pushes to `main`. M1 adds the package tests and app build. Native UI and minimum-OS checks follow the verification guide.
+GitHub Actions runs repository script checks, pinned engine verification,
+Swift package tests and the document app build on PRs and pushes to `main`.
+Run the UI test plan on a logged-in Mac:
+
+```sh
+xcodebuild -project Scadretto.xcodeproj -scheme Scadretto \
+  -destination 'platform=macOS,arch=arm64' -parallel-testing-enabled NO test
+```
+
+Native UI and minimum-OS checks follow the verification guide.
 
 ## Pull requests
 
