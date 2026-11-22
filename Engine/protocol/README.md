@@ -59,6 +59,10 @@ failure cannot publish a scene.
 Spans are `{fileID, start, end}` in the original file bytes, including BOM.
 IDs are unsigned 32-bit integers, separate for files, instances and
 operands. The all-ones value is reserved for unknown triangle ownership.
+Only the main snapshot is writable in this editor session. Dependency paths
+are available for diagnostics and navigation. A dependency edge represents one
+binding step, so separate steps can point to the same source range. The
+worker reports `modelError` if it cannot retain a complete dependency search.
 
 ## Binary mesh payloads
 

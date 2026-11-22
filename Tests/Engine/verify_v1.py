@@ -4,7 +4,6 @@ import argparse
 import hashlib
 import json
 import math
-import os
 from pathlib import Path
 import shutil
 import struct
@@ -157,7 +156,7 @@ def canonical(root, result):
 def check_goldens(args, environment, build):
     # A stable logical directory inside the job root supplies diagnostics without
     # hard-coding user paths into the checked examples.
-    logical_base = args.evidence / "Golden source"
+    logical_base = args.evidence / 'Golden source – "test"'
     logical_base.mkdir()
     cases = {
         "cube": ((args.goldens / "cube/main.scad").read_bytes(), 0, "rendered"),
@@ -173,7 +172,9 @@ def check_goldens(args, environment, build):
 
         portable_path = Path("/ScadrettoGolden") / logical.name
         portable_request = request_for(source, portable_path, FIXED_BUILD)
-        portable = json.loads(json.dumps(result).replace(str(logical), str(portable_path)))
+        logical_json = json.dumps(str(logical), ensure_ascii=False)[1:-1]
+        portable_json = json.dumps(str(portable_path), ensure_ascii=False)[1:-1]
+        portable = json.loads(json.dumps(result, ensure_ascii=False).replace(logical_json, portable_json))
         portable["key"] = portable_request["key"]
         portable["buildSHA"] = FIXED_BUILD
         golden = args.goldens / name
@@ -340,6 +341,43 @@ difference() {
                 process.wait()
 
 
+def check_request_and_trace_limits(args, environment, build):
+    source = b"cube(2);\n"
+    logical = args.evidence / "limits.scad"
+    root = args.evidence / "library"
+    for field, roots in (("libraryRoots", {"libraries": [root]}),
+                         ("resourceRoots", {"resources": [root]})):
+        for form, invalid in [("object", {"root": str(root)}), ("string", str(root))]:
+            request = request_for(source, logical, build, **roots)
+            request[field] = invalid
+            result = run_job(args.worker, args.evidence / f"{field}-{form}", source, request,
+                             environment, expected_code=1)
+            check(result["detail"] == "protocolMismatch" and field in result["error"],
+                  f"{field} accepted a JSON {form}")
+
+    # OpenSCAD can resolve a winner after the worker's bounded candidate list.
+    # Such an evaluation cannot safely publish a scene with incomplete lookups.
+    root.mkdir()
+    (root / "late.scad").write_bytes(source)
+    source = b"include <late.scad>\n"
+    missing_roots = [args.evidence / f"missing-{index}" for index in range(256)]
+    request = request_for(source, logical, build, libraries=[*missing_roots, root])
+    result = run_job(args.worker, args.evidence / "candidate-overflow", source, request,
+                     environment, expected_code=1)
+    check(result["detail"] == "modelError" and "dependency tracing limits" in result["error"]
+          and result["mesh"] is None, "worker published a scene without the complete dependency search")
+
+    # This model can render a cube before exceeding the occurrence trace cap.
+    source = b"cube(2); for (i=[0:32767]) translate([0, 0, 0]) group() {}\n"
+    request = request_for(source, logical, build)
+    result = run_job(args.worker, args.evidence / "instance-overflow", source, request,
+                     environment, expected_code=1)
+    check(result["detail"] == "modelError" and "instance tracing limit" in result["error"]
+          and result["mesh"] is None and not any(result[field] for field in (
+              "instances", "operands", "operations", "dependencyEdges")),
+          "failed instance tracing published a partial scene")
+
+
 def main():
     parser = argparse.ArgumentParser()
     for field in ("worker", "reference", "oracle", "resources", "fixtures", "goldens", "evidence"):
@@ -358,6 +396,7 @@ def main():
         "XDG_CACHE_HOME": str(home),
     }
     build = checksum(args.worker.read_bytes())
+    check_request_and_trace_limits(args, environment, build)
     check_goldens(args, environment, build)
     check_live_inputs(args, environment, build)
     check_lifetime_pipe(args, environment, build)
