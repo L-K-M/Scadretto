@@ -37,6 +37,10 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         let handle: ViewportEditHandle?
     }
 
+    /// Posted when a document's text may have started or stopped matching its file, so the
+    /// documents that include or use that file can say what their preview reads.
+    static let fileTextDidChange = Notification.Name("ScadrettoDocumentFileTextDidChange")
+
     private static let guideLimit = 256
     /// A property ID no choice has. It asks for an explicit choice.
     private static let noChoice = ""
@@ -59,6 +63,9 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     private var diskCheckPending = false
     private var diskWindows: [NSWindowController] = []
     private var activation: (any NSObjectProtocol)?
+    private var dependencyEdits: (any NSObjectProtocol)?
+    /// Included and used files of the latest outcome, by resolved path.
+    private var dependencyPaths: Set<String> = []
     /// The source's undo history. NSDocument does not see it: when one of its own undo groups
     /// closes, NSDocument waits on the main thread for any running save or close, which hung
     /// closing with autosave in place. Changes reach AppKit through `updateChangeCount`.
@@ -146,6 +153,16 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         preview.onUpdate = { [weak self, weak controller] phase in
             controller?.previewWorkspace.update(phase)
             self?.refreshInspector()
+            if case .outcome(let outcome, _) = phase { self?.noteDependencies(of: outcome.result) }
+        }
+        dependencyEdits = NotificationCenter.default.addObserver(
+            forName: Self.fileTextDidChange, object: nil, queue: .main
+        ) { [weak self] notification in
+            let sender = (notification.object as AnyObject?).map(ObjectIdentifier.init)
+            MainActor.assumeIsolated {
+                guard let self, sender != ObjectIdentifier(self) else { return }
+                self.refreshDependencyNotice()
+            }
         }
         controller.previewWorkspace.sidebar.onReveal = { [weak self] file, span, result in
             self?.reveal(file: file, span: span, in: result)
@@ -258,6 +275,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
                 }
             }
             if let self, self.diskCheckPending { Task { await self.checkDisk() } }
+            if let self { NotificationCenter.default.post(name: Self.fileTextDidChange, object: self) }
             completionHandler(error)
             // An autosave held back by this save runs once AppKit has finished it.
             Task { @MainActor [weak self] in self?.resumeDeferredAutosave() }
@@ -300,7 +318,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         if !hasUnwrittenText, editor?.isComposing != true {
             // Nothing to write: an undo back to the bytes last written, or text that matches them
             // again while a change is pending. Neither holds up closing or quitting.
-            updateChangeCount(.changeAutosaved)
+            record(.changeAutosaved)
             completionHandler(nil)
             return
         }
@@ -468,7 +486,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         do {
             let manager = history
             if !manager.isUndoing && !manager.isRedoing {
-                updateChangeCount(.changeDone)
+                record(.changeDone)
                 if location == nil || typingEnd != location {
                     endTypingGroup()
                     manager.beginUndoGrouping()
@@ -810,7 +828,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         endTypingGroup()
         guard history.canUndo else { return }
         history.undo()
-        updateChangeCount(.changeUndone)
+        record(.changeUndone)
     }
 
     @IBAction func redoSource(_ sender: Any?) {
@@ -818,7 +836,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         endTypingGroup()
         guard history.canRedo else { return }
         history.redo()
-        updateChangeCount(.changeRedone)
+        record(.changeRedone)
     }
 
     override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
@@ -885,9 +903,50 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         endTypingGroup()
         preview?.close()
         if let activation { NotificationCenter.default.removeObserver(activation) }
+        if let dependencyEdits { NotificationCenter.default.removeObserver(dependencyEdits) }
         for window in diskWindows { window.close() }
         diskWindows = []
         super.close()
+        // Unsaved text discarded here no longer differs from the file.
+        NotificationCenter.default.post(name: Self.fileTextDidChange, object: self)
+    }
+
+    /// Records a change for AppKit and tells the documents that use this file.
+    private func record(_ change: NSDocument.ChangeType) {
+        updateChangeCount(change)
+        NotificationCenter.default.post(name: Self.fileTextDidChange, object: self)
+    }
+
+    // MARK: - Dependency documents
+
+    private func noteDependencies(of result: EvaluationResult) {
+        dependencyPaths = Set(result.files.filter { $0.kind == .include || $0.kind == .use }.map {
+            Self.comparablePath(URL(fileURLWithPath: $0.resolvedPath ?? $0.logicalPath))
+        })
+        refreshDependencyNotice()
+    }
+
+    /// The worker reads included and used files from disk, so text open elsewhere that its file
+    /// does not hold yet is not in this preview. Saving that document re-evaluates this one
+    /// through the dependency watch.
+    private func refreshDependencyNotice() {
+        guard let workspace = editor?.previewWorkspace else { return }
+        let unsaved = NSDocumentController.shared.documents.compactMap { document -> String? in
+            guard let other = document as? ScadrettoDocument, other !== self, let url = other.fileURL,
+                  dependencyPaths.contains(Self.comparablePath(url)), other.hasUnwrittenText else { return nil }
+            return url.lastPathComponent
+        }.sorted()
+        workspace.showDependencyNotice(Self.dependencyNotice(for: unsaved))
+    }
+
+    private static func dependencyNotice(for names: [String]) -> String? {
+        guard let first = names.first else { return nil }
+        if names.count == 1 { return "\(first) has unsaved edits; the preview uses the saved file." }
+        return "\(first) and \(names.count - 1) more have unsaved edits; the preview uses the saved files."
+    }
+
+    private static func comparablePath(_ url: URL) -> String {
+        url.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
     // MARK: - External changes
@@ -963,7 +1022,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         io.withLock { $0.pendingRead = buffer }
         adoptRead()
         // The text now matches the file, so there is nothing for AppKit to autosave.
-        updateChangeCount(.changeCleared)
+        record(.changeCleared)
         editor?.show(source.snapshot, selecting: selection)
         preview?.schedule(source.snapshot, fileURL: fileURL, immediate: true)
     }

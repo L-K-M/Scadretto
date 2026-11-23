@@ -12,6 +12,7 @@ final class PreviewWorkspace {
     private(set) var geometry: PreviewGeometry?
     private let status = NSTextField(labelWithString: "Evaluating…")
     private let snap = NSTextField(labelWithString: "")
+    private let notice = NSTextField(labelWithString: "")
     private let viewportError: String?
     private var hasGeometry = false
     private var renderedStatus: String?
@@ -59,13 +60,20 @@ final class PreviewWorkspace {
         snap.textColor = .secondaryLabelColor
         snap.setAccessibilityIdentifier("dragSnap")
         snap.setContentCompressionResistancePriority(.required, for: .horizontal)
-        for item in [renderingView, status, snap] {
+        notice.font = status.font
+        notice.textColor = .systemOrange
+        notice.lineBreakMode = .byTruncatingTail
+        notice.isHidden = true
+        notice.setAccessibilityIdentifier("dependencyNotice")
+        for item in [renderingView, status, notice, snap] {
             item.translatesAutoresizingMaskIntoConstraints = false
             panel.addSubview(item)
         }
         NSLayoutConstraint.activate([
             status.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 10),
-            status.trailingAnchor.constraint(lessThanOrEqualTo: snap.leadingAnchor, constant: -8),
+            status.trailingAnchor.constraint(lessThanOrEqualTo: notice.leadingAnchor, constant: -12),
+            notice.trailingAnchor.constraint(lessThanOrEqualTo: snap.leadingAnchor, constant: -8),
+            notice.firstBaselineAnchor.constraint(equalTo: status.firstBaselineAnchor),
             snap.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -10),
             snap.firstBaselineAnchor.constraint(equalTo: status.firstBaselineAnchor),
             status.topAnchor.constraint(equalTo: panel.topAnchor, constant: 7),
@@ -146,6 +154,18 @@ final class PreviewWorkspace {
         sidebar.showCandidates([])
         sidebar.setCurrent(false)
         displayStatus(hasGeometry ? "Preview out of date · \(text)" : text)
+    }
+
+    /// Says which open documents hold text that this preview's included files do not have yet.
+    func showDependencyNotice(_ text: String?) {
+        guard notice.stringValue != (text ?? "") else { return }
+        notice.stringValue = text ?? ""
+        notice.toolTip = text
+        notice.isHidden = text == nil
+        guard let text else { return }
+        NSAccessibility.post(element: notice, notification: .announcementRequested, userInfo: [
+            .announcement: text, .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+        ])
     }
 
     private func displayStatus(_ text: String) {

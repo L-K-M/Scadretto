@@ -193,6 +193,47 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
+    func testUnsavedDependencyEditsAreLabeledUntilSaved() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let part = directory.appending(path: "part.scad")
+        try Data("module part() cube(2);\n".utf8).write(to: part)
+        let parent = directory.appending(path: "Parent.scad")
+        try Data("include <part.scad>\npart();\n".utf8).write(to: parent)
+
+        _ = open(parent, in: app)
+        let parentWindow = app.windows.matching(NSPredicate(format: "title BEGINSWITH %@", "Parent")).firstMatch
+        let status = parentWindow.staticTexts["renderStatus"]
+        let notice = parentWindow.staticTexts["dependencyNotice"]
+        waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
+        XCTAssertFalse(notice.exists, "A notice appeared with nothing unsaved")
+
+        // The parent keeps evaluating the saved part and says so.
+        let partEditor = open(part, in: app)
+        partEditor.click()
+        partEditor.typeKey("a", modifierFlags: .command)
+        partEditor.typeText("module part() cylinder(r = 2, h = 2);\n")
+        waitForText("part.scad has unsaved edits", in: notice, timeout: 5)
+        settle(2)
+        XCTAssertEqual(status.value as? String, "Preview ready · 12 triangles", "The parent read unsaved text")
+
+        // Saving the part re-evaluates the parent through its dependency watch.
+        partEditor.typeKey("s", modifierFlags: .command)
+        waitForFile(part, toEqual: Data("module part() cylinder(r = 2, h = 2);\n".utf8), timeout: 5)
+        XCTAssertTrue(notice.waitForNonExistence(timeout: 5), "The notice stayed after Save")
+        // The part's window covers the parent's, whose viewport presents once it is visible.
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(partEditor.waitForNonExistence(timeout: 5), "Closing the saved part asked")
+        let cylinder = XCTNSPredicateExpectation(predicate: NSPredicate(
+            format: "value BEGINSWITH %@ AND NOT (value CONTAINS %@)", "Preview ready", "· 12 triangles"
+        ), object: status)
+        XCTAssertEqual(XCTWaiter.wait(for: [cylinder], timeout: 15), .completed,
+                       "Expected the saved cylinder, got \(status.value ?? "(no value)")")
+        XCTAssertEqual(try Data(contentsOf: parent), Data("include <part.scad>\npart();\n".utf8))
+    }
+
+    @MainActor
     func testExternalBackupRenameDoesNotRedirectSave() throws {
         try saveAfterExternalMove(refilledWith: Data("cube(2);\n".utf8))
     }
