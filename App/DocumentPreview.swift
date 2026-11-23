@@ -197,6 +197,7 @@ final class DocumentPreview {
     private var dependencyCheck: Task<Void, Never>?
     private var generation: UInt64 = 0
     private var dependencyRetries = 0
+    private var settingsObserver: (any NSObjectProtocol)?
 
     var onUpdate: ((Phase) -> Void)?
     private(set) var request: EngineRequest?
@@ -207,6 +208,11 @@ final class DocumentPreview {
     init(engine: EngineClient?, startupError: String?) {
         self.engine = engine
         self.startupError = startupError
+        settingsObserver = NotificationCenter.default.addObserver(
+            forName: PreviewSettings.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.settingsChanged() }
+        }
     }
 
     func schedule(_ source: SourceSnapshot, fileURL: URL?, immediate: Bool) {
@@ -238,6 +244,8 @@ final class DocumentPreview {
         stopWatchingDependencies()
         input = nil
         onUpdate = nil
+        if let settingsObserver { NotificationCenter.default.removeObserver(settingsObserver) }
+        settingsObserver = nil
     }
 
     func acceptsNavigation(from source: EvaluationResult) -> Bool {
@@ -263,13 +271,8 @@ final class DocumentPreview {
         onUpdate?(.evaluating)
 
         let generation = self.generation
-        let roots = UserDefaults.standard.stringArray(forKey: "libraryRoots")?.map {
-            URL(fileURLWithPath: $0, isDirectory: true)
-        } ?? []
-        let configuredTimeout = UserDefaults.standard.double(forKey: "previewTimeoutSeconds")
-        let timeout = configuredTimeout.isFinite && configuredTimeout > 0
-            ? min(3_600, configuredTimeout) : 20
-        let limits = EngineWorkerLimits(timeout: .seconds(timeout))
+        let roots = PreviewSettings.shared.libraryRoots
+        let limits = EngineWorkerLimits(timeout: .seconds(PreviewSettings.shared.timeout))
         task = Task { [weak self] in
             do {
                 if !immediate { try await Task.sleep(for: .milliseconds(150)) }
@@ -364,6 +367,16 @@ final class DocumentPreview {
         dependencyCheck = nil
         dependencyRequest = nil
         dependencies = nil
+    }
+
+    // Library folders take part in resolution, so a result found under the previous folders is
+    // neither shown nor used for a write-back, even when the source did not change.
+    private func settingsChanged() {
+        guard input != nil, generation < UInt64.max else { return }
+        stopWatchingDependencies()
+        generation += 1
+        dependencyRetries = 0
+        begin(immediate: true)
     }
 
     private func changedDuringEvaluation() {

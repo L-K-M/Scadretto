@@ -21,6 +21,7 @@
 		69926DA9DECD33CC429B2E09 /* ScadrettoCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0D6AEED0CB0DC0C3D2A11CFC /* ScadrettoCore */; };
 		7510EDA39840F4E6811C4D6B /* SourceWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F3D6412F155EB359337E727 /* SourceWindowController.swift */; };
 		7EAB47C9A57EFFD93EF1D081 /* PreviewSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C51F6E26F6727B3C11B381 /* PreviewSidebar.swift */; };
+		5E77A1C0D3B24F0E9A6C1F01 /* PreviewSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E77A1C0D3B24F0E9A6C1F02 /* PreviewSettings.swift */; };
 		B3BAEE938B3DE7BEAC1FB1EE /* ScadrettoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */; };
 		D7240DF438FE0AF735ADA91A /* warning-only.scad in Resources */ = {isa = PBXBuildFile; fileRef = A6B1DF3941CE369D6617228D /* warning-only.scad */; };
 		F6C1EB529D983B5238B37644 /* ScadrettoDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BB55BAD86B153C539296444 /* ScadrettoDocument.swift */; };
@@ -44,6 +45,7 @@
 		0DCE9ABD2847FE35D7D90660 /* ScadrettoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ScadrettoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		23C51F6E26F6727B3C11B381 /* PreviewSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewSidebar.swift; sourceTree = "<group>"; };
 		C5D6A0C0D3B24F0E9A6C1F32 /* stress-100-cutters.scad */ = {isa = PBXFileReference; path = "stress-100-cutters.scad"; sourceTree = "<group>"; };
+		5E77A1C0D3B24F0E9A6C1F02 /* PreviewSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewSettings.swift; sourceTree = "<group>"; };
 		2582FD20D9A8E8BE2F83FA23 /* mounting-plate.scad */ = {isa = PBXFileReference; path = "mounting-plate.scad"; sourceTree = "<group>"; };
 		3A5B00664D3FEE649417C49A /* ScadrettoDocumentBase.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ScadrettoDocumentBase.h; sourceTree = "<group>"; };
 		3F3D6412F155EB359337E727 /* SourceWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceWindowController.swift; sourceTree = "<group>"; };
@@ -95,6 +97,7 @@
 				23C51F6E26F6727B3C11B381 /* PreviewSidebar.swift */,
 				A11A0C0D3B24F0E9A6C1F012 /* Announcements.swift */,
 				B3C4A0C0D3B24F0E9A6C1F22 /* TimingLog.swift */,
+				5E77A1C0D3B24F0E9A6C1F02 /* PreviewSettings.swift */,
 				E0423D8B38A0739716E934E2 /* PreviewWorkspace.swift */,
 				73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */,
 				6BB55BAD86B153C539296444 /* ScadrettoDocument.swift */,
@@ -280,6 +283,7 @@
 				7EAB47C9A57EFFD93EF1D081 /* PreviewSidebar.swift in Sources */,
 				A11A0C0D3B24F0E9A6C1F011 /* Announcements.swift in Sources */,
 				B3C4A0C0D3B24F0E9A6C1F21 /* TimingLog.swift in Sources */,
+				5E77A1C0D3B24F0E9A6C1F01 /* PreviewSettings.swift in Sources */,
 				610C5A67DCDCC16EDF58A097 /* PreviewWorkspace.swift in Sources */,
 				B3BAEE938B3DE7BEAC1FB1EE /* ScadrettoApp.swift in Sources */,
 				F6C1EB529D983B5238B37644 /* ScadrettoDocument.swift in Sources */,

@@ -7,6 +7,7 @@ import ScadrettoViewport
 final class ScadrettoApp: NSObject, NSApplicationDelegate {
     private(set) var engineClient: EngineClient?
     private(set) var engineStartupError: String?
+    private var settingsWindow: PreviewSettingsWindowController?
 
     static func main() {
         let application = NSApplication.shared
@@ -18,6 +19,8 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // UI tests start from the default library folders and time limit.
+        if UserDefaults.standard.bool(forKey: "ScadrettoResetPreviewSettings") { PreviewSettings.shared.reset() }
         // A hidden default lets UI tests shorten or postpone in-place autosave. Without it AppKit
         // keeps its own schedule, about 15 seconds after an edit on macOS 27.
         let autosaveDelay = UserDefaults.standard.double(forKey: "ScadrettoAutosaveDelay")
@@ -49,11 +52,20 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
         }
     }
 
+    @objc private func showSettings(_ sender: Any?) {
+        let controller = settingsWindow ?? PreviewSettingsWindowController()
+        settingsWindow = controller
+        controller.showWindow(sender)
+    }
+
     private func makeMainMenu() -> NSMenu {
         let menu = NSMenu()
         let app = addMenu("Scadretto", to: menu)
         app.addItem(withTitle: "About Scadretto", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
                     keyEquivalent: "")
+        app.addItem(.separator())
+        let settings = app.addItem(withTitle: "Settings…", action: #selector(showSettings(_:)), keyEquivalent: ",")
+        settings.target = self
         app.addItem(.separator())
         app.addItem(withTitle: "Quit Scadretto", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
