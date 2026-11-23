@@ -286,9 +286,10 @@ final class DocumentPreview {
                     Task { @MainActor in self?.dependencyChanged(for: id) }
                 }
                 let prepared = await Task.detached(priority: .utility) {
+                    let began = ContinuousClock.now
                     let watch = DependencyWatch(result: result, onChange: changed)
                     let geometry = result.scene.flatMap(PreviewGeometry.init)
-                    return (watch: watch, geometry: geometry)
+                    return (watch: watch, geometry: geometry, time: began.duration(to: .now))
                 }.value
                 guard let self, isCurrent(request, input: input), !Task.isCancelled,
                       result.requestID == id, result.key == request.key else { return }
@@ -315,6 +316,15 @@ final class DocumentPreview {
                 case .rendered, .empty: lastGood = result
                 case .modelError, .unsupportedDimension: break
                 }
+                TimingLog.record("accepted", [
+                    "revision": input.source.revision, "requestID": id.uuidString,
+                    "queueMs": TimingLog.milliseconds(evaluation.queueTime),
+                    "workerMs": TimingLog.milliseconds(evaluation.workerTime),
+                    "decodeMs": TimingLog.milliseconds(evaluation.decodeTime),
+                    "prepareMs": TimingLog.milliseconds(prepared.time),
+                    "peakWorkerMB": Double(evaluation.peakWorkerBytes) / 1_048_576,
+                    "triangles": (result.scene?.mesh?.indices.count ?? 0) / 3,
+                ])
                 onUpdate?(.outcome(evaluation.outcome, prepared.geometry))
             } catch {
                 guard let self, currentID == id, !Task.isCancelled else { return }

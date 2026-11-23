@@ -20,6 +20,8 @@ final class PreviewWorkspace {
     private(set) var ghostOmitted = 0
     private var candidateHit: SIMD3<Double>?
     private var announcedState: SceneState?
+    /// The last scene whose first presented frame went to the timing log.
+    private var loggedScene: UUID?
     private var evaluatingAnnouncement: Task<Void, Never>?
     var onSelection: ((UInt32?, SIMD3<Double>?) -> Void)?
     var onPresentationChange: (() -> Void)?
@@ -90,6 +92,9 @@ final class PreviewWorkspace {
             self?.onPresentationChange?()
         }
         viewport?.onEditPreview = { [weak sidebar = self.sidebar] value in sidebar?.inspector.showPreview(value) }
+        if TimingLog.isEnabled {
+            viewport?.onFramePresented = { [weak self] scene, time in self?.logFrame(scene: scene, at: time) }
+        }
         showSnap()
         sidebar.onOccurrence = { [weak self] id in self?.onSelection?(id, nil) }
         sidebar.onCandidate = { [weak self] id in
@@ -208,6 +213,13 @@ final class PreviewWorkspace {
         } else {
             displayStatus(renderedStatus)
         }
+    }
+
+    private func logFrame(scene: UUID?, at time: CFTimeInterval) {
+        TimingLog.record("frame", at: time, scene.map { ["scene": $0.uuidString] } ?? [:])
+        guard let scene, scene != loggedScene, scene == result?.requestID else { return }
+        loggedScene = scene
+        TimingLog.record("presented", at: time, ["requestID": scene.uuidString])
     }
 
     /// Drops this window's selection display when the selection moves to another window.

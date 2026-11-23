@@ -125,6 +125,9 @@ public final class ViewportView: MTKView {
 
     public var onSelection: ((PresentedFrame, CGPoint) -> Void)?
     public var onPresentationChange: (() -> Void)?
+    /// Called on the main actor with the scene, if any, and the Metal presentation time of every
+    /// presented frame. Measurements set it; drawing does not depend on it.
+    public var onFramePresented: ((UUID?, CFTimeInterval) -> Void)?
     public var onEditPreview: ((Double?) -> Void)?
     public var onEditCommit: ((UUID, UUID, Double) -> Void)?
     public var dragSnapIncrement: Double = 0 {
@@ -574,6 +577,14 @@ extension ViewportView: MTKViewDelegate {
             drawable.addPresentedHandler { [weak self] drawable in
                 guard drawable.presentedTime > 0 else { return }
                 Task { @MainActor in self?.didPresent(frame) }
+            }
+        }
+        if onFramePresented != nil {
+            let scene = isSceneStale ? nil : sceneID
+            drawable.addPresentedHandler { [weak self] drawable in
+                let time = drawable.presentedTime
+                guard time > 0 else { return }
+                Task { @MainActor in self?.onFramePresented?(scene, time) }
             }
         }
         renderer.draw(

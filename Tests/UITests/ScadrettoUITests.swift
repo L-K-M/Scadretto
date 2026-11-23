@@ -233,6 +233,100 @@ final class ScadrettoUITests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: parent), Data("include <part.scad>\npart();\n".utf8))
     }
 
+    // MARK: - Benchmarks
+    //
+    // These run only when SCADRETTO_BENCHMARK_DIR names a directory, as Scripts/benchmark-macos
+    // does through TEST_RUNNER_SCADRETTO_BENCHMARK_DIR. The app writes its timing log there and
+    // Scripts/benchmark-report computes the percentiles.
+
+    private func benchmarkLog(_ name: String) throws -> URL {
+        let directory = ProcessInfo.processInfo.environment["SCADRETTO_BENCHMARK_DIR"]
+        try XCTSkipIf(directory == nil, "Set SCADRETTO_BENCHMARK_DIR to run benchmarks")
+        return URL(fileURLWithPath: directory!).appending(path: "\(name).jsonl")
+    }
+
+    /// Five warm-up and thirty measured diameter commits on the plate, each waiting for its frame.
+    @MainActor
+    func testBenchmarkPlateCommitToFrame() throws {
+        let log = try benchmarkLog("plate-commits")
+        let app = launch(arguments: ["-ScadrettoTimingLog", log.path])
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Benchmark Plate.scad")
+        try fixture("mounting-plate").write(to: url)
+
+        _ = open(url, in: app)
+        waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 30)
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        try selectThirdBore(in: viewport, app: app)
+        let field = app.textFields["diameterField"].firstMatch
+        for index in 0..<35 {
+            waitUntilEnabled(field)
+            let value = index.isMultiple(of: 2) ? "4.5" : "4"
+            field.click()
+            field.typeKey("a", modifierFlags: .command)
+            field.typeText(value + "\n")
+            let applied = XCTNSPredicateExpectation(predicate: NSPredicate(
+                format: "value == %@ AND enabled == true", value
+            ), object: field)
+            XCTAssertEqual(XCTWaiter.wait(for: [applied], timeout: 30), .completed, "Commit \(index) did not settle")
+        }
+    }
+
+    /// Twenty seconds of orbiting the plate, then the hundred-cutter plate, and a handle drag.
+    @MainActor
+    func testBenchmarkOrbitAndDragFrames() throws {
+        for (name, data) in [("orbit-plate", try fixture("mounting-plate")), ("orbit-stress", try fixture("stress-100-cutters"))] {
+            let log = try benchmarkLog(name)
+            let app = launch(arguments: ["-ScadrettoTimingLog", log.path])
+            let directory = try makeDirectory()
+            let url = directory.appending(path: "\(name).scad")
+            try data.write(to: url)
+            _ = open(url, in: app)
+            waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 60)
+            let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+            settle(2)
+            let started = Date()
+            var forward = true
+            while Date().timeIntervalSince(started) < 20 {
+                let from = viewport.coordinate(withNormalizedOffset: CGVector(dx: forward ? 0.3 : 0.7, dy: 0.5))
+                let to = viewport.coordinate(withNormalizedOffset: CGVector(dx: forward ? 0.7 : 0.3, dy: 0.55))
+                from.press(forDuration: 0.05, thenDragTo: to, withVelocity: 150, thenHoldForDuration: 0)
+                forward.toggle()
+            }
+            if name == "orbit-plate" {
+                choose("Frame Model", from: "View", in: app)
+                try selectThirdBore(in: viewport, app: app)
+                let (grip, outward) = diameterDragCoordinates(in: viewport)
+                grip.press(forDuration: 0.2, thenDragTo: outward, withVelocity: 20, thenHoldForDuration: 0.2)
+                waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 30)
+            }
+            app.terminate()
+        }
+    }
+
+    /// A hundred keystrokes, 120 ms apart, into the hundred-cutter plate while its evaluations run.
+    @MainActor
+    func testBenchmarkTypingWhileWorkerIsBusy() throws {
+        let log = try benchmarkLog("typing-busy")
+        let app = launch(arguments: ["-ScadrettoTimingLog", log.path])
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Benchmark Stress.scad")
+        try fixture("stress-100-cutters").write(to: url)
+
+        let editor = open(url, in: app)
+        waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 60)
+        editor.click()
+        editor.typeKey(.downArrow, modifierFlags: .command)
+        editor.typeText("// ")
+        for index in 0..<100 {
+            editor.typeText(String(index % 10))
+            Thread.sleep(forTimeInterval: 0.12)
+        }
+        waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 60)
+    }
+
     @MainActor
     func testExternalBackupRenameDoesNotRedirectSave() throws {
         try saveAfterExternalMove(refilledWith: Data("cube(2);\n".utf8))

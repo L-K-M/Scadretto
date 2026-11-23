@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Summarize Scadretto timing logs written by the benchmark UI tests.
+
+Usage: Scripts/benchmark-report DIRECTORY
+
+DIRECTORY holds the JSON-lines logs that the app writes with `-ScadrettoTimingLog`:
+plate-commits.jsonl, orbit-plate.jsonl, orbit-stress.jsonl and typing-busy.jsonl. The report
+follows the performance section of plan/06-Verification-and-Release.md and prints Markdown.
+Percentiles use the nearest-rank method.
+"""
+
+import json
+import math
+import sys
+from pathlib import Path
+
+WARM_UP_COMMITS = 5
+BURST_GAP_SECONDS = 0.25
+
+
+def load(path):
+    if not path.exists():
+        return []
+    with path.open(encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
+
+
+def percentile(values, fraction):
+    ordered = sorted(values)
+    if not ordered:
+        return math.nan
+    rank = max(1, math.ceil(fraction * len(ordered)))
+    return ordered[rank - 1]
+
+
+def row(name, values, unit="ms"):
+    if not values:
+        return f"| {name} | 0 | n/a | n/a | n/a |"
+    return (f"| {name} | {len(values)} | {percentile(values, 0.5):.1f} {unit} | "
+            f"{percentile(values, 0.95):.1f} {unit} | {max(values):.1f} {unit} |")
+
+
+def stale_acceptances(samples):
+    """Accepted results whose revision is older than the latest commit made before them."""
+    latest = None
+    stale = 0
+    for sample in sorted(samples, key=lambda item: item["t"]):
+        if sample["kind"] == "commit":
+            latest = sample["revision"]
+        elif sample["kind"] == "accepted" and latest is not None and sample["revision"] < latest:
+            stale += 1
+    return stale
+
+
+def commit_latency(samples):
+    """Commit to the first presented frame of the result for that revision."""
+    accepted = {}
+    for sample in samples:
+        if sample["kind"] == "accepted":
+            accepted.setdefault(sample["revision"], sample)
+    presented = {}
+    for sample in samples:
+        if sample["kind"] == "presented":
+            presented.setdefault(sample["requestID"], sample["t"])
+    rows = []
+    for commit in (sample for sample in samples if sample["kind"] == "commit"):
+        result = accepted.get(commit["revision"])
+        if result is None or result["requestID"] not in presented:
+            continue
+        frame = presented[result["requestID"]]
+        rows.append({
+            "total": (frame - commit["t"]) * 1000,
+            "queue": result["queueMs"],
+            "worker": result["workerMs"],
+            "decode": result["decodeMs"],
+            "prepare": result["prepareMs"],
+            "present": (frame - result["t"]) * 1000,
+            "peak": result["peakWorkerMB"],
+        })
+    return rows
+
+
+def frame_intervals(samples):
+    """Intervals between presented frames inside each burst of interaction."""
+    times = sorted(sample["t"] for sample in samples if sample["kind"] == "frame")
+    intervals = []
+    for earlier, later in zip(times, times[1:]):
+        gap = later - earlier
+        if gap <= BURST_GAP_SECONDS:
+            intervals.append(gap * 1000)
+    return intervals
+
+
+def main():
+    if len(sys.argv) != 2:
+        sys.exit(__doc__)
+    directory = Path(sys.argv[1])
+    out = []
+
+    commits = load(directory / "plate-commits.jsonl")
+    latency = commit_latency(commits)
+    measured = latency[WARM_UP_COMMITS:]
+    out.append("## Canonical plate: commit to accepted shaded frame")
+    out.append("")
+    out.append(f"{len(latency)} commits with a presented frame; the first {WARM_UP_COMMITS} are "
+               "discarded as warm-up. Target: p95 under 1000 ms.")
+    out.append("")
+    out.append("| Interval | Samples | p50 | p95 | Max |")
+    out.append("|---|---|---|---|---|")
+    for key, name in [("total", "Commit to presented frame"), ("queue", "Queue wait"),
+                      ("worker", "Worker wall time"), ("decode", "Decode"),
+                      ("prepare", "Mesh and BVH preparation"), ("present", "Acceptance to presentation")]:
+        out.append(row(name, [item[key] for item in measured]))
+    out.append(row("Peak worker memory", [item["peak"] for item in measured], unit="MB"))
+    out.append(f"\nStale accepted results: {stale_acceptances(commits)}")
+
+    for name, title in [("orbit-plate", "Orbit and handle drag, plate"), ("orbit-stress", "Orbit, hundred-cutter plate")]:
+        samples = load(directory / f"{name}.jsonl")
+        intervals = frame_intervals(samples)
+        out.append("")
+        out.append(f"## {title}: presented frame intervals")
+        out.append("")
+        out.append(f"Bursts split at gaps over {BURST_GAP_SECONDS * 1000:.0f} ms. Target: p95 at or below 33 ms.")
+        out.append("")
+        out.append("| Interval | Samples | p50 | p95 | Max |")
+        out.append("|---|---|---|---|---|")
+        out.append(row("Frame interval", intervals))
+        over = sum(1 for interval in intervals if interval > 33)
+        out.append(f"\nIntervals over 33 ms: {over}")
+
+    typing = load(directory / "typing-busy.jsonl")
+    handling = [sample["handlingMs"] for sample in typing
+                if sample["kind"] == "commit" and sample.get("label") == "Typing"]
+    out.append("")
+    out.append("## Typing while the worker is busy, hundred-cutter plate")
+    out.append("")
+    out.append("Main-thread handling of each committed keystroke. Target: p95 under 16 ms and no stale scene.")
+    out.append("")
+    out.append("| Interval | Samples | p50 | p95 | Max |")
+    out.append("|---|---|---|---|---|")
+    out.append(row("Edit handling", handling))
+    out.append(f"\nStale accepted results: {stale_acceptances(typing)}")
+    print("\n".join(out))
+
+
+if __name__ == "__main__":
+    main()

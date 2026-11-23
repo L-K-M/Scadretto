@@ -560,11 +560,13 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         in window: SourceWindowController? = nil,
         coalescingFrom location: Int? = nil
     ) throws {
+        let began = CACurrentMediaTime()
         // Undo and redo act in the key window, which gets the selection back.
         let acting = window ?? keyEditor
         let previousSelection = acting?.selection ?? NSRange(location: 0, length: 0)
         let inverted = try source.apply(source.transaction(edits: edits, label: label))
         if inverted.isEmpty { return }
+        let mutated = CACurrentMediaTime()
         adjustFeatureAnchors(for: edits)
         activeEdit = nil
         sourceChange = nil
@@ -610,6 +612,9 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         for other in windows { other.show(snapshot, selecting: other === acting ? selection : nil) }
         showEdited()
         preview?.schedule(snapshot, fileURL: fileURL, immediate: location == nil)
+        TimingLog.record("commit", at: mutated, [
+            "revision": snapshot.revision, "label": label, "handlingMs": (CACurrentMediaTime() - began) * 1_000,
+        ])
     }
 
     func endTypingGroup() {
