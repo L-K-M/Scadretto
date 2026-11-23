@@ -152,6 +152,20 @@ Use this fixture for the drag/orbit and typing workloads and for the cancellatio
 4. On a clean supported Mac, launch the quarantined distribution artifact, use Help → Open Example offline, drag in the untitled copy, save it outside the bundle and reopen the saved file. Check the helper starts and finds fonts, imports, libraries and shader resources with developer paths absent. Verify the sealed app signature again after editing the example. The bundled example is present, is byte-identical to the canonical fixture, and opens offline from a clean install.
 5. Record the package hash, macOS versions tested, hardware, app/worker SHAs, signing identities and entitlements, test results, attribution/source location and notarization status. Claims for minimum OS support require a run on that OS. Label a build “local development” while credentialed distribution is pending.
 
+### Release record
+
+The current build is a **local development** build; public distribution is
+pending. [The distribution record](../Docs/Decisions/distribution.md) holds
+the hashes, machine and results.
+
+| Gate | State |
+|---|---|
+| 1. Architecture, minimum OS, library and run paths | Checked by `Scripts/package-macos` on every package; passed for the local package |
+| 2. Licenses and corresponding source | Notices and worker source bundled; the application licensing and publication decision is pending with the owner |
+| 3. Signing and notarization | Ad hoc local package passed; Developer ID signing, notarization and `spctl` pending the owner's credentials |
+| 4. Offline install and example | Passed on the development Mac with Homebrew, `/usr/local` and IP networking denied; a clean Mac and a quarantined download pending |
+| 5. Release report | Recorded for the local package; macOS 14 not yet run |
+
 ## Implementation references
 
 - [OpenSCAD CLI](https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Using_OpenSCAD_in_a_command_line_environment) and [upstream build instructions](https://github.com/openscad/openscad). Use the reference build's own `--help` output for the exact export/backend flags in the pinned revision.
