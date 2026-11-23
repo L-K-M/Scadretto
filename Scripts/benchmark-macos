@@ -31,6 +31,7 @@ app="$derived/Build/Products/Release/Scadretto.app"
   echo "macOS: $(sw_vers -productVersion) ($(sw_vers -buildVersion))"
   echo "xcode: $(xcodebuild -version | tr '\n' ' ')"
   echo "build: Release, arm64"
+  echo "load average: $(sysctl -n vm.loadavg)"
   echo "display: $(system_profiler SPDisplaysDataType 2>/dev/null | grep -E 'Resolution|UI Looks like' | sed 's/^ *//' | tr '\n' ';')"
   for fixture in Tests/Fixtures/mounting-plate.scad Tests/Fixtures/stress-100-cutters.scad; do
     echo "fixture: $fixture $(shasum -a 256 "$fixture" | cut -d' ' -f1)"
@@ -46,7 +47,8 @@ TEST_RUNNER_SCADRETTO_BENCHMARK_DIR="$out" "${xcode[@]}" -parallel-testing-enabl
   test-without-building > "$out/ui-tests.log" 2>&1
 
 # Cancellation and cleanup: end the app three ways during a long evaluation, then look for
-# worker processes and job directories left behind, before and after the next launch.
+# worker processes and job directories left behind, before and after the next launch. Window
+# restoration is off so a relaunch does not reopen the long evaluation.
 storage="$HOME/Library/Caches/com.lkm.Scadretto/sessions"
 worker="$app/Contents/Helpers/scadretto-engine"
 slow="$out/long-evaluation.scad"
@@ -65,7 +67,7 @@ wait_for() { # seconds, command...
   echo "| Ending | Workers while evaluating | Termination latency | Workers 5 s later | Job directories 5 s later |"
   echo "|---|---|---|---|---|"
   for ending in quit TERM KILL; do
-    open -a "$app" "$slow"
+    open -a "$app" "$slow" --args -ApplePersistenceIgnoreState YES
     wait_for 30 test -n "$(app_pid)" || { echo "| $ending | app did not start | | | |"; continue; }
     pid=$(app_pid)
     wait_for 30 test "$(workers)" -gt 0 || true
@@ -82,7 +84,7 @@ wait_for() { # seconds, command...
   done
   # The next launch reclaims sessions whose owner is gone.
   before=$(find "$storage" -mindepth 1 -maxdepth 1 -name 'session-*' 2>/dev/null | wc -l | tr -d ' ')
-  open -a "$app"
+  open -a "$app" --args -ApplePersistenceIgnoreState YES
   wait_for 30 test -n "$(app_pid)" || true
   sleep 3
   after=$(find "$storage" -mindepth 1 -maxdepth 1 -name 'session-*' 2>/dev/null | wc -l | tr -d ' ')
