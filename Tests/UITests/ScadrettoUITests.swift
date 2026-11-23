@@ -398,6 +398,64 @@ final class ScadrettoUITests: XCTestCase {
         """
 
     @MainActor
+    func testAWorkerStoppedAtItsMemoryBudgetRecoversOnTheNextEdit() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Hungry.scad")
+        // A hundred million numbers need far more than the worker's memory budget; the reference
+        // CLI passes 768 MB about three seconds in. Each range stays under OpenSCAD's limit of a
+        // million elements.
+        let hungry = "values = [for (i = [0 : 99999]) [for (j = [0 : 999]) j]];\ncube(1);\n"
+        try Data(hungry.utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("exceeded its memory budget", in: status, timeout: 30)
+        XCTAssertEqual(editor.value as? String, hungry)
+
+        // The editor still takes text, and the next edit evaluates again.
+        editor.click()
+        editor.typeKey("a", modifierFlags: .command)
+        editor.typeText("cube(2);\n")
+        waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
+        editor.typeKey("s", modifierFlags: .command)
+        waitForFile(url, toEqual: Data("cube(2);\n".utf8), timeout: 10)
+    }
+
+    @MainActor
+    func testCoincidentSurfacesOfferEveryMatchingInstance() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Twins.scad")
+        let text = "for (i = [0 : 1]) cube(10);\n"
+        try Data(text.utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 15)
+
+        // Both cubes own every final surface, so a click names neither and offers both.
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let candidates = app.popUpButtons["candidateList"].firstMatch
+        XCTAssertTrue(candidates.waitForExistence(timeout: 8), "Expected a choice between the coincident cubes")
+        candidates.click()
+        let cubes = candidates.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "cube"))
+        XCTAssertTrue(cubes.firstMatch.waitForExistence(timeout: 5), "Expected the choices to open")
+        XCTAssertEqual(cubes.count, 2, "Expected both cubes")
+        let second = candidates.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "cube  (i = 1)")).firstMatch
+        XCTAssertTrue(second.exists, "Expected the second iteration among the choices")
+        second.click()
+        XCTAssertTrue(candidates.waitForNonExistence(timeout: 5), "The choice stayed after choosing")
+        let selected = app.outlines["sceneOutline"].staticTexts
+            .matching(NSPredicate(format: "label == %@", "cube  (i = 1)")).firstMatch
+        XCTAssertTrue(selected.waitForExistence(timeout: 5))
+        waitForText("cube", in: app.staticTexts["inspectorSelection"].firstMatch, timeout: 8)
+        XCTAssertEqual(editor.value as? String, text)
+    }
+
+    @MainActor
     func testExternalBackupRenameDoesNotRedirectSave() throws {
         try saveAfterExternalMove(refilledWith: Data("cube(2);\n".utf8))
     }
