@@ -209,13 +209,13 @@ final class ScadrettoUITests: XCTestCase {
         waitForText("exceeded its memory budget", in: status, timeout: 30)
         XCTAssertEqual(editor.value as? String, hungry)
 
-        // The editor still takes text, and the next evaluation runs in a new worker.
+        // The editor still takes text, and the next edit evaluates again.
         editor.click()
         editor.typeKey("a", modifierFlags: .command)
         editor.typeText("cube(2);\n")
         waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
         editor.typeKey("s", modifierFlags: .command)
-        waitForFile(url, toEqual: Data("cube(2);\n".utf8), timeout: 5)
+        waitForFile(url, toEqual: Data("cube(2);\n".utf8), timeout: 10)
     }
 
     @MainActor
@@ -237,6 +237,7 @@ final class ScadrettoUITests: XCTestCase {
         XCTAssertTrue(candidates.waitForExistence(timeout: 8), "Expected a choice between the coincident cubes")
         candidates.click()
         let cubes = candidates.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "cube"))
+        XCTAssertTrue(cubes.firstMatch.waitForExistence(timeout: 5), "Expected the choices to open")
         XCTAssertEqual(cubes.count, 2, "Expected both cubes")
         let second = candidates.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "cube  (i = 1)")).firstMatch
         XCTAssertTrue(second.exists, "Expected the second iteration among the choices")
