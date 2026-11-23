@@ -633,10 +633,15 @@ final class ScadrettoUITests: XCTestCase {
         keep.click()
 
         // Deleting the character leaves the text the file held before the change, so there is
-        // nothing to write and nothing to lose.
+        // nothing to write and nothing to lose. The document is clean again, so a disk check
+        // that lands before Close, such as a late presenter notice, may load the external
+        // version first; closing must not ask either way.
         editor.typeKey(.delete, modifierFlags: [])
-        waitForText("cube(1);", in: editor)
-        XCTAssertEqual(editor.value as? String, "cube(1);\n")
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate(
+            format: "value == %@ OR value == %@", "cube(1);\n", "cube(2);\n"
+        ), object: editor)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 5), .completed,
+                       "Unexpected text \(editor.value ?? "(no value)")")
         choose("Close", from: "File", in: app)
         XCTAssertTrue(editor.waitForNonExistence(timeout: 5), "Closing refused with nothing to write")
         XCTAssertEqual(try Data(contentsOf: url), external, "Closing wrote over the external version")
