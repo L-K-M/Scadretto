@@ -38,6 +38,14 @@ from the keychain, or `SCADRETTO_DEVELOPER_ID` when there are several. The
 release workflow imports the identity into a temporary keychain from the
 `distribution` environment, as [CI/CD](../../CICD.md#distribution) describes.
 
+Other local users can read a process's arguments, so the password never
+appears in one: `notarytool store-credentials` reads it from standard input
+into a throwaway keychain in a private temporary directory, and the
+submissions name that keychain's profile. The keychain is deleted when the
+script exits. `--distribution` also refuses a working tree that differs
+from HEAD, untracked files included, because the Source folder archives
+HEAD and must correspond to the binaries.
+
 ## Checks in both modes
 
 - Every Mach-O file is arm64 only, reports a minimum macOS no newer than

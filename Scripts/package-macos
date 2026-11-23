@@ -8,7 +8,8 @@
 # build. --distribution signs nested code inside out with a Developer ID Application identity
 # from the keychain, the hardened runtime and a secure timestamp, then notarizes and staples the
 # app and the DMG. It reads NOTARY_APPLE_ID, NOTARY_PASSWORD and NOTARY_TEAM_ID from the environment and
-# SCADRETTO_DEVELOPER_ID to choose among several identities.
+# SCADRETTO_DEVELOPER_ID to choose among several identities. It packages only a working tree that
+# equals HEAD, because the image's Source folder archives HEAD.
 #
 # Both modes check every Mach-O file for its architecture, minimum macOS, library paths and
 # run paths, compare the bundled example with Tests/Fixtures/mounting-plate.scad, run the
@@ -21,6 +22,7 @@ usage() {
   echo '       Scripts/package-macos --distribution --version X.Y.Z --build N --output PATH.dmg'
 }
 fail() { echo "error: $*" >&2; exit 1; }
+local_changes() { [[ -z $(git status --porcelain) ]] || echo ' (with local changes)'; }
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 mode='' version='' build='' output=''
@@ -39,6 +41,10 @@ while (($#)); do
 done
 [[ -n $mode ]] || { usage >&2; exit 2; }
 cd "$root"
+# The Source folder archives HEAD, so it corresponds to the binaries only when the tree equals HEAD.
+if [[ $mode == distribution && -n $(local_changes) ]]; then
+  fail 'the working tree differs from HEAD; commit or remove the changes before a distribution package.'
+fi
 [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]] || fail 'package on an Apple silicon Mac.'
 
 version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
@@ -85,7 +91,7 @@ log() { echo "$*" | tee -a "$report"; }
 : > "$report"
 log "Scadretto $version ($build), $mode package"
 log "date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-log "revision: $(git rev-parse HEAD)$(git diff --quiet HEAD || echo ' (with local changes)')"
+log "revision: $(git rev-parse HEAD)$(local_changes)"
 log "machine: $(sysctl -n hw.model), macOS $(sw_vers -productVersion) ($(sw_vers -buildVersion)), $(xcodebuild -version | head -1)"
 log "signing identity: $([[ $identity == - ]] && echo 'ad hoc' || echo "$identity")"
 
@@ -183,17 +189,37 @@ else
 fi
 ((problems == 0)) || fail "$problems packaging problems; see $report"
 
+# Other local users can read a process's arguments, so notarytool takes the app-specific
+# password from a throwaway keychain: store-credentials reads it from standard input. The
+# keychain's own password does appear in arguments, so its file stays in a private directory.
+notary=()
+store_notary_credentials() {
+  local password
+  notary_dir=$(mktemp -d)
+  notary_keychain="$notary_dir/notary.keychain-db"
+  notary=(--keychain-profile scadretto-notary --keychain "$notary_keychain")
+  password=$(uuidgen)
+  trap 'security delete-keychain "$notary_keychain" 2> /dev/null || true; rm -rf "$notary_dir"' EXIT
+  security create-keychain -p "$password" "$notary_keychain" || fail 'could not create the notarization keychain.'
+  # No automatic locking, which would stop a long notarization wait from reading the profile.
+  security set-keychain-settings "$notary_keychain" || fail 'could not configure the notarization keychain.'
+  security unlock-keychain -p "$password" "$notary_keychain" || fail 'could not unlock the notarization keychain.'
+  printf '%s\n' "$NOTARY_PASSWORD" | xcrun notarytool store-credentials scadretto-notary \
+    --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" --no-validate --keychain "$notary_keychain" \
+    > "$work/notary-credentials.log" 2>&1 \
+    || fail "notarytool could not store the credentials; see $work/notary-credentials.log"
+}
+
 notarize() { # file
   local result status id
   result="$work/notary-$(basename "$1").json"
-  xcrun notarytool submit "$1" --apple-id "$NOTARY_APPLE_ID" --password "$NOTARY_PASSWORD" \
-    --team-id "$NOTARY_TEAM_ID" --wait --output-format json > "$result" \
+  xcrun notarytool submit "$1" "${notary[@]}" --wait --output-format json > "$result" \
     || fail "notarytool could not submit $(basename "$1"); see $result"
   status=$(/usr/bin/plutil -extract status raw -o - "$result" 2>/dev/null || true)
   if [[ $status != Accepted ]]; then
     id=$(/usr/bin/plutil -extract id raw -o - "$result" 2>/dev/null || true)
-    [[ -z $id ]] || xcrun notarytool log "$id" --apple-id "$NOTARY_APPLE_ID" --password "$NOTARY_PASSWORD" \
-      --team-id "$NOTARY_TEAM_ID" "$work/notary-log-$(basename "$1").json" > /dev/null || true
+    [[ -z $id ]] || xcrun notarytool log "$id" "${notary[@]}" \
+      "$work/notary-log-$(basename "$1").json" > /dev/null || true
     fail "notarization of $(basename "$1") returned \"$status\"; see $work"
   fi
 }
@@ -201,9 +227,10 @@ notarize() { # file
 # Staple the app itself as well as the image, so a copy installed from the image passes
 # Gatekeeper offline.
 if [[ $mode == distribution ]]; then
-  ditto -c -k --keepParent "$app" "$work/Scadretto.zip"
+  store_notary_credentials
+  ditto -c -k --keepParent "$app" "$work/Scadretto.zip" || fail 'could not compress the app for notarization.'
   notarize "$work/Scadretto.zip"
-  xcrun stapler staple "$app" > /dev/null
+  xcrun stapler staple "$app" > /dev/null || fail 'could not staple the app.'
   codesign --verify --strict --deep "$app" || fail 'the stapled app fails codesign --verify'
   spctl --assess --type execute "$app" || fail 'Gatekeeper rejects the notarized app'
   log "app notarization: accepted and stapled"
@@ -257,12 +284,13 @@ cp "$notices/README.txt" "$work/stage/Third-Party Notices.txt"
 ln -s /Applications "$work/stage/Applications"
 
 rm -f "$output"
-hdiutil create -volname Scadretto -srcfolder "$work/stage" -fs HFS+ -format UDZO -ov "$output" > "$work/hdiutil.log"
+hdiutil create -volname Scadretto -srcfolder "$work/stage" -fs HFS+ -format UDZO -ov "$output" \
+  > "$work/hdiutil.log" 2>&1 || fail "the image build failed; see $work/hdiutil.log"
 if [[ $mode == distribution ]]; then
   codesign --force --timestamp --sign "$identity" "$output"
   notarize "$output"
-  xcrun stapler staple "$output" > /dev/null
-  xcrun stapler validate "$output" > /dev/null
+  xcrun stapler staple "$output" > /dev/null || fail 'could not staple the image.'
+  xcrun stapler validate "$output" > /dev/null || fail 'the stapled image fails stapler validate.'
   spctl --assess --type open --context context:primary-signature "$output" \
     || fail 'Gatekeeper rejects the notarized image'
   log "image notarization: accepted and stapled"

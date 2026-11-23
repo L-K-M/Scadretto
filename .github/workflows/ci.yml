@@ -31,6 +31,21 @@ jobs:
           Scripts/release.sh --help
           Scripts/verify --help
           Scripts/package-macos --help
+          # The image's Source folder archives HEAD, so a distribution package must refuse a
+          # working tree that differs from it.
+          touch package-check-untracked
+          if Scripts/package-macos --distribution --version 1.2.3 --build 1 \
+               --output "$RUNNER_TEMP/check.dmg" > "$RUNNER_TEMP/modified-tree" 2>&1; then
+            echo 'Packaged a distribution build from a modified tree.' >&2
+            exit 1
+          fi
+          rm package-check-untracked
+          grep -F 'the working tree differs from HEAD' "$RUNNER_TEMP/modified-tree"
+          # Other local users can read command lines, so notarytool reads its password from a keychain.
+          if grep -n -e '--password' Scripts/package-macos; then
+            echo 'Scripts/package-macos passes a password on a command line.' >&2
+            exit 1
+          fi
           if Scripts/release.sh --preflight 01.2.3 > "$RUNNER_TEMP/invalid-version" 2>&1; then
             echo 'Accepted a malformed version.' >&2
             exit 1
