@@ -308,14 +308,27 @@ public final class ViewportView: MTKView {
         presentationRetries = 0
     }
 
+    /// An on-demand frame can be skipped or fail to acquire a drawable, and the window server
+    /// drops the frames of a window it is still recomposing, for example for a few hundred
+    /// milliseconds after another window closes over it. Retry quickly first, then back off to
+    /// one frame a second, for about twelve seconds in all.
+    private static let quickPresentationRetries = 5
+    private static let maximumPresentationRetries = 20
+
+    private static func presentationRetryDelay(after retries: Int) -> Duration {
+        let quickDelay = 40
+        guard retries >= quickPresentationRetries else { return .milliseconds(quickDelay) }
+        let doublings = min(retries - quickPresentationRetries + 1, 5)
+        return .milliseconds(min(quickDelay << doublings, 1_000))
+    }
+
     private func retryUnconfirmedFrame() {
-        // An on-demand frame can be skipped or fail to acquire a drawable.
-        // Give a visible window a bounded chance to present the new mapping.
-        guard presentationRetryTask == nil, !presentationIsCurrent, !isSceneStale,
-              sceneID != nil, window?.isVisible == true, presentationRetries < 5 else { return }
+        guard presentationRetryTask == nil, !presentationIsCurrent, !isSceneStale, sceneID != nil,
+              window?.isVisible == true, presentationRetries < Self.maximumPresentationRetries else { return }
         let mapping = self.mapping
+        let delay = Self.presentationRetryDelay(after: presentationRetries)
         presentationRetryTask = Task { @MainActor [weak self] in
-            do { try await Task.sleep(for: .milliseconds(40)) }
+            do { try await Task.sleep(for: delay) }
             catch { return }
             guard let self, self.mapping == mapping else { return }
             presentationRetryTask = nil
