@@ -112,6 +112,8 @@ def main():
                       ("prepare", "Mesh and BVH preparation"), ("present", "Acceptance to presentation")]:
         out.append(row(name, [item[key] for item in measured]))
     out.append(row("Peak worker memory", [item["peak"] for item in measured], unit="MB"))
+    out.append("\nPeak worker memory is the largest footprint sampled every 50 ms while the worker runs; "
+               "an evaluation that ends sooner reports only its first sample.")
     out.append(f"\nStale accepted results: {stale_acceptances(commits)}")
 
     for name, title in [("orbit-plate", "Orbit and handle drag, plate"), ("orbit-stress", "Orbit, hundred-cutter plate")]:

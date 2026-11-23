@@ -291,14 +291,15 @@ final class ScadrettoUITests: XCTestCase {
             while Date().timeIntervalSince(started) < 20 {
                 let from = viewport.coordinate(withNormalizedOffset: CGVector(dx: forward ? 0.3 : 0.7, dy: 0.5))
                 let to = viewport.coordinate(withNormalizedOffset: CGVector(dx: forward ? 0.7 : 0.3, dy: 0.55))
-                from.press(forDuration: 0.05, thenDragTo: to, withVelocity: 150, thenHoldForDuration: 0)
+                // A mouse drag, as in testViewportNavigationFromMenuAndMouse; press(...) drew no frames.
+                from.click(forDuration: 0.05, thenDragTo: to, withVelocity: 150, thenHoldForDuration: 0)
                 forward.toggle()
             }
             if name == "orbit-plate" {
                 choose("Frame Model", from: "View", in: app)
                 try selectThirdBore(in: viewport, app: app)
                 let (grip, outward) = diameterDragCoordinates(in: viewport)
-                grip.press(forDuration: 0.2, thenDragTo: outward, withVelocity: 20, thenHoldForDuration: 0.2)
+                grip.click(forDuration: 0.2, thenDragTo: outward, withVelocity: 20, thenHoldForDuration: 0.2)
                 waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 30)
             }
             app.terminate()
