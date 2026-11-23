@@ -215,10 +215,7 @@ final class ScadrettoUITests: XCTestCase {
         editor.typeText("cube(2);\n")
         waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
         editor.typeKey("s", modifierFlags: .command)
-        let saved = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            (try? Data(contentsOf: url)) == Data("cube(2);\n".utf8)
-        }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 5), .completed, "Save did not write the new text")
+        waitForFile(url, toEqual: Data("cube(2);\n".utf8), timeout: 5)
     }
 
     @MainActor
