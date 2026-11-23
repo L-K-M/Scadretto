@@ -19,6 +19,8 @@ final class PreviewWorkspace {
     private var ghostIDs: [UInt32] = []
     private(set) var ghostOmitted = 0
     private var candidateHit: SIMD3<Double>?
+    private var announcedState: SceneState?
+    private var evaluatingAnnouncement: Task<Void, Never>?
     var onSelection: ((UInt32?, SIMD3<Double>?) -> Void)?
     var onPresentationChange: (() -> Void)?
 
@@ -98,14 +100,35 @@ final class PreviewWorkspace {
         }
     }
 
+    /// What VoiceOver last heard about the scene. Evaluations that end the way the last one did
+    /// stay quiet, so typing does not repeat "Preview ready".
+    private enum SceneState: Equatable {
+        case evaluating
+        case ready
+        case canceled
+        case failed(String)
+    }
+
+    /// Seconds an evaluation runs before VoiceOver hears that it is still evaluating.
+    private static let evaluatingAnnouncementDelay = 1.5
+
     func update(_ phase: DocumentPreview.Phase) {
+        evaluatingAnnouncement?.cancel()
+        evaluatingAnnouncement = nil
         switch phase {
         case .evaluating:
             setPending("Evaluating…")
+            evaluatingAnnouncement = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(Self.evaluatingAnnouncementDelay))
+                guard !Task.isCancelled else { return }
+                self?.announce(.evaluating, "Evaluating", priority: .low)
+            }
         case .cancelled:
             setPending("Preview canceled")
+            announce(.canceled, "Preview canceled")
         case .failure(let reason):
             setPending(reason)
+            announce(.failed(reason), status.stringValue, priority: .high)
         case .outcome(let outcome, let geometry):
             let result = outcome.result
             sidebar.show(result: result, instances: result.scene?.instances ?? [],
@@ -130,6 +153,7 @@ final class PreviewWorkspace {
                 viewport?.setAccessibilityHelp(mesh.map {
                     "Model bounds \($0.bounds.min) to \($0.bounds.max)."
                 } ?? "This evaluation has no solid geometry.")
+                announce(.ready, label)
             case .modelError, .unsupportedDimension:
                 self.result = nil
                 self.geometry = nil
@@ -139,6 +163,7 @@ final class PreviewWorkspace {
                 viewport?.setSceneStale(hasGeometry)
                 let reason = result.diagnostics.first { $0.severity == .error }?.message ?? "Evaluation failed"
                 displayStatus(hasGeometry ? "Preview out of date · \(reason)" : reason)
+                announce(.failed(reason), status.stringValue, priority: .high)
             }
         }
     }
@@ -162,10 +187,13 @@ final class PreviewWorkspace {
         notice.stringValue = text ?? ""
         notice.toolTip = text
         notice.isHidden = text == nil
-        guard let text else { return }
-        NSAccessibility.post(element: notice, notification: .announcementRequested, userInfo: [
-            .announcement: text, .priority: NSAccessibilityPriorityLevel.medium.rawValue,
-        ])
+        if let text { Announcements.post(text) }
+    }
+
+    private func announce(_ state: SceneState, _ text: String, priority: NSAccessibilityPriorityLevel = .medium) {
+        guard state != announcedState else { return }
+        announcedState = state
+        Announcements.post(text, priority: priority)
     }
 
     private func displayStatus(_ text: String) {

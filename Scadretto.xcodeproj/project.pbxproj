@@ -14,6 +14,7 @@
 		32D73B9311C1D37730EB5275 /* DocumentPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD1D8381C8A94C94D1C70DA /* DocumentPreview.swift */; };
 		40F9B0835DA56AE1C81ADCD3 /* ScadrettoDocumentBase.m in Sources */ = {isa = PBXBuildFile; fileRef = CC7169339397A5290B227212 /* ScadrettoDocumentBase.m */; };
 		594490A8A19C799244DC8A38 /* mounting-plate.scad in Resources */ = {isa = PBXBuildFile; fileRef = 2582FD20D9A8E8BE2F83FA23 /* mounting-plate.scad */; };
+		A11A0C0D3B24F0E9A6C1F011 /* Announcements.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0C0D3B24F0E9A6C1F012 /* Announcements.swift */; };
 		610C5A67DCDCC16EDF58A097 /* PreviewWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0423D8B38A0739716E934E2 /* PreviewWorkspace.swift */; };
 		69926DA9DECD33CC429B2E09 /* ScadrettoCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0D6AEED0CB0DC0C3D2A11CFC /* ScadrettoCore */; };
 		7510EDA39840F4E6811C4D6B /* SourceWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F3D6412F155EB359337E727 /* SourceWindowController.swift */; };
@@ -51,6 +52,7 @@
 		A6B1DF3941CE369D6617228D /* warning-only.scad */ = {isa = PBXFileReference; path = "warning-only.scad"; sourceTree = "<group>"; };
 		A95057B6AF7BE264494E7378 /* ScadrettoKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ScadrettoKit; path = Packages/ScadrettoKit; sourceTree = SOURCE_ROOT; };
 		CC7169339397A5290B227212 /* ScadrettoDocumentBase.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ScadrettoDocumentBase.m; sourceTree = "<group>"; };
+		A11A0C0D3B24F0E9A6C1F012 /* Announcements.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Announcements.swift; sourceTree = "<group>"; };
 		E0423D8B38A0739716E934E2 /* PreviewWorkspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewWorkspace.swift; sourceTree = "<group>"; };
 		E8E477BFBAF95B1641A1F784 /* editor-bom-crlf.scad */ = {isa = PBXFileReference; path = "editor-bom-crlf.scad"; sourceTree = "<group>"; };
 		EC5FDCF42FE991552F3F3E1B /* ScadrettoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScadrettoUITests.swift; sourceTree = "<group>"; };
@@ -87,6 +89,7 @@
 			children = (
 				4FD1D8381C8A94C94D1C70DA /* DocumentPreview.swift */,
 				23C51F6E26F6727B3C11B381 /* PreviewSidebar.swift */,
+				A11A0C0D3B24F0E9A6C1F012 /* Announcements.swift */,
 				E0423D8B38A0739716E934E2 /* PreviewWorkspace.swift */,
 				73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */,
 				6BB55BAD86B153C539296444 /* ScadrettoDocument.swift */,
@@ -268,6 +271,7 @@
 			files = (
 				32D73B9311C1D37730EB5275 /* DocumentPreview.swift in Sources */,
 				7EAB47C9A57EFFD93EF1D081 /* PreviewSidebar.swift in Sources */,
+				A11A0C0D3B24F0E9A6C1F011 /* Announcements.swift in Sources */,
 				610C5A67DCDCC16EDF58A097 /* PreviewWorkspace.swift in Sources */,
 				B3BAEE938B3DE7BEAC1FB1EE /* ScadrettoApp.swift in Sources */,
 				F6C1EB529D983B5238B37644 /* ScadrettoDocument.swift in Sources */,

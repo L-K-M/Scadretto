@@ -691,6 +691,60 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
+    func testVoiceOverHearsSceneSelectionAndEditChanges() throws {
+        let directory = try makeDirectory()
+        let log = directory.appending(path: "announcements.txt")
+        let app = launch(arguments: ["-ScadrettoAnnouncementLog", log.path])
+        defer { app.terminate() }
+        let url = directory.appending(path: "Spoken.scad")
+        let text = "cylinder(h = 4, d = 6, $fn = 32);\n"
+        try Data(text.utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("Preview ready", in: status, timeout: 15)
+        waitForAnnouncement("Preview ready", in: log)
+
+        // The selection summary is announced and stays readable on the inspector.
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let field = app.textFields["diameterField"].firstMatch
+        waitUntilEnabled(field)
+        let inspector = app.descendants(matching: .any)["inspector"].firstMatch
+        let summary = inspector.value as? String ?? ""
+        XCTAssertTrue(summary.contains("cylinder, Diameter 6, "), "Summary: \(summary)")
+        waitForAnnouncement(summary, in: log)
+
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("8\n")
+        waitForText("d = 8", in: editor)
+        waitForAnnouncement("Diameter changed from 6 to 8, ", in: log)
+
+        // A failure is announced once, and so is the recovery; evaluations between them that end
+        // the same way stay quiet.
+        editor.click()
+        editor.typeKey(.downArrow, modifierFlags: .command)
+        editor.typeText("cube(")
+        waitForText("Preview out of date", in: status, timeout: 15)
+        waitForAnnouncement("Preview out of date", in: log)
+        editor.typeKey(.delete, modifierFlags: [])
+        editor.typeKey(.delete, modifierFlags: [])
+        editor.typeKey(.delete, modifierFlags: [])
+        editor.typeKey(.delete, modifierFlags: [])
+        editor.typeKey(.delete, modifierFlags: [])
+        waitForText("Preview ready", in: status, timeout: 15)
+        let spoken = announcements(in: log)
+        let failure = try XCTUnwrap(spoken.lastIndex { $0.hasPrefix("Preview out of date") })
+        XCTAssertEqual(spoken.filter { $0.hasPrefix("Preview out of date") }.count, 1, "\(spoken)")
+        waitForAnnouncement("Preview ready", in: log, after: failure)
+        let heard = XCTAttachment(string: announcements(in: log).joined(separator: "\n"))
+        heard.name = "Announcements"
+        heard.lifetime = .keepAlways
+        add(heard)
+    }
+
+    @MainActor
     func testNativeUndoRedoAndIndependentDocuments() throws {
         let app = launch()
         defer { app.terminate() }
@@ -1259,6 +1313,21 @@ final class ScadrettoUITests: XCTestCase {
         editor.typeKey(.leftArrow, modifierFlags: [])
         editor.typeKey(.leftArrow, modifierFlags: .shift)
         editor.typeText(text)
+    }
+
+    private func announcements(in log: URL) -> [String] {
+        ((try? String(contentsOf: log, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+    }
+
+    @MainActor
+    private func waitForAnnouncement(_ prefix: String, in log: URL, after index: Int = -1,
+                                     file: StaticString = #filePath, line: UInt = #line) {
+        let spoken = XCTNSPredicateExpectation(predicate: NSPredicate { [self] _, _ in
+            announcements(in: log).enumerated().contains { $0.offset > index && $0.element.hasPrefix(prefix) }
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [spoken], timeout: 8), .completed,
+                       "Expected an announcement starting “\(prefix)”, heard \(announcements(in: log))",
+                       file: file, line: line)
     }
 
     @MainActor

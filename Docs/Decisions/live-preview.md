@@ -46,6 +46,19 @@ through the dependency watch. `testUnsavedDependencyEditsAreLabeledUntilSaved`
 checks the label, the unchanged parent preview while the part is unsaved,
 and the new geometry after Save.
 
+VoiceOver hears scene changes, the selection and committed edits as
+announcements. A failure is announced at high priority with the status text,
+and the next successful evaluation is announced once. Evaluations that end
+the way the last one did stay quiet, so typing does not repeat "Preview
+ready". An evaluation that runs longer than 1.5 seconds is announced as
+evaluating at low priority. The inspector exposes its breadcrumb, property,
+value and scope as one summary, which is announced when the selection or
+property changes. A committed edit is announced with its old and new values
+and its scope, which carries the affected count. The hidden launch default
+`ScadrettoAnnouncementLog` writes each announcement to a file, and
+`testVoiceOverHearsSceneSelectionAndEditChanges` checks that sequence. Speech
+itself and VoiceOver navigation still need the manual check on a real Mac.
+
 ## Verification
 
 The local run used a Mac16,9 with Apple M4 Max and 36 GiB RAM, macOS

@@ -33,6 +33,9 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         let instanceID: UInt32
         let choiceID: String
         let label: String
+        /// The property and how far the edit reaches, which VoiceOver hears once it commits.
+        let property: String
+        let scope: String
         let operation: PlannedPropertyEdit
         let handle: ViewportEditHandle?
     }
@@ -671,7 +674,8 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
                 handle = workspace.geometry.flatMap { makeHandle(for: choice, selection: selection, geometry: $0) }
             }
             activeEdit = ActiveEdit(requestID: result.requestID, key: result.key, instanceID: selection.instanceID,
-                                    choiceID: choice.id, label: choice.label, operation: plan.operation, handle: handle)
+                                    choiceID: choice.id, label: choice.label, property: choice.title, scope: plan.scope,
+                                    operation: plan.operation, handle: handle)
             var guidesTruncated = false
             switch handle {
             case .diameter(let radial):
@@ -818,6 +822,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
                        selection: NSRange(location: editedRange.location, length: newToken.utf16.count))
             sourceChange = "Source change · \(oldToken) → \(newToken)"
             inspector.showMessage(sourceChange ?? "")
+            Announcements.post("\(active.property) changed from \(oldToken) to \(newToken), \(active.scope)")
         } catch {
             inspector.showMessage(propertyMessage(for: error))
         }
