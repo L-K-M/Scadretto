@@ -34,6 +34,17 @@ vertices to float. The renderer uses a precompiled app metallib. The engine
 process, payload decoder and mesh preparation run off the main actor. The
 document window updates the console, outline and viewport from one accepted
 request. It preserves the camera when a newer mesh or an empty model arrives.
+A window covered by another one presents no frame. Its viewport draws again
+when the window shows, so a scene that arrived while it was covered is
+presented then.
+
+An included or used file opens as its own document. The worker reads such
+files from disk, so a parent's preview shows the saved state of a
+dependency open in another window. The parent's status row names those
+files until their text is written, and saving one re-evaluates the parent
+through the dependency watch. `testUnsavedDependencyEditsAreLabeledUntilSaved`
+checks the label, the unchanged parent preview while the part is unsaved,
+and the new geometry after Save.
 
 ## Verification
 
