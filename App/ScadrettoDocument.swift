@@ -11,6 +11,8 @@ private struct DocumentIO: Sendable {
     var disk = DiskBaseline(acknowledged: nil)
     /// Where another program moved the file, until the user accepts or declines it.
     var movedTo: URL?
+    /// Another program's coordinated write is under way.
+    var otherWriter = false
     var writing: Data?
     var written: Data?
 }
@@ -51,10 +53,20 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     private var propertyChoices: [PropertyChoice] = []
     private var propertyChoiceID: String?
     private var saving = false
+    /// An autosave held back by composition or a pending conflict, to retry once it clears.
+    private var autosaveDeferred = false
     /// A disk check waits for a running save or text composition to finish.
     private var diskCheckPending = false
     private var diskWindows: [NSWindowController] = []
     private var activation: (any NSObjectProtocol)?
+    /// The source's undo history. NSDocument does not see it: when one of its own undo groups
+    /// closes, NSDocument waits on the main thread for any running save or close, which hung
+    /// closing with autosave in place. Changes reach AppKit through `updateChangeCount`.
+    private lazy var history: UndoManager = {
+        let history = UndoManager()
+        history.groupsByEvent = false
+        return history
+    }()
 
     // AppKit constructs documents on its reading queue when concurrent
     // reads are enabled. The editable source model is created lazily on main.
@@ -62,7 +74,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         super.init()
     }
 
-    override class var autosavesInPlace: Bool { false }
+    override class var autosavesInPlace: Bool { true }
     override class var autosavesDrafts: Bool { false }
     override class func canConcurrentlyReadDocuments(ofType typeName: String) -> Bool { true }
 
@@ -91,9 +103,25 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         Task { @MainActor [weak self] in await self?.checkDisk() }
     }
 
+    // AppKit's own handling reverts an autosaving document it believes has no unsaved changes,
+    // which loses text typed while another writer held the file. The disk check compares bytes.
     override nonisolated func presentedItemDidChange() {
-        super.presentedItemDidChange()
         Task { @MainActor [weak self] in await self?.checkDisk() }
+    }
+
+    // While another program's coordinated write is under way, an autosave would wait for it and
+    // then meet AppKit's date check instead of the disk check, so autosave waits for it to end.
+    override nonisolated func relinquishPresentedItem(
+        toWriter writer: @escaping @Sendable ((@Sendable () -> Void)?) -> Void
+    ) {
+        io.withLock { $0.otherWriter = true }
+        super.relinquishPresentedItem(toWriter: { reacquirer in
+            writer { [weak self] in
+                self?.io.withLock { $0.otherWriter = false }
+                reacquirer?()
+                Task { @MainActor [weak self] in await self?.checkDisk() }
+            }
+        })
     }
 
     // A coordinated replacement announces a deletion before its change, so look once it settles
@@ -108,7 +136,6 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
 
     override func makeWindowControllers() {
         adoptRead()
-        undoManager?.groupsByEvent = false
         let controller = SourceWindowController(document: self)
         addWindowController(controller)
         editor = controller
@@ -127,8 +154,9 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         controller.previewWorkspace.onPresentationChange = { [weak self] in self?.refreshInspector() }
         controller.onSyntaxReady = { [weak self] in self?.refreshInspector() }
         controller.onCompositionFinished = { [weak self] in
-            guard let self, diskCheckPending else { return }
-            Task { await self.checkDisk() }
+            guard let self else { return }
+            if diskCheckPending { Task { await self.checkDisk() } }
+            resumeDeferredAutosave()
         }
         // A plain delete sends no presenter notice; look again whenever the app comes forward.
         activation = NotificationCenter.default.addObserver(
@@ -150,6 +178,16 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         source.isEdited || io.withLock { $0.disk.conflict != nil }
     }
 
+    // AppKit decides from this whether closing or quitting needs an autosave. Marked text is not
+    // committed yet, and comparing the text with the file covers any change count it missed.
+    override var hasUnautosavedChanges: Bool {
+        super.hasUnautosavedChanges || editor?.isComposing == true || hasUnwrittenText
+    }
+
+    private var hasUnwrittenText: Bool {
+        fileURL != nil && io.withLock { $0.committed != $0.disk.acknowledged }
+    }
+
     override func revert(toContentsOf url: URL, ofType typeName: String) throws {
         editor?.finishComposition()
         endTypingGroup()
@@ -167,15 +205,22 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         for saveOperation: NSDocument.SaveOperationType
     ) throws {
         let state = io.withLock { $0 }
-        if saveOperation == .saveOperation {
+        if saveOperation == .saveOperation || saveOperation == .autosaveInPlaceOperation {
             guard state.disk.allowsWrite(over: try Self.readDisk(at: url)) else {
-                throw DocumentSaveError.changedOnDisk
+                guard saveOperation == .autosaveInPlaceOperation else { throw DocumentSaveError.changedOnDisk }
+                // AppKit would report a failed autosave on its own. Cancel quietly and show the
+                // change instead, even when it was already known and dismissed.
+                Task { @MainActor [weak self] in
+                    await self?.checkDisk()
+                    self?.presentPendingConflict()
+                }
+                throw CocoaError(.userCancelled)
             }
         }
         io.withLock { $0.writing = state.committed }
         defer { io.withLock { $0.writing = nil } }
         try super.writeSafely(to: url, ofType: typeName, for: saveOperation)
-        if saveOperation == .saveOperation || saveOperation == .saveAsOperation {
+        if Self.writesDocumentFile(saveOperation) {
             io.withLock { $0.written = state.committed }
         }
     }
@@ -192,8 +237,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         saving = true
         super.save(to: url, ofType: typeName, for: saveOperation) { [weak self] error in
             self?.saving = false
-            if error == nil, let self,
-               saveOperation == .saveOperation || saveOperation == .saveAsOperation {
+            if error == nil, let self, Self.writesDocumentFile(saveOperation) {
                 let written = self.io.withLock { state in
                     let written = state.written
                     state.written = nil
@@ -203,7 +247,9 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
                     }
                     return written
                 }
-                if written == snapshot.buffer.bytes {
+                // An autosave moves the disk baseline but not the last explicit save, so the
+                // window stays edited until Save, as in other autosaving document apps.
+                if written == snapshot.buffer.bytes, saveOperation != .autosaveInPlaceOperation {
                     self.source.acknowledgeSaved(snapshot)
                     self.editor?.window?.isDocumentEdited = self.isDocumentEdited
                 }
@@ -213,7 +259,117 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             }
             if let self, self.diskCheckPending { Task { await self.checkDisk() } }
             completionHandler(error)
+            // An autosave held back by this save runs once AppKit has finished it.
+            Task { @MainActor [weak self] in self?.resumeDeferredAutosave() }
         }
+    }
+
+    /// Save, Save As and autosave in place write the document's own file and move its baseline.
+    private nonisolated static func writesDocumentFile(_ operation: NSDocument.SaveOperationType) -> Bool {
+        operation == .saveOperation || operation == .saveAsOperation || operation == .autosaveInPlaceOperation
+    }
+
+    // Marked text belongs to the composing view until it is committed, and a pending external
+    // change needs the user's decision before anything is written over it. AppKit's own autosave
+    // compares modification dates and offers a Revert that discards the local text, so the path
+    // is checked first. The read is not coordinated because AppKit's close and quit sequences
+    // crashed or hung when this method finished later; `writeSafely` checks the bytes again
+    // inside the coordinated write.
+    override func autosave(withImplicitCancellability autosavingIsImplicitlyCancellable: Bool,
+                           completionHandler: @escaping (Error?) -> Void) {
+        // Closing and quitting ask for an autosave that cannot be put off, and finish any
+        // composition first. This autosave replaces any that was held back, so the disk check
+        // below does not start another.
+        let unavoidable = !autosavingIsImplicitlyCancellable
+        autosaveDeferred = false
+        if unavoidable { editor?.finishComposition() }
+        guard let url = fileURL else {
+            // An untitled document autosaves elsewhere; there is no file of its own to protect.
+            super.autosave(withImplicitCancellability: autosavingIsImplicitlyCancellable,
+                           completionHandler: completionHandler)
+            return
+        }
+        // A save in flight may have written bytes the baseline has not adopted yet, which a check
+        // now would take for another program's change. The disk check waits for it the same way.
+        let otherWriter = io.withLock { $0.otherWriter }
+        if !otherWriter, !saving, editor?.isComposing != true, io.withLock({ $0.disk.conflict == nil }),
+           let disk = try? Self.readDisk(at: url) {
+            applyDisk(disk, at: url, presenting: !unavoidable)
+        }
+        let conflict = io.withLock { $0.disk.conflict }
+        if !hasUnwrittenText, editor?.isComposing != true {
+            // Nothing to write: an undo back to the bytes last written, or text that matches them
+            // again while a change is pending. Neither holds up closing or quitting.
+            updateChangeCount(.changeAutosaved)
+            completionHandler(nil)
+            return
+        }
+        if unavoidable, let conflict, hasUnwrittenText {
+            // AppKit's quit sequence expects an answer before it continues.
+            autosaveDeferred = true
+            let choice = unsavedTextAlert(for: conflict).runModal()
+            completionHandler(choice == .alertThirdButtonReturn ? nil : CocoaError(.userCancelled))
+            if choice == .alertFirstButtonReturn { saveAs(nil) }
+            return
+        }
+        if conflict != nil || otherWriter || editor?.isComposing == true || (saving && !unavoidable) {
+            autosaveDeferred = true
+            completionHandler(CocoaError(.userCancelled))
+            return
+        }
+        super.autosave(withImplicitCancellability: autosavingIsImplicitlyCancellable,
+                       completionHandler: completionHandler)
+    }
+
+    private func resumeDeferredAutosave() {
+        guard autosaveDeferred, hasUnautosavedChanges else { return }
+        autosave(withImplicitCancellability: true) { _ in }
+    }
+
+    // Composition ends through the input system before AppKit decides whether to save or close.
+    // Autosaving in place, AppKit closes without asking and would refuse quietly while an
+    // external change is pending, so closing then asks what to do with the unsaved text.
+    override func canClose(withDelegate delegate: Any, shouldClose shouldCloseSelector: Selector?,
+                           contextInfo: UnsafeMutableRawPointer?) {
+        editor?.finishComposition()
+        guard let conflict = io.withLock({ $0.disk.conflict }), hasUnwrittenText,
+              let window = editor?.window, window.attachedSheet == nil else {
+            super.canClose(withDelegate: delegate, shouldClose: shouldCloseSelector, contextInfo: contextInfo)
+            return
+        }
+        unsavedTextAlert(for: conflict).beginSheetModal(for: window) { [weak self] choice in
+            guard let self else { return }
+            answer(delegate, shouldCloseSelector, contextInfo: contextInfo,
+                   shouldClose: choice == .alertThirdButtonReturn)
+            if choice == .alertFirstButtonReturn { saveAs(nil) }
+        }
+    }
+
+    /// Asks before closing or quitting drops text that a pending external change keeps from
+    /// being written: Save As…, Cancel, or Don’t Save.
+    private func unsavedTextAlert(for conflict: DiskBaseline.Conflict) -> NSAlert {
+        let alert = NSAlert()
+        alert.messageText = "Your edits to “\(fileName)” are not saved"
+        switch conflict {
+        case .changed:
+            alert.informativeText = "Another application changed the file, so Scadretto has not written your "
+                + "edits over it. Save As keeps them in a new file."
+        case .removed:
+            alert.informativeText = "The file is no longer at its location. Save As keeps your edits in a file."
+        }
+        alert.addButton(withTitle: "Save As…")
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Don’t Save").hasDestructiveAction = true
+        return alert
+    }
+
+    /// Sends AppKit's `document:shouldClose:contextInfo:` reply to the close requester.
+    private func answer(_ delegate: Any, _ selector: Selector?, contextInfo: UnsafeMutableRawPointer?,
+                        shouldClose: Bool) {
+        guard let selector, let target = delegate as? NSObject else { return }
+        typealias ShouldClose = @convention(c) (NSObject, Selector, NSDocument, ObjCBool, UnsafeMutableRawPointer?) -> Void
+        let reply = unsafeBitCast(target.method(for: selector), to: ShouldClose.self)
+        reply(target, selector, self, ObjCBool(shouldClose), contextInfo)
     }
 
     /// Saves to the checked path. AppKit's Save would run its own move and date checks, which ask
@@ -254,22 +410,28 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             return loaded
         }) else { return }
         do {
-            try source.reload(loaded)
-            featureSelection = nil
-            activeEdit = nil
-            sourceChange = nil
-            propertyChoices = []
-            propertyChoiceID = nil
-            editor?.previewWorkspace.sidebar.inspector.show(nil)
+            try replaceSource(with: loaded)
             io.withLock {
-                $0.committed = loaded.bytes
                 $0.disk.adopt(loaded.bytes)
                 $0.movedTo = nil
             }
-            undoManager?.removeAllActions()
         } catch {
             presentError(error)
         }
+    }
+
+    /// Replaces the whole text as a new starting point: no undo history, selection or edit that
+    /// pointed into the old text survives.
+    private func replaceSource(with buffer: SourceBuffer) throws {
+        try source.reload(buffer)
+        featureSelection = nil
+        activeEdit = nil
+        sourceChange = nil
+        propertyChoices = []
+        propertyChoiceID = nil
+        editor?.previewWorkspace.sidebar.inspector.show(nil)
+        io.withLock { $0.committed = buffer.bytes }
+        history.removeAllActions()
     }
 
     func changeText(_ ranges: [NSRange], replacements: [String], coalescing: Bool) {
@@ -303,8 +465,10 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         let snapshot = source.snapshot
         io.withLock { $0.committed = snapshot.buffer.bytes }
 
-        if let manager = undoManager {
+        do {
+            let manager = history
             if !manager.isUndoing && !manager.isRedoing {
+                updateChangeCount(.changeDone)
                 if location == nil || typingEnd != location {
                     endTypingGroup()
                     manager.beginUndoGrouping()
@@ -347,8 +511,8 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         typingTimer = nil
         if typingEnd != nil {
             typingEnd = nil
-            if let undoManager, undoManager.groupingLevel > 0 {
-                undoManager.endUndoGrouping()
+            if history.groupingLevel > 0 {
+                history.endUndoGrouping()
             }
         }
     }
@@ -644,13 +808,17 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     @IBAction func undoSource(_ sender: Any?) {
         editor?.finishComposition()
         endTypingGroup()
-        undoManager?.undo()
+        guard history.canUndo else { return }
+        history.undo()
+        updateChangeCount(.changeUndone)
     }
 
     @IBAction func redoSource(_ sender: Any?) {
         editor?.finishComposition()
         endTypingGroup()
-        undoManager?.redo()
+        guard history.canRedo else { return }
+        history.redo()
+        updateChangeCount(.changeRedone)
     }
 
     override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
@@ -670,15 +838,47 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         if item.action == #selector(undoSource(_:)) {
             let typing = typingEnd != nil
             if let menu = item as? NSMenuItem {
-                menu.title = typing ? "Undo Typing" : undoManager?.undoMenuItemTitle ?? "Undo"
+                menu.title = typing ? "Undo Typing" : history.undoMenuItemTitle
             }
-            return typing || undoManager?.canUndo == true
+            return typing || history.canUndo
         }
         if item.action == #selector(redoSource(_:)) {
-            if let menu = item as? NSMenuItem { menu.title = undoManager?.redoMenuItemTitle ?? "Redo" }
-            return undoManager?.canRedo == true
+            if let menu = item as? NSMenuItem { menu.title = history.redoMenuItemTitle }
+            return history.canRedo
+        }
+        if item.action == #selector(revertToLastSaved(_:)) {
+            return fileURL != nil && (isDocumentEdited || hasUnautosavedChanges)
         }
         return super.validateUserInterfaceItem(item)
+    }
+
+    /// Autosaving in place, the file holds the latest text, so Revert to Saved puts back the text
+    /// last opened or saved and writes it through the checked Save. AppKit's own revert restores
+    /// a version it records from undo notifications, which the private history does not send,
+    /// and AppKit removes a File menu item whose action is that revert.
+    @objc func revertToLastSaved(_ sender: Any?) {
+        editor?.finishComposition()
+        guard fileURL != nil, let window = editor?.window, window.attachedSheet == nil else { return }
+        let alert = NSAlert()
+        alert.messageText = "Revert “\(fileName)” to the last saved version?"
+        alert.informativeText = "Changes since you last opened or saved it are discarded, in the file as well. "
+            + "You can’t undo this."
+        alert.addButton(withTitle: "Revert")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            do {
+                endTypingGroup()
+                try replaceSource(with: try SourceBuffer(bytes: source.savedBytes))
+                editor?.show(source.snapshot, selecting: NSRange(location: 0, length: 0))
+                editor?.window?.isDocumentEdited = isDocumentEdited
+                preview?.schedule(source.snapshot, fileURL: fileURL, immediate: true)
+                // Save looks at the path first, so an external change still gets its question.
+                save(nil)
+            } catch {
+                presentError(error)
+            }
+        }
     }
 
     override func close() {
@@ -753,6 +953,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         }
         editor?.window?.isDocumentEdited = isDocumentEdited
         if presenting, case .conflict(let raised) = reaction { present(raised) }
+        if conflict == nil { resumeDeferredAutosave() }
         return conflict
     }
 
@@ -761,6 +962,8 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         let selection = editor?.selection ?? NSRange(location: 0, length: 0)
         io.withLock { $0.pendingRead = buffer }
         adoptRead()
+        // The text now matches the file, so there is nothing for AppKit to autosave.
+        updateChangeCount(.changeCleared)
         editor?.show(source.snapshot, selecting: selection)
         preview?.schedule(source.snapshot, fileURL: fileURL, immediate: true)
     }
@@ -784,6 +987,10 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     }
 
     private var fileName: String { fileURL?.lastPathComponent ?? displayName ?? "This document" }
+
+    private func presentPendingConflict() {
+        if let conflict = io.withLock({ $0.disk.conflict }) { present(conflict) }
+    }
 
     private func present(_ conflict: DiskBaseline.Conflict) {
         guard let window = editor?.window, window.attachedSheet == nil else { return }
@@ -840,8 +1047,20 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             case .alertFirstButtonReturn:
                 saveAs(nil)
             case .alertSecondButtonReturn:
-                // The approval covers only the reviewed bytes. Another change needs a new decision.
-                guard io.withLock({ $0.disk.conflict }) == .changed(reviewed) else { return }
+                // The approval covers only the reviewed bytes. If the file changed again while
+                // the question was open, show that version once this sheet is gone; if it went
+                // back to the version last agreed with, save normally.
+                guard io.withLock({ $0.disk.conflict }) == .changed(reviewed) else {
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if io.withLock({ $0.disk.conflict }) == nil {
+                            saveCheckedDocument()
+                        } else {
+                            presentPendingConflict()
+                        }
+                    }
+                    return
+                }
                 io.withLock { $0.disk.approveOverwrite() }
                 if let url = fileURL {
                     fileModificationDate = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
