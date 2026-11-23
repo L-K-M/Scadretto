@@ -61,7 +61,8 @@ final class PreviewSettings: NSObject {
 
 /// Settings window: the ordered library folders and the preview time limit.
 @MainActor
-final class PreviewSettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
+final class PreviewSettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate,
+    NSWindowDelegate {
     private let settings: PreviewSettings
     private let table = NSTableView()
     private let remove = NSButton()
@@ -77,6 +78,7 @@ final class PreviewSettingsWindowController: NSWindowController, NSTableViewData
         window.title = "Settings"
         window.identifier = NSUserInterfaceItemIdentifier("settingsWindow")
         super.init(window: window)
+        window.delegate = self
         window.contentView = makeContent()
         window.center()
         reload()
@@ -120,6 +122,7 @@ final class PreviewSettingsWindowController: NSWindowController, NSTableViewData
         formatter.minimum = NSNumber(value: PreviewSettings.timeoutRange.lowerBound)
         formatter.maximum = NSNumber(value: PreviewSettings.timeoutRange.upperBound)
         timeoutField.formatter = formatter
+        timeoutField.cell?.sendsActionOnEndEditing = true
         timeoutField.target = self
         timeoutField.action = #selector(timeoutChanged(_:))
         timeoutField.setAccessibilityIdentifier("previewTimeoutField")
@@ -224,4 +227,7 @@ final class PreviewSettingsWindowController: NSWindowController, NSTableViewData
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) { updateButtons() }
+
+    // Ends editing so a time limit typed without Return still takes effect.
+    func windowWillClose(_ notification: Notification) { window?.makeFirstResponder(nil) }
 }

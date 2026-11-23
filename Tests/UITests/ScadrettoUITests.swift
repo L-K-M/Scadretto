@@ -197,7 +197,6 @@ final class ScadrettoUITests: XCTestCase {
         let app = launch()
         defer { app.terminate() }
         let directory = try makeDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
         let fallback = directory.appending(path: "Fallback")
         let preferred = directory.appending(path: "Preferred")
         let work = directory.appending(path: "Work")
@@ -235,11 +234,44 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
+    func testRenamingALibraryFolderInvalidatesThePreview() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let library = directory.appending(path: "Library")
+        let renamed = directory.appending(path: "Library (old)")
+        let work = directory.appending(path: "Work")
+        for folder in [library, work] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        try Data("module part() cube(2);\n".utf8).write(to: library.appending(path: "part.scad"))
+        let url = work.appending(path: "Renamed Library.scad")
+        try Data("use <part.scad>\npart();\n".utf8).write(to: url)
+
+        app.typeKey(",", modifierFlags: .command)
+        let settings = app.windows["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5), "Expected the Settings window")
+        addLibraryFolder(library, in: settings, app: app)
+        settings.buttons[XCUIIdentifierCloseWindow].click()
+
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
+
+        // The folder keeps its place in Settings under the old name, so the file no longer resolves
+        // until the folder comes back.
+        try FileManager.default.moveItem(at: library, to: renamed)
+        waitForText("Could not resolve part.scad", in: status, timeout: 15)
+        try FileManager.default.moveItem(at: renamed, to: library)
+        waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
+        XCTAssertEqual(editor.value as? String, "use <part.scad>\npart();\n")
+    }
+
+    @MainActor
     func testPreviewTimeLimitComesFromSettings() throws {
         let app = launch()
         defer { app.terminate() }
         let directory = try makeDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appending(path: "Slow.scad")
         // Millions of calls: far longer than one second, far shorter than the default limit.
         try Data("function fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2);\necho(fib(32));\ncube(1);\n".utf8)
@@ -252,8 +284,8 @@ final class ScadrettoUITests: XCTestCase {
         XCTAssertEqual(field.value as? String, "20")
         field.click()
         field.typeKey("a", modifierFlags: .command)
+        // Closing the window keeps a value typed without Return.
         field.typeText("1")
-        field.typeKey(.return, modifierFlags: [])
         settings.buttons[XCUIIdentifierCloseWindow].click()
 
         _ = open(url, in: app)
@@ -980,9 +1012,7 @@ final class ScadrettoUITests: XCTestCase {
         panel.typeKey("g", modifierFlags: [.command, .shift])
         let path = app.textFields["PathTextField"].firstMatch
         XCTAssertTrue(path.waitForExistence(timeout: 5), "Expected the Go to Folder path field")
-        path.typeKey("a", modifierFlags: .command)
-        path.typeText(folder.path)
-        path.typeKey(.return, modifierFlags: [])
+        enterPath(folder.path, into: path)
         let add = panel.buttons["Add"]
         XCTAssertTrue(add.waitForExistence(timeout: 8))
         add.click()
@@ -998,12 +1028,22 @@ final class ScadrettoUITests: XCTestCase {
         panel.typeKey("g", modifierFlags: [.command, .shift])
         let path = panel.sheets.firstMatch.textFields.firstMatch
         XCTAssertTrue(path.waitForExistence(timeout: 5), "Expected the Go to Folder path field")
-        path.typeKey("a", modifierFlags: .command)
-        path.typeText(url.path)
-        path.typeKey(.return, modifierFlags: [])
+        enterPath(url.path, into: path)
         let open = panel.buttons["Open"]
         XCTAssertTrue(open.waitForExistence(timeout: 8))
         open.click()
+    }
+
+    /// Types a path into Go to Folder and goes there. Under load the field sometimes drops a
+    /// keystroke, so the path is typed again while the field does not hold it exactly.
+    @MainActor
+    private func enterPath(_ path: String, into field: XCUIElement) {
+        for _ in 0..<3 {
+            field.typeKey("a", modifierFlags: .command)
+            field.typeText(path)
+            if field.value as? String == path { break }
+        }
+        field.typeKey(.return, modifierFlags: [])
     }
 
     @MainActor

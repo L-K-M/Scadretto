@@ -28,6 +28,19 @@ record the file at the read boundary and the parent checks its digest again.
 M5 covers coordinated replacements, provider hydration and concurrent file
 changes.
 
+Settings (Command-comma) lists the ordered library folders searched before
+`OPENSCADPATH` and `~/Documents/OpenSCAD/libraries`, and the preview time
+limit: 1 to 3,600 seconds, 20 by default. Both live in the app's defaults.
+A change re-evaluates every open document under a new dependency
+generation, because a different folder order can choose a different file
+while the source stays the same. UI tests clear both settings with the
+hidden launch default `ScadrettoResetPreviewSettings`. In
+`testLibraryFoldersReevaluateOpenDocuments` an unresolved `use` resolves
+when its folder is added, a folder moved ahead with the same file name
+wins, and removing it brings back the first file. The test file stays
+unchanged. `testPreviewTimeLimitComesFromSettings` stops a long evaluation
+at a one-second limit.
+
 The Metal renderer receives decoded double-precision positions. CPU mesh
 preparation subtracts a double-precision render origin before converting
 vertices to float. The renderer uses a precompiled app metallib. The engine
