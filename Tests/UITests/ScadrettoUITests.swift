@@ -193,6 +193,74 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
+    func testLibraryFoldersReevaluateOpenDocuments() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fallback = directory.appending(path: "Fallback")
+        let preferred = directory.appending(path: "Preferred")
+        let work = directory.appending(path: "Work")
+        for folder in [fallback, preferred, work] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        try Data("module part() cube(2);\n".utf8).write(to: fallback.appending(path: "part.scad"))
+        try Data("module part() sphere(2);\n".utf8).write(to: preferred.appending(path: "part.scad"))
+        let url = work.appending(path: "Uses Part.scad")
+        try Data("use <part.scad>\npart();\n".utf8).write(to: url)
+
+        // Nothing provides part.scad yet.
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("Could not resolve part.scad", in: status, timeout: 15)
+
+        app.typeKey(",", modifierFlags: .command)
+        let settings = app.windows["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5), "Expected the Settings window")
+        addLibraryFolder(fallback, in: settings, app: app)
+        waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
+
+        // The same name in a folder moved first wins, although the source did not change.
+        addLibraryFolder(preferred, in: settings, app: app)
+        settings.buttons["moveLibraryRootUp"].click()
+        let sphere = XCTNSPredicateExpectation(predicate: NSPredicate(
+            format: "value CONTAINS %@ AND NOT (value CONTAINS %@)", "Preview ready", "· 12 triangles"
+        ), object: status)
+        XCTAssertEqual(XCTWaiter.wait(for: [sphere], timeout: 15), .completed,
+                       "Expected the preferred sphere, got \(status.value ?? "(no value)")")
+
+        settings.buttons["removeLibraryRoot"].click()
+        waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
+        XCTAssertEqual(editor.value as? String, "use <part.scad>\npart();\n")
+    }
+
+    @MainActor
+    func testPreviewTimeLimitComesFromSettings() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Slow.scad")
+        // Millions of calls: far longer than one second, far shorter than the default limit.
+        try Data("function fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2);\necho(fib(32));\ncube(1);\n".utf8)
+            .write(to: url)
+
+        app.typeKey(",", modifierFlags: .command)
+        let settings = app.windows["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5), "Expected the Settings window")
+        let field = settings.textFields["previewTimeoutField"]
+        XCTAssertEqual(field.value as? String, "20")
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("1")
+        field.typeKey(.return, modifierFlags: [])
+        settings.buttons[XCUIIdentifierCloseWindow].click()
+
+        _ = open(url, in: app)
+        waitForText("time limit", in: app.staticTexts["renderStatus"].firstMatch, timeout: 15)
+    }
+
+    @MainActor
     func testExternalBackupRenameDoesNotRedirectSave() throws {
         try saveAfterExternalMove(refilledWith: Data("cube(2);\n".utf8))
     }
@@ -885,8 +953,10 @@ final class ScadrettoUITests: XCTestCase {
     private func launch(arguments: [String] = []) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
-        // Each test opens its own documents rather than the last test's windows.
-        app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"] + arguments
+        // Each test opens its own documents rather than the last test's windows, and starts from
+        // the default library folders and preview time limit.
+        app.launchArguments += ["-ApplePersistenceIgnoreState", "YES", "-ScadrettoResetPreviewSettings", "YES"]
+            + arguments
         // A failed assertion ends a test without running its defer blocks.
         addTeardownBlock { await MainActor.run { app.terminate() } }
         app.launch()
@@ -900,6 +970,24 @@ final class ScadrettoUITests: XCTestCase {
         let editor = sourceEditor(for: url, in: app)
         XCTAssertTrue(editor.waitForExistence(timeout: 8), "Expected the source editor for \(url.lastPathComponent)")
         return editor
+    }
+
+    @MainActor
+    private func addLibraryFolder(_ folder: URL, in settings: XCUIElement, app: XCUIApplication) {
+        settings.buttons["addLibraryRoot"].click()
+        let panel = settings.sheets.firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 10), "Expected the folder panel")
+        panel.typeKey("g", modifierFlags: [.command, .shift])
+        let path = app.textFields["PathTextField"].firstMatch
+        XCTAssertTrue(path.waitForExistence(timeout: 5), "Expected the Go to Folder path field")
+        path.typeKey("a", modifierFlags: .command)
+        path.typeText(folder.path)
+        path.typeKey(.return, modifierFlags: [])
+        let add = panel.buttons["Add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 8))
+        add.click()
+        let row = settings.staticTexts.matching(NSPredicate(format: "value == %@", folder.path)).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "Expected \(folder.lastPathComponent) in the list")
     }
 
     @MainActor
