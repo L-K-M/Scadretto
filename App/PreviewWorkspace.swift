@@ -210,6 +210,16 @@ final class PreviewWorkspace {
         }
     }
 
+    /// Drops this window's selection display when the selection moves to another window.
+    func clearSelection() {
+        candidateHit = nil
+        sidebar.showCandidates([])
+        sidebar.selectOccurrence(nil)
+        sidebar.inspector.show(nil)
+        viewport?.showDiameter(handle: nil, guides: [])
+        showGhost([])
+    }
+
     func showGhost(_ ids: [UInt32]) {
         guard ghostIDs != ids else { return }
         ghostIDs = ids

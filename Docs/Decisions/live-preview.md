@@ -59,6 +59,20 @@ and its scope, which carries the affected count. The hidden launch default
 `testVoiceOverHearsSceneSelectionAndEditChanges` checks that sequence. Speech
 itself and VoiceOver navigation still need the manual check on a real Mac.
 
+File > New Window opens another window on the same document. The windows
+share the source buffer, the transaction path, the undo history and the
+preview; each keeps its own camera and text selection. An edit made in one
+window moves the other window's text selection with the text around the
+change. The feature selection, inspector and handles live in one window at a
+time: selecting in another window clears them in the first, so no handle
+outlives a change it did not see. Composed text in one window is committed
+before another window's edit, and that edit's keystroke is dropped with a
+beep because its ranges predate the composed text. Later windows of a
+document carry a number in their title, which also tells them apart in the
+Window menu. `testTwoWindowsOfOneDocumentShareTextUndoAndSelectionSafely`
+types in both windows, undoes both steps from either window until Undo is
+disabled, moves the selection, edits a diameter and closes one window.
+
 ## Verification
 
 The local run used a Mac16,9 with Apple M4 Max and 36 GiB RAM, macOS

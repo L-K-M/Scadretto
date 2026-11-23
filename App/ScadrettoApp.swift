@@ -65,6 +65,9 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
         let open = file.addItem(withTitle: "Open…", action: #selector(NSDocumentController.openDocument(_:)),
                                 keyEquivalent: "o")
         open.target = documents
+        let window = file.addItem(withTitle: "New Window", action: #selector(ScadrettoDocument.newWindowForDocument(_:)),
+                                  keyEquivalent: "n")
+        window.keyEquivalentModifierMask = [.command, .option]
         file.addItem(.separator())
         file.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         file.addItem(withTitle: "Save", action: #selector(NSDocument.save(_:)), keyEquivalent: "s")
@@ -121,6 +124,15 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
         model.addItem(withTitle: "Reveal Selected Source", action: #selector(ScadrettoDocument.revealSelectedInstance(_:)),
                       keyEquivalent: "")
         model.addItem(withTitle: "Show Worker Log…", action: #selector(ScadrettoDocument.showWorkerLog(_:)), keyEquivalent: "")
+
+        // AppKit lists the open windows below these items.
+        let windows = addMenu("Window", to: menu)
+        windows.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windows.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        windows.addItem(.separator())
+        windows.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)),
+                        keyEquivalent: "")
+        NSApp.windowsMenu = windows
         return menu
     }
 

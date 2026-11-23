@@ -745,6 +745,92 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
+    func testTwoWindowsOfOneDocumentShareTextUndoAndSelectionSafely() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Shared.scad")
+        let text = "cylinder(h = 4, d = 6, $fn = 32);\n"
+        try Data(text.utf8).write(to: url)
+
+        _ = open(url, in: app)
+        let first = app.windows.matching(NSPredicate(format: "title == %@", "Shared.scad")).firstMatch
+        let second = app.windows.matching(NSPredicate(format: "title == %@", "Shared.scad (2)")).firstMatch
+        waitForText("Preview ready", in: first.staticTexts["renderStatus"], timeout: 15)
+        choose("New Window", from: "File", in: app)
+        XCTAssertTrue(second.waitForExistence(timeout: 5), "Expected a second window on the document")
+        let firstEditor = first.textViews["sourceEditor"]
+        let secondEditor = second.textViews["sourceEditor"]
+        XCTAssertEqual(secondEditor.value as? String, text)
+        waitForText("Preview ready", in: second.staticTexts["renderStatus"], timeout: 15)
+
+        // Typing in either window reaches the one buffer.
+        secondEditor.click()
+        secondEditor.typeKey(.upArrow, modifierFlags: .command)
+        // Single lines, so each window adds exactly one typing step to the undo history.
+        secondEditor.typeText("/* two */ ")
+        waitForText("/* two */", in: firstEditor)
+        choose("Shared.scad", from: "Window", in: app)
+        firstEditor.typeKey(.downArrow, modifierFlags: .command)
+        firstEditor.typeText("// one")
+        let both = "/* two */ " + text + "// one"
+        waitForText("// one", in: secondEditor)
+        XCTAssertEqual(firstEditor.value as? String, both)
+        XCTAssertEqual(secondEditor.value as? String, both)
+
+        // One undo stack: two undos remove both lines, in either window, and nothing is left.
+        choose("Undo Typing", from: "Edit", in: app)
+        waitForText(text, in: secondEditor)
+        choose("Shared.scad (2)", from: "Window", in: app)
+        choose("Undo Typing", from: "Edit", in: app)
+        let original = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", text), object: firstEditor)
+        XCTAssertEqual(XCTWaiter.wait(for: [original], timeout: 5), .completed, "Undo did not reach both windows")
+        XCTAssertEqual(secondEditor.value as? String, text)
+        app.menuBarItems["Edit"].click()
+        let undo = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "Undo")).firstMatch
+        XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        XCTAssertFalse(undo.isEnabled, "An undo item was registered twice")
+        app.typeKey(.escape, modifierFlags: [])
+
+        // A selection lives in one window. Selecting in the other clears it here, and an edit
+        // there leaves this window's inspector clear.
+        waitForText("Preview ready", in: second.staticTexts["renderStatus"], timeout: 15)
+        second.descendants(matching: .any)["viewport"].firstMatch
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        waitForText("cylinder", in: second.staticTexts["inspectorSelection"], timeout: 8)
+        choose("Shared.scad", from: "Window", in: app)
+        waitForText("Preview ready", in: first.staticTexts["renderStatus"], timeout: 15)
+        first.descendants(matching: .any)["viewport"].firstMatch
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let field = first.textFields["diameterField"]
+        waitUntilEnabled(field)
+        XCTAssertFalse(second.staticTexts["inspectorSelection"].exists, "The other window kept its selection")
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("8\n")
+        let edited = text.replacingOccurrences(of: "d = 6", with: "d = 8")
+        waitForText("d = 8", in: secondEditor)
+        XCTAssertEqual(firstEditor.value as? String, edited)
+        XCTAssertFalse(second.staticTexts["inspectorSelection"].exists, "The other window gained a selection")
+        choose("Undo Change Diameter", from: "Edit", in: app)
+        waitForText("d = 6", in: secondEditor)
+        XCTAssertEqual(firstEditor.value as? String, text)
+
+        // Closing one window leaves the document open in the other.
+        choose("Shared.scad (2)", from: "Window", in: app)
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(second.waitForNonExistence(timeout: 5), "The second window did not close")
+        XCTAssertTrue(firstEditor.exists, "Closing one window closed the document")
+        choose("Redo Change Diameter", from: "Edit", in: app)
+        waitForText("d = 8", in: firstEditor)
+        app.typeKey("s", modifierFlags: .command)
+        let saved = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            (try? Data(contentsOf: url)) == Data(edited.utf8)
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 5), .completed, "Save did not write the shared text")
+    }
+
+    @MainActor
     func testNativeUndoRedoAndIndependentDocuments() throws {
         let app = launch()
         defer { app.terminate() }
