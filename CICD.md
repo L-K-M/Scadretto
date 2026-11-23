@@ -60,6 +60,11 @@ nonzero if any step fails. `Scripts/verify --ui` adds the UI test plan;
 without it the summary marks GUI coverage pending. The release workflow runs
 `Scripts/verify` before signing.
 
+`Scripts/package-macos --local` builds an ad hoc signed local development
+image at `.build/package/Scadretto-local.dmg` with a report beside it. It
+needs no Apple developer account. [The distribution record](Docs/Decisions/distribution.md)
+describes its checks, the bundled licenses and the corresponding source.
+
 ## Pull requests
 
 The pinned GLM workflow reviews ready PRs from branches in this repository and
