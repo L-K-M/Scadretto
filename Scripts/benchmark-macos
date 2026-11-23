@@ -110,14 +110,17 @@ wait_for 30 app_gone || note "an instance from the UI tests is still running"
   done
   # The next launch reclaims sessions whose owner is gone.
   before=$(sessions)
+  stranded=$(jobs)
   open -a "$app" --args -ApplePersistenceIgnoreState YES
   wait_for 30 app_running || note "relaunch: app did not start"
   sleep 3
   after=$(sessions)
+  remaining=$(jobs)
   quit_app || note "relaunch: osascript failed"
   wait_for 30 app_gone || { note "relaunch: app still running"; kill -TERM "$(app_pid)" 2>/dev/null || true; }
   echo
   echo "Sessions before the next launch: $before; while it runs: $after (its own included)."
+  echo "Job directories before the next launch: $stranded; while it runs: $remaining."
 } > "$out/cleanup.txt"
 
 python3 "$root/Scripts/benchmark-report" "$out" > "$out/report.md"
