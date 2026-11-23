@@ -64,9 +64,15 @@ storage="$HOME/Library/Caches/com.lkm.Scadretto/sessions"
 worker="$app/Contents/Helpers/scadretto-engine"
 slow="$out/long-evaluation.scad"
 printf 'function fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2);\necho(fib(40));\ncube(1);\n' > "$slow"
-jobs() { find "$storage" -mindepth 2 -maxdepth 2 -name 'job-*' 2>/dev/null | wc -l | tr -d ' '; }
-workers() { pgrep -f "$worker" | wc -l | tr -d ' '; }
-app_pid() { pgrep -f "$app/Contents/MacOS/Scadretto" | head -1; }
+# The helpers print counts and never fail, so `set -e` and `pipefail` do not end the series.
+jobs() { { find "$storage" -mindepth 2 -maxdepth 2 -name 'job-*' 2>/dev/null || true; } | wc -l | tr -d ' '; }
+sessions() { { find "$storage" -mindepth 1 -maxdepth 1 -name 'session-*' 2>/dev/null || true; } | wc -l | tr -d ' '; }
+workers() { { pgrep -f "$worker" || true; } | wc -l | tr -d ' '; }
+app_pid() { { pgrep -f "$app/Contents/MacOS/Scadretto" || true; } | head -1; }
+now() { perl -MTime::HiRes=time -e 'printf "%.3f", time'; }
+note() { echo "$(date -u +%H:%M:%S) $*" >> "$out/cleanup.log"; }
+# Asks the app at this path, not whichever copy owns the bundle ID, to quit.
+quit_app() { osascript -e "tell application \"$app\" to quit" > /dev/null 2>> "$out/cleanup.log"; }
 
 wait_for() { # seconds, command...
   local limit=$1; shift
@@ -74,33 +80,37 @@ wait_for() { # seconds, command...
   return 1
 }
 
+# The UI tests' own instance must be gone before the series starts.
+wait_for 30 test -z "$(app_pid)" || note "an instance from the UI tests is still running"
 {
   echo "| Ending | Workers while evaluating | Termination latency | Workers 5 s later | Job directories 5 s later |"
   echo "|---|---|---|---|---|"
   for ending in quit TERM KILL; do
     open -a "$app" "$slow" --args -ApplePersistenceIgnoreState YES
-    wait_for 30 test -n "$(app_pid)" || { echo "| $ending | app did not start | | | |"; continue; }
+    wait_for 30 test -n "$(app_pid)" || { note "$ending: app did not start"; echo "| $ending | app did not start | | | |"; continue; }
     pid=$(app_pid)
-    wait_for 30 test "$(workers)" -gt 0 || true
+    wait_for 30 test "$(workers)" -gt 0 || note "$ending: no worker within 30 s"
     running=$(workers)
-    started=$(perl -MTime::HiRes=time -e 'printf "%.3f", time')
+    note "$ending: app $pid, $running workers, $(jobs) job directories"
+    started=$(now)
     case $ending in
-      quit) osascript -e "tell application id \"com.lkm.Scadretto\" to quit" > /dev/null ;;
+      quit) quit_app || note "quit: osascript failed" ;;
       *) kill -"$ending" "$pid" ;;
     esac
-    wait_for 30 bash -c "! kill -0 $pid 2>/dev/null" || true
-    ended=$(perl -MTime::HiRes=time -e 'printf "%.3f", time')
+    if wait_for 30 bash -c "! kill -0 $pid 2>/dev/null"; then latency="$(perl -e "printf '%.0f ms', ($(now) - $started) * 1000")"
+    else latency="still running after 30 s"; kill -KILL "$pid" 2>/dev/null || true; fi
     sleep 5
-    echo "| $ending | $running | $(perl -e "printf '%.0f ms', ($ended - $started) * 1000") | $(workers) | $(jobs) |"
+    note "$ending: ended ($latency), $(workers) workers, $(jobs) job directories"
+    echo "| $ending | $running | $latency | $(workers) | $(jobs) |"
   done
   # The next launch reclaims sessions whose owner is gone.
-  before=$(find "$storage" -mindepth 1 -maxdepth 1 -name 'session-*' 2>/dev/null | wc -l | tr -d ' ')
+  before=$(sessions)
   open -a "$app" --args -ApplePersistenceIgnoreState YES
-  wait_for 30 test -n "$(app_pid)" || true
+  wait_for 30 test -n "$(app_pid)" || note "relaunch: app did not start"
   sleep 3
-  after=$(find "$storage" -mindepth 1 -maxdepth 1 -name 'session-*' 2>/dev/null | wc -l | tr -d ' ')
-  osascript -e "tell application id \"com.lkm.Scadretto\" to quit" > /dev/null || true
-  wait_for 30 test -z "$(app_pid)" || true
+  after=$(sessions)
+  quit_app || note "relaunch: osascript failed"
+  wait_for 30 test -z "$(app_pid)" || { note "relaunch: app still running"; kill -TERM "$(app_pid)" 2>/dev/null || true; }
   echo
   echo "Sessions before the next launch: $before; while it runs: $after (its own included)."
 } > "$out/cleanup.txt"
