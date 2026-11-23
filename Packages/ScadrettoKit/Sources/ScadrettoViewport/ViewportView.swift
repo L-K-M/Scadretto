@@ -117,6 +117,7 @@ public final class ViewportView: MTKView {
     private var sequence: UInt64 = 0
     private var presentationRetries = 0
     private var presentationRetryTask: Task<Void, Never>?
+    private var occlusionObserver: (any NSObjectProtocol)?
     private var editHandle: ViewportEditHandle?
     private var diameterGuides: [ViewportDiameterGuide] = []
     private var linearGuides: [ViewportLinearGuide] = []
@@ -184,6 +185,26 @@ public final class ViewportView: MTKView {
     public override func layout() {
         super.layout()
         if !hasAutoFramed { frameAll() }
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
+        occlusionObserver = nil
+        guard let window else { return }
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.windowOcclusionDidChange() }
+        }
+    }
+
+    /// A covered window presents nothing, and the bounded retries run out while it stays
+    /// covered. Draw again once part of it shows, so a scene that arrived meanwhile is presented.
+    private func windowOcclusionDidChange() {
+        guard window?.occlusionState.contains(.visible) == true, !presentationIsCurrent else { return }
+        resetPresentationRetry()
+        needsDisplay = true
     }
 
     /// Replaces the displayed scene. `nil` clears the mesh but keeps the
