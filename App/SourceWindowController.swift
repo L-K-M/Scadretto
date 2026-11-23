@@ -169,8 +169,12 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         return NSRange(location: change.range.location + inserted, length: 0)
     }
 
+    /// Recent macOS releases lay the line-number ruler over the clip view and inset its content
+    /// rather than narrowing it, so the first visible column sits at a negative bounds origin.
+    /// Scrolling to zero would leave the start of each line under the ruler.
     private func resetSourceScroll() {
-        scroll.contentView.scroll(to: .zero)
+        let insets = scroll.contentView.contentInsets
+        scroll.contentView.scroll(to: NSPoint(x: -insets.left, y: -insets.top))
         scroll.reflectScrolledClipView(scroll.contentView)
     }
 
@@ -206,7 +210,11 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
 
     func highlightSource(_ range: NSRange) {
         guard !isComposing else { return }
-        let originalX = scroll.contentView.bounds.minX
+        let clip = scroll.contentView
+        let originalX = clip.bounds.minX
+        // Text under the ruler's inset is not visible, even though it lies inside the bounds.
+        let visibleMinX = originalX + clip.contentInsets.left
+        let visibleMaxX = clip.bounds.maxX - clip.contentInsets.right
         let tokenRect = editor.layoutManager.flatMap { layout in
             editor.textContainer.map { container in
                 let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
@@ -216,9 +224,9 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         }
         editor.setSelectedRange(range)
         editor.scrollRangeToVisible(range)
-        if let tokenRect, tokenRect.minX >= originalX, tokenRect.maxX <= originalX + scroll.contentView.bounds.width {
-            scroll.contentView.scroll(to: NSPoint(x: originalX, y: scroll.contentView.bounds.minY))
-            scroll.reflectScrolledClipView(scroll.contentView)
+        if let tokenRect, tokenRect.minX >= visibleMinX, tokenRect.maxX <= visibleMaxX {
+            clip.scroll(to: NSPoint(x: originalX, y: clip.bounds.minY))
+            scroll.reflectScrolledClipView(clip)
         }
     }
 

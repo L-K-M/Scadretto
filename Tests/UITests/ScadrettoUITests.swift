@@ -146,6 +146,26 @@ final class ScadrettoUITests: XCTestCase {
         XCTAssertNotEqual(status.value as? String, "Preview ready · 12 triangles")
     }
 
+    /// A new window shows the start of every line: no text sits under the line-number ruler.
+    @MainActor
+    func testNewWindowShowsTheStartOfLongLines() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Long Line.scad")
+        let comment = "// " + String(repeating: "a comment wider than the editor ", count: 4)
+        try Data((comment + "\ncube(1);\n").utf8).write(to: url)
+
+        _ = open(url, in: app)
+        let window = app.windows.matching(NSPredicate(format: "title BEGINSWITH %@", "Long Line")).firstMatch
+        let pane = window.scrollViews.containing(.textView, identifier: "sourceEditor").firstMatch
+        let horizontal = pane.scrollBars.firstMatch
+        XCTAssertTrue(horizontal.waitForExistence(timeout: 5), "Expected a horizontal scroller for the long line")
+        let position = (horizontal.value as? NSNumber)?.doubleValue
+        XCTAssertEqual(position ?? -1, 0, accuracy: 0.001, "The editor opened scrolled sideways")
+    }
+
     @MainActor
     func testOpenKeyboardEditSaveAndReopenPreserveBytes() throws {
         let app = launch()
