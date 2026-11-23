@@ -1,0 +1,305 @@
+#!/bin/bash
+# Package the arm64 app with its worker, notices and corresponding worker source in a DMG.
+#
+# Usage: Scripts/package-macos --local [--output PATH.dmg]
+#        Scripts/package-macos --distribution --version X.Y.Z --build N --output PATH.dmg
+#
+# --local signs ad hoc and needs no Apple developer account; the result is a local development
+# build. --distribution signs nested code inside out with a Developer ID Application identity
+# from the keychain, the hardened runtime and a secure timestamp, then notarizes and staples the
+# app and the DMG. It reads NOTARY_APPLE_ID, NOTARY_PASSWORD and NOTARY_TEAM_ID from the environment and
+# SCADRETTO_DEVELOPER_ID to choose among several identities. It packages only a working tree that
+# equals HEAD, because the image's Source folder archives HEAD.
+#
+# Both modes check every Mach-O file for its architecture, minimum macOS, library paths and
+# run paths, compare the bundled example with Tests/Fixtures/mounting-plate.scad, run the
+# worker contract checks against the packaged worker with Homebrew and /usr/local unreadable,
+# and write NAME-report.txt next to NAME.dmg.
+set -euo pipefail
+
+usage() {
+  echo 'Usage: Scripts/package-macos --local [--output PATH.dmg]'
+  echo '       Scripts/package-macos --distribution --version X.Y.Z --build N --output PATH.dmg'
+}
+fail() { echo "error: $*" >&2; exit 1; }
+local_changes() { [[ -z $(git status --porcelain) ]] || echo ' (with local changes)'; }
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+mode='' version='' build='' output=''
+while (($#)); do
+  case $1 in
+    --local) mode=local ;;
+    --distribution) mode=distribution ;;
+    --version|--build|--output)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      printf -v "${1#--}" '%s' "$2"
+      shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+  shift
+done
+[[ -n $mode ]] || { usage >&2; exit 2; }
+cd "$root"
+# The Source folder archives HEAD, so it corresponds to the binaries only when the tree equals HEAD.
+if [[ $mode == distribution && -n $(local_changes) ]]; then
+  fail 'the working tree differs from HEAD; commit or remove the changes before a distribution package.'
+fi
+[[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]] || fail 'package on an Apple silicon Mac.'
+
+version_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+if [[ $mode == distribution ]]; then
+  [[ $version =~ $version_pattern ]] || fail 'specify --version X.Y.Z.'
+  [[ $build =~ ^[1-9][0-9]*$ ]] || fail 'specify --build as a positive integer.'
+  [[ -n $output ]] || fail 'specify --output.'
+  for name in NOTARY_APPLE_ID NOTARY_PASSWORD NOTARY_TEAM_ID; do
+    [[ -n ${!name:-} ]] || fail "set $name for notarization."
+  done
+else
+  version=${version:-0.0.0}
+  build=${build:-0}
+  [[ $version =~ $version_pattern && $build =~ ^[0-9]+$ ]] || fail 'invalid --version or --build.'
+  output=${output:-$root/.build/package/Scadretto-local.dmg}
+fi
+[[ $output == *.dmg ]] || fail '--output must name a .dmg file.'
+mkdir -p "$(dirname "$output")"
+output="$(cd "$(dirname "$output")" && pwd)/$(basename "$output")"
+report="${output%.dmg}-report.txt"
+
+# shellcheck source=Engine/upstream.lock
+source Engine/upstream.lock
+deployment_target=$ENGINE_MACOS_TARGET
+upstream=".build/engine/upstream/$OPENSCAD_REVISION"
+
+if [[ $mode == distribution ]]; then
+  identity=${SCADRETTO_DEVELOPER_ID:-}
+  if [[ -z $identity ]]; then
+    identity=$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)
+  fi
+  [[ -n $identity ]] || fail 'no Developer ID Application identity in the keychain.'
+  sign=(codesign --force --timestamp --options runtime --sign "$identity")
+else
+  identity=-
+  # The hardened runtime is for notarization; an ad hoc worker keeps loading its ad hoc libraries.
+  sign=(codesign --force --sign -)
+fi
+
+work="$root/.build/package/work-$mode"
+rm -rf "$work"
+mkdir -p "$work/stage"
+log() { echo "$*" | tee -a "$report"; }
+: > "$report"
+log "Scadretto $version ($build), $mode package"
+log "date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+log "revision: $(git rev-parse HEAD)$(local_changes)"
+log "machine: $(sysctl -n hw.model), macOS $(sw_vers -productVersion) ($(sw_vers -buildVersion)), $(xcodebuild -version | head -1)"
+log "signing identity: $([[ $identity == - ]] && echo 'ad hoc' || echo "$identity")"
+
+echo "Building the pinned engine and the Release app..."
+Scripts/build-engine > "$work/engine-build.log" 2>&1 || fail "the engine build failed; see $work/engine-build.log"
+xcodebuild -project Scadretto.xcodeproj -scheme Scadretto -configuration Release \
+  -destination 'platform=macOS,arch=arm64' -derivedDataPath "$work/DerivedData" \
+  ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGN_IDENTITY=- \
+  MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$build" build > "$work/app-build.log" 2>&1 \
+  || fail "the app build failed; see $work/app-build.log"
+app="$work/stage/Scadretto.app"
+ditto "$work/DerivedData/Build/Products/Release/Scadretto.app" "$app"
+
+# Notices: the license files listed in Engine/licenses.lock, from the pinned sources.
+notices="$app/Contents/Resources/Licenses"
+mkdir -p "$notices"
+archive_for() { awk -v name="$1" '$1 == name { print $2 }' Engine/dependencies.lock; }
+checkouts="$work/DerivedData/SourcePackages/checkouts"
+while read -r component source files; do
+  [[ -z $component || $component == \#* ]] && continue
+  mkdir -p "$notices/$component"
+  for file in $files; do
+    destination="$notices/$component/$(basename "$file")"
+    case $source in
+      openscad) cp "$upstream/$file" "$destination" ;;
+      worker) cp ".build/engine/worker/$file" "$destination" ;;
+      spm:*) cp "$checkouts/${source#spm:}/$file" "$destination" ;;
+      *) sha=$(archive_for "$source")
+         [[ -n $sha ]] || fail "Engine/licenses.lock names $source, which dependencies.lock does not pin."
+         tar -xOf ".build/engine/downloads/$sha" "$file" > "$destination" ;;
+    esac || fail "missing license file $file for $component"
+    [[ -s $destination ]] || fail "empty license file $file for $component"
+  done
+done < Engine/licenses.lock
+cat > "$notices/README.txt" <<EOF
+Scadretto runs a separate OpenSCAD worker (Contents/Helpers/scadretto-engine) built from
+OpenSCAD revision $OPENSCAD_REVISION with the patches in Engine/patches and the libraries
+pinned in Engine/dependencies.lock. Each folder here holds the license and notice files of one
+component. The disk image carries the corresponding source of the worker and its libraries in
+the Source folder, with the scripts that build it.
+EOF
+
+# Sign inside out: libraries, then the worker, then the app.
+for library in "$app"/Contents/Frameworks/*.dylib; do "${sign[@]}" "$library"; done
+"${sign[@]}" "$app/Contents/Helpers/scadretto-engine"
+"${sign[@]}" "$app"
+
+# Mach-O checks: architecture, minimum macOS, library paths and run paths.
+problems=0
+problem() { log "PROBLEM: $*"; problems=$((problems + 1)); }
+version_le() { [[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" == "$1" ]]; }
+machos=()
+while IFS= read -r -d '' file; do
+  file -b "$file" | grep -q 'Mach-O' && machos+=("$file")
+done < <(find "$app" -type f -print0)
+log "Mach-O files: ${#machos[@]}"
+for file in "${machos[@]}"; do
+  name=${file#"$work/stage/"}
+  archs=$(lipo -archs "$file" 2>/dev/null || echo unknown)
+  [[ $archs == arm64 ]] || problem "$name has architectures $archs"
+  minimum=$(vtool -show-build "$file" 2>/dev/null | awk '/minos|version/ { print $2; exit }')
+  if [[ -z $minimum ]]; then problem "$name reports no minimum macOS"
+  elif ! version_le "$minimum" "$deployment_target"; then problem "$name requires macOS $minimum"; fi
+  while read -r dependency; do
+    case $dependency in
+      /usr/lib/*|/System/Library/*|@rpath/*|@executable_path/*|@loader_path/*) ;;
+      *) problem "$name links $dependency" ;;
+    esac
+  done < <(otool -L "$file" | tail -n +2 | awk '{ print $1 }')
+  while read -r rpath; do
+    case $rpath in
+      # Swift apps search the system's Swift runtime, which macOS provides.
+      @executable_path/*|@loader_path/*|/usr/lib/swift) ;;
+      *) problem "$name has run path $rpath" ;;
+    esac
+  done < <(otool -l "$file" | awk '/cmd LC_RPATH/ { getline; getline; print $2 }')
+  codesign --verify --strict "$file" 2> /dev/null || problem "$name fails codesign --verify --strict"
+done
+codesign --verify --strict --deep "$app" 2>> "$report" || problem 'the app fails codesign --verify --strict --deep'
+cmp -s "$app/Contents/Resources/mounting-plate.scad" Tests/Fixtures/mounting-plate.scad \
+  || problem 'the bundled example differs from Tests/Fixtures/mounting-plate.scad'
+log "entitlements: app $(codesign -d --entitlements - "$app" 2>/dev/null | grep -c '<key>' || true), worker $(codesign -d --entitlements - "$app/Contents/Helpers/scadretto-engine" 2>/dev/null | grep -c '<key>' || true)"
+
+# The packaged worker passes the contract checks with Homebrew and /usr/local unreadable.
+reference=.build/engine/reference/bin
+profile='(version 1)(allow default)(deny file-read* (subpath "/opt/homebrew") (subpath "/usr/local"))'
+if sandbox-exec -p "$profile" /usr/bin/python3 -B Tests/Engine/verify_v1.py \
+     --worker "$app/Contents/Helpers/scadretto-engine" --reference "$reference/openscad" \
+     --oracle "$reference/solid-difference" --resources "$app/Contents/Resources/OpenSCAD" \
+     --fixtures Tests/Fixtures --goldens Engine/protocol/golden --evidence "$work/worker-check" \
+     > "$work/worker-check.log" 2>&1; then
+  log "packaged worker contract checks: pass (Homebrew and /usr/local unreadable)"
+else
+  problem "the packaged worker failed its contract checks; see $work/worker-check.log"
+fi
+((problems == 0)) || fail "$problems packaging problems; see $report"
+
+# Other local users can read a process's arguments, so notarytool takes the app-specific
+# password from a throwaway keychain: store-credentials reads it from standard input. The
+# keychain's own password does appear in arguments, so its file stays in a private directory.
+notary=()
+store_notary_credentials() {
+  local password
+  notary_dir=$(mktemp -d)
+  notary_keychain="$notary_dir/notary.keychain-db"
+  notary=(--keychain-profile scadretto-notary --keychain "$notary_keychain")
+  password=$(uuidgen)
+  trap 'security delete-keychain "$notary_keychain" 2> /dev/null || true; rm -rf "$notary_dir"' EXIT
+  security create-keychain -p "$password" "$notary_keychain" || fail 'could not create the notarization keychain.'
+  # No automatic locking, which would stop a long notarization wait from reading the profile.
+  security set-keychain-settings "$notary_keychain" || fail 'could not configure the notarization keychain.'
+  security unlock-keychain -p "$password" "$notary_keychain" || fail 'could not unlock the notarization keychain.'
+  printf '%s\n' "$NOTARY_PASSWORD" | xcrun notarytool store-credentials scadretto-notary \
+    --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" --no-validate --keychain "$notary_keychain" \
+    > "$work/notary-credentials.log" 2>&1 \
+    || fail "notarytool could not store the credentials; see $work/notary-credentials.log"
+}
+
+notarize() { # file
+  local result status id
+  result="$work/notary-$(basename "$1").json"
+  xcrun notarytool submit "$1" "${notary[@]}" --wait --output-format json > "$result" \
+    || fail "notarytool could not submit $(basename "$1"); see $result"
+  status=$(/usr/bin/plutil -extract status raw -o - "$result" 2>/dev/null || true)
+  if [[ $status != Accepted ]]; then
+    id=$(/usr/bin/plutil -extract id raw -o - "$result" 2>/dev/null || true)
+    [[ -z $id ]] || xcrun notarytool log "$id" "${notary[@]}" \
+      "$work/notary-log-$(basename "$1").json" > /dev/null || true
+    fail "notarization of $(basename "$1") returned \"$status\"; see $work"
+  fi
+}
+
+# Staple the app itself as well as the image, so a copy installed from the image passes
+# Gatekeeper offline.
+if [[ $mode == distribution ]]; then
+  store_notary_credentials
+  ditto -c -k --keepParent "$app" "$work/Scadretto.zip" || fail 'could not compress the app for notarization.'
+  notarize "$work/Scadretto.zip"
+  xcrun stapler staple "$app" > /dev/null || fail 'could not staple the app.'
+  codesign --verify --strict --deep "$app" || fail 'the stapled app fails codesign --verify'
+  spctl --assess --type execute "$app" || fail 'Gatekeeper rejects the notarized app'
+  log "app notarization: accepted and stapled"
+fi
+
+# Corresponding source of the worker: OpenSCAD and its submodules at the pinned revisions, the
+# pinned library archives, and the scripts and patches that build them.
+source_dir="$work/source/scadretto-worker-source-$version"
+mkdir -p "$source_dir/archives" "$work/stage/Source"
+git -C "$upstream" archive --format=tar --prefix=openscad/ HEAD > "$work/source/openscad.tar"
+# The submodules Scripts/build-engine initializes; the others are not part of the worker build.
+for submodule in $(git -C "$upstream" submodule status | awk '$1 !~ /^-/ { print $2 }'); do
+  git -C "$upstream/$submodule" archive --format=tar --prefix="openscad/$submodule/" HEAD \
+    > "$work/source/sub.tar"
+  tar -rf "$work/source/openscad.tar" "@$work/source/sub.tar"
+done
+xz -T0 -c "$work/source/openscad.tar" > "$source_dir/openscad-$OPENSCAD_REVISION.tar.xz"
+while read -r name sha url; do
+  [[ -z $name || $name == \#* ]] && continue
+  cp ".build/engine/downloads/$sha" "$source_dir/archives/$(basename "$url")"
+done < Engine/dependencies.lock
+git archive --format=tar --prefix=scadretto/ HEAD Engine Scripts/bootstrap-macos Scripts/build-engine \
+  Scripts/verify-engine Scripts/stage-worker Tests/Engine Tests/Fixtures Docs/Decisions/engine-spike.md \
+  | tar -x -C "$source_dir"
+cat > "$source_dir/README.txt" <<EOF
+Corresponding source of the OpenSCAD worker in Scadretto $version.
+
+openscad-$OPENSCAD_REVISION.tar.xz  OpenSCAD and its Clipper2, Manifold and sanitizers-cmake
+                                     submodules at the revisions in scadretto/Engine/upstream.lock
+archives/                            the library sources pinned in scadretto/Engine/dependencies.lock
+scadretto/                           the patches, build scripts and checks used for this build
+
+To rebuild on an Apple silicon Mac, check out the Scadretto repository at revision
+$(git rev-parse HEAD). From its root, copy the library archives to the names the
+build looks for, with ARCHIVES set to this folder's archives directory:
+EOF
+cat >> "$source_dir/README.txt" <<'EOF'
+
+  mkdir -p .build/engine/downloads
+  grep -v '^#' Engine/dependencies.lock | while read -r name sha url; do
+    [ -n "$name" ] && cp "$ARCHIVES/$(basename "$url")" ".build/engine/downloads/$sha"
+  done
+  Scripts/bootstrap-macos
+  Scripts/build-engine
+
+Scripts/bootstrap-macos fetches OpenSCAD at the pinned revision with git, the same tree as the
+OpenSCAD archive here, and checks every library archive against its SHA-256.
+EOF
+tar -cf "$work/stage/Source/scadretto-worker-source-$version.tar" -C "$work/source" "scadretto-worker-source-$version"
+cp "$notices/README.txt" "$work/stage/Third-Party Notices.txt"
+ln -s /Applications "$work/stage/Applications"
+
+rm -f "$output"
+hdiutil create -volname Scadretto -srcfolder "$work/stage" -fs HFS+ -format UDZO -ov "$output" \
+  > "$work/hdiutil.log" 2>&1 || fail "the image build failed; see $work/hdiutil.log"
+if [[ $mode == distribution ]]; then
+  codesign --force --timestamp --sign "$identity" "$output"
+  notarize "$output"
+  xcrun stapler staple "$output" > /dev/null || fail 'could not staple the image.'
+  xcrun stapler validate "$output" > /dev/null || fail 'the stapled image fails stapler validate.'
+  spctl --assess --type open --context context:primary-signature "$output" \
+    || fail 'Gatekeeper rejects the notarized image'
+  log "image notarization: accepted and stapled"
+else
+  log "notarization: none (local development build)"
+fi
+
+log "app executable sha256: $(shasum -a 256 "$app/Contents/MacOS/Scadretto" | cut -d' ' -f1)"
+log "worker sha256: $(shasum -a 256 "$app/Contents/Helpers/scadretto-engine" | cut -d' ' -f1)"
+log "dmg: $output"
+log "dmg sha256: $(shasum -a 256 "$output" | cut -d' ' -f1)"
+log "dmg size: $(du -h "$output" | cut -f1)"

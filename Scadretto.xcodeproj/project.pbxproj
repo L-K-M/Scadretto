@@ -15,6 +15,7 @@
 		40F9B0835DA56AE1C81ADCD3 /* ScadrettoDocumentBase.m in Sources */ = {isa = PBXBuildFile; fileRef = CC7169339397A5290B227212 /* ScadrettoDocumentBase.m */; };
 		C5D6A0C0D3B24F0E9A6C1F31 /* stress-100-cutters.scad in Resources */ = {isa = PBXBuildFile; fileRef = C5D6A0C0D3B24F0E9A6C1F32 /* stress-100-cutters.scad */; };
 		594490A8A19C799244DC8A38 /* mounting-plate.scad in Resources */ = {isa = PBXBuildFile; fileRef = 2582FD20D9A8E8BE2F83FA23 /* mounting-plate.scad */; };
+		E6A1C0D3B24F0E9A6C1F0001 /* mounting-plate.scad in Resources */ = {isa = PBXBuildFile; fileRef = 2582FD20D9A8E8BE2F83FA23 /* mounting-plate.scad */; };
 		A11A0C0D3B24F0E9A6C1F011 /* Announcements.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0C0D3B24F0E9A6C1F012 /* Announcements.swift */; };
 		B3C4A0C0D3B24F0E9A6C1F21 /* TimingLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3C4A0C0D3B24F0E9A6C1F22 /* TimingLog.swift */; };
 		610C5A67DCDCC16EDF58A097 /* PreviewWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0423D8B38A0739716E934E2 /* PreviewWorkspace.swift */; };
@@ -159,6 +160,7 @@
 			buildPhases = (
 				20A6CFDBE2012296126670BB /* Sources */,
 				F9499E3BFB67993BCE2F8F5D /* Frameworks */,
+				E6A1C0D3B24F0E9A6C1F0002 /* Resources */,
 				384E9AA253E3188EE2378BA9 /* Stage OpenSCAD worker */,
 			);
 			buildRules = (
@@ -238,6 +240,14 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		E6A1C0D3B24F0E9A6C1F0002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E6A1C0D3B24F0E9A6C1F0001 /* mounting-plate.scad in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		474F1AB044E3859064EB3CF2 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;

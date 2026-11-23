@@ -1,0 +1,29 @@
+# License and notice files that Scripts/package-macos copies into the app.
+#
+# Each line names a component, where its files come from, and the files, relative to that
+# source. A source is an archive name from dependencies.lock (paths include the archive's top
+# directory), "openscad" for the pinned checkout under .build/engine/upstream, "worker" for the
+# staged worker runtime, or "spm:<identity>" for a package the app resolves. Packaging fails
+# when a listed file is missing.
+openscad openscad COPYING
+clipper2 openscad submodules/Clipper2/LICENSE
+manifold openscad submodules/manifold/LICENSE
+liberation-fonts worker Resources/fonts/Liberation-2.00.1/LICENSE
+boost boost boost-1.92.0/LICENSE_1_0.txt
+cgal cgal CGAL-6.2.1/LICENSE CGAL-6.2.1/LICENSE.GPL CGAL-6.2.1/LICENSE.LGPL CGAL-6.2.1/LICENSE.BSL
+double-conversion double-conversion double-conversion-3.4.0/LICENSE
+eigen eigen eigen-5.0.1/COPYING.MPL2 eigen-5.0.1/COPYING.APACHE eigen-5.0.1/COPYING.BSD eigen-5.0.1/COPYING.MINPACK
+fontconfig fontconfig fontconfig-2.18.4/COPYING
+freetype freetype freetype-2.15.0/LICENSE.TXT freetype-2.15.0/docs/FTL.TXT freetype-2.15.0/docs/GPLv2.TXT
+# Only libintl from gettext is bundled; gettext's top-level COPYING covers its tools.
+gettext gettext gettext-1.0/gettext-runtime/intl/COPYING.LIB
+glib glib glib-2.90.1/LICENSES/LGPL-2.1-or-later.txt
+gmp gmp gmp-6.3.0/COPYING.LESSERv3 gmp-6.3.0/COPYINGv2 gmp-6.3.0/COPYINGv3
+harfbuzz harfbuzz harfbuzz-15.2.0/COPYING
+libffi libffi libffi-3.5.2/LICENSE
+libzip libzip libzip-1.12.1/LICENSE
+mpfr mpfr mpfr-4.2.2/COPYING.LESSER mpfr-4.2.2/COPYING
+openssl openssl openssl-3.5.9/LICENSE.txt
+pcre2 pcre2 pcre2-10.49/LICENCE.md
+tree-sitter spm:tree-sitter LICENSE
+tree-sitter-openscad spm:tree-sitter-openscad LICENSE

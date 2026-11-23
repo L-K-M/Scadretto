@@ -1,0 +1,91 @@
+#!/bin/bash
+# Run the deterministic verification suites and record the machine and toolchain.
+#
+# Usage: Scripts/verify [--ui] [--output DIRECTORY]
+#
+# Builds the pinned engine (Scripts/build-engine reuses an up-to-date build), verifies it with
+# Scripts/verify-engine, runs the ScadrettoKit package tests and builds the arm64 app with its
+# UI test bundle. --ui also runs the UI test plan, which needs a logged-in session that permits
+# UI automation; without it the summary marks GUI coverage pending. Logs and summary.txt go to
+# the output directory, .build/verify/<UTC time> by default. Any failed step makes the exit
+# status nonzero. No release credentials are used.
+set -euo pipefail
+
+usage() { echo 'Usage: Scripts/verify [--ui] [--output DIRECTORY]'; }
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+ui=false
+out=
+while (($#)); do
+  case $1 in
+    --ui) ui=true ;;
+    --output) [[ $# -ge 2 ]] || { usage >&2; exit 2; }; out=$2; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+  shift
+done
+out=${out:-$root/.build/verify/$(date -u +%Y%m%dT%H%M%SZ)}
+mkdir -p "$out"
+out=$(cd "$out" && pwd)
+cd "$root"
+
+if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 ]]; then
+  echo 'error: verify on an Apple silicon Mac.' >&2
+  exit 1
+fi
+
+summary="$out/summary.txt"
+failed=0
+step() { # name, log file, command...
+  local name=$1 log=$2
+  shift 2
+  local started=$SECONDS
+  if "$@" > "$out/$log" 2>&1; then
+    echo "pass  $name ($((SECONDS - started)) s, $log)" | tee -a "$summary"
+  else
+    echo "FAIL  $name ($((SECONDS - started)) s, $log)" | tee -a "$summary"
+    failed=1
+  fi
+}
+
+{
+  echo "date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "revision: $(git rev-parse HEAD)$([[ -z $(git status --porcelain) ]] || echo ' (with local changes)')"
+  echo "hardware: $(sysctl -n hw.model), $(sysctl -n machdep.cpu.brand_string), $(( $(sysctl -n hw.memsize) / 1073741824 )) GiB"
+  echo "macOS: $(sw_vers -productVersion) ($(sw_vers -buildVersion))"
+  echo "xcode: $(xcodebuild -version | tr '\n' ' ')"
+  echo "swift: $(swift --version 2>&1 | head -1)"
+  echo "cmake: $(cmake --version 2>/dev/null | head -1 || echo 'not installed')"
+  grep -E '^(OPENSCAD_REVISION|ENGINE_MACOS_TARGET)=' Engine/upstream.lock
+  echo
+} > "$summary"
+cat "$summary"
+
+# The UI suite needs the same signing identity between runs so macOS keeps its automation
+# permission; the headless build needs no signing at all.
+if $ui; then
+  signing=(CODE_SIGN_IDENTITY="${SCADRETTO_SIGN_IDENTITY:-Apple Development}")
+else
+  signing=(CODE_SIGNING_ALLOWED=NO)
+fi
+xcode=(xcodebuild -project Scadretto.xcodeproj -scheme Scadretto -configuration Debug
+       -destination 'platform=macOS,arch=arm64' -derivedDataPath "$out/DerivedData" "${signing[@]}")
+
+step "pinned engine build" engine-build.log Scripts/build-engine
+step "engine verification" engine-verify.log Scripts/verify-engine
+step "ScadrettoKit package tests" package-tests.log swift test --package-path Packages/ScadrettoKit
+step "app and UI test bundle build" app-build.log "${xcode[@]}" build-for-testing
+if $ui; then
+  # xcodebuild refuses an existing result bundle, as when --output names an earlier run.
+  rm -rf "$out/ui-tests.xcresult"
+  step "UI test plan" ui-tests.log "${xcode[@]}" -parallel-testing-enabled NO \
+    -resultBundlePath "$out/ui-tests.xcresult" test-without-building
+else
+  echo "pending  UI test plan (run Scripts/verify --ui in a logged-in session)" | tee -a "$summary"
+fi
+
+worker=.build/engine/worker/bin/scadretto-engine
+[[ -x $worker ]] && echo "worker sha256: $(shasum -a 256 "$worker" | cut -d' ' -f1)" >> "$summary"
+echo "summary: $summary"
+exit "$failed"

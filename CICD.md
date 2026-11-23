@@ -53,6 +53,18 @@ xcodebuild -project Scadretto.xcodeproj -scheme Scadretto \
 
 Native UI and minimum-OS checks follow the verification guide.
 
+`Scripts/verify` runs the deterministic checks in one pass: the pinned engine
+build and its verification, the package tests and the app build. It records
+the machine and toolchain in `summary.txt` under `.build/verify/` and exits
+nonzero if any step fails. `Scripts/verify --ui` adds the UI test plan;
+without it the summary marks GUI coverage pending. The release workflow runs
+`Scripts/verify` before signing.
+
+`Scripts/package-macos --local` builds an ad hoc signed local development
+image at `.build/package/Scadretto-local.dmg` with a report beside it. It
+needs no Apple developer account. [The distribution record](Docs/Decisions/distribution.md)
+describes its checks, the bundled licenses and the corresponding source.
+
 ## Pull requests
 
 The pinned GLM workflow reviews ready PRs from branches in this repository and

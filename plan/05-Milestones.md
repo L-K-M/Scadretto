@@ -77,9 +77,9 @@ Complete milestones in order. Each ends with executable evidence and a usable sl
 
 **Depends on M5.** Package an arm64 app containing its own helper, required resources, dylibs, attribution and corresponding engine source material.
 
-- [ ] Implement `Scripts/verify` and `Scripts/package-macos` with distinct local and distribution modes. Test a locally signed build on a machine without Homebrew or a system OpenSCAD installation. Implement the existing release workflow’s distribution interface and verify the tag preflight as described in [the build and release guide](../CICD.md).
-- [ ] Bundle `Tests/Fixtures/mounting-plate.scad` as a read-only application sample and open an editable untitled copy from Help → Open Example. Copy it from the canonical fixture at build time rather than retyping it, and verify the bundled bytes in the distribution gate.
-- [ ] Validate architecture, minimum OS, dependency paths and library/font resolution. Review redistribution licenses for the pinned dependency set and prepare the matching source/build instructions.
+- [x] Implement `Scripts/verify` and `Scripts/package-macos` with distinct local and distribution modes. Test a locally signed build on a machine without Homebrew or a system OpenSCAD installation. Implement the existing release workflow’s distribution interface and verify the tag preflight as described in [the build and release guide](../CICD.md).
+- [x] Bundle `Tests/Fixtures/mounting-plate.scad` as a read-only application sample and open an editable untitled copy from Help → Open Example. Copy it from the canonical fixture at build time rather than retyping it, and verify the bundled bytes in the distribution gate.
+- [x] Validate architecture, minimum OS, dependency paths and library/font resolution. Review redistribution licenses for the pinned dependency set and prepare the matching source/build instructions.
 - [ ] When the release owner supplies credentials, sign nested code, including the worker with the hardened runtime, and the app, notarize and staple, then run Gatekeeper and quarantine install checks on the final package. Record artifact checksums.
 
 **Exit:** The release checklist in file 06 records both functional verification and distribution state. An ad hoc developer package is a valid local deliverable; mark public distribution pending until those gates pass.

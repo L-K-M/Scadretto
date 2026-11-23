@@ -145,7 +145,34 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
         windows.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)),
                         keyEquivalent: "")
         NSApp.windowsMenu = windows
+
+        let help = addMenu("Help", to: menu)
+        help.addItem(withTitle: "Open Example", action: #selector(openExample(_:)), keyEquivalent: "").target = self
+        NSApp.helpMenu = help
         return menu
+    }
+
+    /// Opens an editable untitled copy of the mounting-plate example. The build copies it from
+    /// Tests/Fixtures/mounting-plate.scad; the bundled file itself is never written.
+    @objc private func openExample(_ sender: Any?) {
+        let documents = NSDocumentController.shared
+        do {
+            guard let url = Bundle.main.url(forResource: "mounting-plate", withExtension: "scad") else {
+                throw CocoaError(.fileNoSuchFile, userInfo: [
+                    NSLocalizedDescriptionKey: "The example is missing from the application.",
+                    NSLocalizedRecoverySuggestionErrorKey: "Reinstall Scadretto.",
+                ])
+            }
+            let type = try documents.typeForContents(of: url)
+            let document = try documents.makeUntitledDocument(ofType: type)
+            try document.read(from: Data(contentsOf: url), ofType: type)
+            document.displayName = "Mounting Plate"
+            documents.addDocument(document)
+            document.makeWindowControllers()
+            document.showWindows()
+        } catch {
+            NSApp.presentError(error)
+        }
     }
 
     private func addMenu(_ title: String, to parent: NSMenu) -> NSMenu {
