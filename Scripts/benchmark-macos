@@ -13,6 +13,8 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 out=${1:-$root/.build/benchmarks/$(date -u +%Y%m%dT%H%M%SZ)}
 derived="$root/.build/benchmarks/DerivedData"
+# A stable identity keeps the UI test runner's automation permission across builds. Release
+# enables the hardened runtime, which needs the identity's team; ad hoc ("-") needs none.
 identity=${SCADRETTO_SIGN_IDENTITY:-Apple Development}
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
@@ -21,7 +23,15 @@ cd "$root"
 xcode=(xcodebuild -project Scadretto.xcodeproj -scheme Scadretto -configuration Release
        -destination 'platform=macOS,arch=arm64' -derivedDataPath "$derived"
        CODE_SIGN_IDENTITY="$identity")
-"${xcode[@]}" build-for-testing > "$out/build.log" 2>&1
+if [[ $identity != - ]]; then
+  team=$(security find-certificate -c "$identity" -p 2>/dev/null \
+    | openssl x509 -noout -subject -nameopt multiline 2>/dev/null \
+    | awk -F' = ' '/organizationalUnitName/ { print $2; exit }')
+  [[ -n $team ]] || { echo "error: no team found for the signing identity \"$identity\"" >&2; exit 1; }
+  xcode+=(DEVELOPMENT_TEAM="$team")
+fi
+"${xcode[@]}" build-for-testing > "$out/build.log" 2>&1 \
+  || { echo "error: the Release build failed; see $out/build.log" >&2; exit 1; }
 app="$derived/Build/Products/Release/Scadretto.app"
 
 {
@@ -39,12 +49,13 @@ app="$derived/Build/Products/Release/Scadretto.app"
 } > "$out/environment.txt"
 
 rm -rf "$out/benchmarks.xcresult"
+tests=0
 TEST_RUNNER_SCADRETTO_BENCHMARK_DIR="$out" "${xcode[@]}" -parallel-testing-enabled NO \
   -resultBundlePath "$out/benchmarks.xcresult" \
   -only-testing:ScadrettoUITests/ScadrettoUITests/testBenchmarkPlateCommitToFrame \
   -only-testing:ScadrettoUITests/ScadrettoUITests/testBenchmarkOrbitAndDragFrames \
   -only-testing:ScadrettoUITests/ScadrettoUITests/testBenchmarkTypingWhileWorkerIsBusy \
-  test-without-building > "$out/ui-tests.log" 2>&1
+  test-without-building > "$out/ui-tests.log" 2>&1 || tests=$?
 
 # Cancellation and cleanup: end the app three ways during a long evaluation, then look for
 # worker processes and job directories left behind, before and after the next launch. Window
@@ -96,3 +107,7 @@ wait_for() { # seconds, command...
 
 python3 "$root/Scripts/benchmark-report" "$out" > "$out/report.md"
 cat "$out/environment.txt" "$out/report.md" "$out/cleanup.txt"
+if ((tests != 0)); then
+  echo "error: the benchmark UI tests failed; see $out/ui-tests.log" >&2
+  exit "$tests"
+fi
