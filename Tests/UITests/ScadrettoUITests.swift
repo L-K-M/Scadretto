@@ -335,6 +335,69 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
+    func testRelativeBinaryImportFollowsItsFile() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let parts = directory.appending(path: "parts")
+        try FileManager.default.createDirectory(at: parts, withIntermediateDirectories: true)
+        let mesh = parts.appending(path: "wedge.stl")
+        try Data(Self.wedgeSTL.utf8).write(to: mesh)
+        let url = directory.appending(path: "Imports.scad")
+        let text = "import(\"parts/wedge.stl\");\n"
+        try Data(text.utf8).write(to: url)
+
+        // The path is relative to the document's folder, not the app's working directory.
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("Preview ready · 4 triangles", in: status, timeout: 15)
+
+        // Moving the mesh away invalidates the preview; moving it back restores it.
+        let moved = parts.appending(path: "moved.stl")
+        try FileManager.default.moveItem(at: mesh, to: moved)
+        waitForText("Could not resolve parts/wedge.stl", in: status, timeout: 15)
+        try FileManager.default.moveItem(at: moved, to: mesh)
+        waitForText("Preview ready · 4 triangles", in: status, timeout: 15)
+        XCTAssertEqual(editor.value as? String, text)
+    }
+
+    /// A tetrahedron with outward-facing triangles.
+    private static let wedgeSTL = """
+        solid wedge
+        facet normal 0 0 -1
+        outer loop
+        vertex 0 0 0
+        vertex 0 10 0
+        vertex 10 0 0
+        endloop
+        endfacet
+        facet normal 0 -1 0
+        outer loop
+        vertex 0 0 0
+        vertex 10 0 0
+        vertex 0 0 10
+        endloop
+        endfacet
+        facet normal -1 0 0
+        outer loop
+        vertex 0 0 0
+        vertex 0 0 10
+        vertex 0 10 0
+        endloop
+        endfacet
+        facet normal 1 1 1
+        outer loop
+        vertex 10 0 0
+        vertex 0 10 0
+        vertex 0 0 10
+        endloop
+        endfacet
+        endsolid wedge
+
+        """
+
+    @MainActor
     func testExternalBackupRenameDoesNotRedirectSave() throws {
         try saveAfterExternalMove(refilledWith: Data("cube(2);\n".utf8))
     }
