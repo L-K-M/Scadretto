@@ -74,22 +74,27 @@ note() { echo "$(date -u +%H:%M:%S) $*" >> "$out/cleanup.log"; }
 # Asks the app at this path, not whichever copy owns the bundle ID, to quit.
 quit_app() { osascript -e "tell application \"$app\" to quit" > /dev/null 2>> "$out/cleanup.log"; }
 
-wait_for() { # seconds, command...
+app_running() { [[ -n $(app_pid) ]]; }
+app_gone() { [[ -z $(app_pid) ]]; }
+worker_running() { (($(workers) > 0)); }
+
+# Runs the predicate again every 0.1 s, so pass a function rather than an expanded value.
+wait_for() { # seconds, predicate...
   local limit=$1; shift
   for _ in $(seq 1 $((limit * 10))); do "$@" && return 0; sleep 0.1; done
   return 1
 }
 
 # The UI tests' own instance must be gone before the series starts.
-wait_for 30 test -z "$(app_pid)" || note "an instance from the UI tests is still running"
+wait_for 30 app_gone || note "an instance from the UI tests is still running"
 {
   echo "| Ending | Workers while evaluating | Termination latency | Workers 5 s later | Job directories 5 s later |"
   echo "|---|---|---|---|---|"
   for ending in quit TERM KILL; do
     open -a "$app" "$slow" --args -ApplePersistenceIgnoreState YES
-    wait_for 30 test -n "$(app_pid)" || { note "$ending: app did not start"; echo "| $ending | app did not start | | | |"; continue; }
+    wait_for 30 app_running || { note "$ending: app did not start"; echo "| $ending | app did not start | | | |"; continue; }
     pid=$(app_pid)
-    wait_for 30 test "$(workers)" -gt 0 || note "$ending: no worker within 30 s"
+    wait_for 30 worker_running || note "$ending: no worker within 30 s"
     running=$(workers)
     note "$ending: app $pid, $running workers, $(jobs) job directories"
     started=$(now)
@@ -106,11 +111,11 @@ wait_for 30 test -z "$(app_pid)" || note "an instance from the UI tests is still
   # The next launch reclaims sessions whose owner is gone.
   before=$(sessions)
   open -a "$app" --args -ApplePersistenceIgnoreState YES
-  wait_for 30 test -n "$(app_pid)" || note "relaunch: app did not start"
+  wait_for 30 app_running || note "relaunch: app did not start"
   sleep 3
   after=$(sessions)
   quit_app || note "relaunch: osascript failed"
-  wait_for 30 test -z "$(app_pid)" || { note "relaunch: app still running"; kill -TERM "$(app_pid)" 2>/dev/null || true; }
+  wait_for 30 app_gone || { note "relaunch: app still running"; kill -TERM "$(app_pid)" 2>/dev/null || true; }
   echo
   echo "Sessions before the next launch: $before; while it runs: $after (its own included)."
 } > "$out/cleanup.txt"

@@ -295,14 +295,20 @@ final class ScadrettoUITests: XCTestCase {
                 from.click(forDuration: 0.05, thenDragTo: to, withVelocity: 150, thenHoldForDuration: 0)
                 forward.toggle()
             }
-            if name == "orbit-plate" {
-                choose("Frame Model", from: "View", in: app)
-                try selectThirdBore(in: viewport, app: app)
-                let (grip, outward) = diameterDragCoordinates(in: viewport)
-                grip.click(forDuration: 0.2, thenDragTo: outward, withVelocity: 20, thenHoldForDuration: 0.2)
-                waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 30)
-            }
             app.terminate()
+            guard name == "orbit-plate" else { continue }
+
+            // The bore's click point assumes the initial camera, so the handle drag starts over in
+            // a new launch that appends to the same log.
+            let dragging = launch(arguments: ["-ScadrettoTimingLog", log.path])
+            _ = open(url, in: dragging)
+            waitForText("Preview ready", in: dragging.staticTexts["renderStatus"].firstMatch, timeout: 60)
+            let plate = dragging.descendants(matching: .any)["viewport"].firstMatch
+            try selectThirdBore(in: plate, app: dragging)
+            let (grip, outward) = diameterDragCoordinates(in: plate)
+            grip.click(forDuration: 0.2, thenDragTo: outward, withVelocity: 20, thenHoldForDuration: 0.2)
+            waitForText("Preview ready", in: dragging.staticTexts["renderStatus"].firstMatch, timeout: 30)
+            dragging.terminate()
         }
     }
 
