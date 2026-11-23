@@ -33,9 +33,16 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         let instanceID: UInt32
         let choiceID: String
         let label: String
+        /// The property and how far the edit reaches, which VoiceOver hears once it commits.
+        let property: String
+        let scope: String
         let operation: PlannedPropertyEdit
         let handle: ViewportEditHandle?
     }
+
+    /// Posted when a document's text may have started or stopped matching its file, so the
+    /// documents that include or use that file can say what their preview reads.
+    static let fileTextDidChange = Notification.Name("ScadrettoDocumentFileTextDidChange")
 
     private static let guideLimit = 256
     /// A property ID no choice has. It asks for an explicit choice.
@@ -43,8 +50,12 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
 
     private nonisolated let io = OSAllocatedUnfairLock(initialState: DocumentIO())
     private lazy var source = SourceDocument(buffer: try! SourceBuffer())
-    private weak var editor: SourceWindowController?
+    /// The window with the feature selection, inspector and handles. The document's other
+    /// windows show the same text and scene without a selection until one is made there.
+    private weak var selectionWindow: SourceWindowController?
     private var preview: DocumentPreview?
+    /// The latest preview state, for a window opened after it arrived.
+    private var lastPhase: DocumentPreview.Phase?
     private var typingEnd: Int?
     private var typingTimer: Task<Void, Never>?
     private var featureSelection: FeatureSelection?
@@ -59,6 +70,9 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     private var diskCheckPending = false
     private var diskWindows: [NSWindowController] = []
     private var activation: (any NSObjectProtocol)?
+    private var dependencyEdits: (any NSObjectProtocol)?
+    /// Included and used files of the latest outcome, by resolved path.
+    private var dependencyPaths: Set<String> = []
     /// The source's undo history. NSDocument does not see it: when one of its own undo groups
     /// closes, NSDocument waits on the main thread for any running save or close, which hung
     /// closing with autosave in place. Changes reach AppKit through `updateChangeCount`.
@@ -138,25 +152,27 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         adoptRead()
         let controller = SourceWindowController(document: self)
         addWindowController(controller)
-        editor = controller
+        selectionWindow = controller
+        attach(controller)
         controller.show(source.snapshot, selecting: NSRange(location: 0, length: 0))
         let app = NSApp.delegate as? ScadrettoApp
         let preview = DocumentPreview(engine: app?.engineClient, startupError: app?.engineStartupError)
         self.preview = preview
-        preview.onUpdate = { [weak self, weak controller] phase in
-            controller?.previewWorkspace.update(phase)
-            self?.refreshInspector()
-        }
-        controller.previewWorkspace.sidebar.onReveal = { [weak self] file, span, result in
-            self?.reveal(file: file, span: span, in: result)
-        }
-        controller.previewWorkspace.onSelection = { [weak self] id, point in self?.selectFeature(id, at: point) }
-        controller.previewWorkspace.onPresentationChange = { [weak self] in self?.refreshInspector() }
-        controller.onSyntaxReady = { [weak self] in self?.refreshInspector() }
-        controller.onCompositionFinished = { [weak self] in
+        preview.onUpdate = { [weak self] phase in
             guard let self else { return }
-            if diskCheckPending { Task { await self.checkDisk() } }
-            resumeDeferredAutosave()
+            lastPhase = phase
+            for window in windows { window.previewWorkspace.update(phase) }
+            refreshInspector()
+            if case .outcome(let outcome, _) = phase { noteDependencies(of: outcome.result) }
+        }
+        dependencyEdits = NotificationCenter.default.addObserver(
+            forName: Self.fileTextDidChange, object: nil, queue: .main
+        ) { [weak self] notification in
+            let sender = (notification.object as AnyObject?).map(ObjectIdentifier.init)
+            MainActor.assumeIsolated {
+                guard let self, sender != ObjectIdentifier(self) else { return }
+                self.refreshDependencyNotice()
+            }
         }
         // A plain delete sends no presenter notice; look again whenever the app comes forward.
         activation = NotificationCenter.default.addObserver(
@@ -164,12 +180,88 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         ) { [weak self] _ in
             Task { @MainActor in await self?.checkDisk() }
         }
-        controller.previewWorkspace.sidebar.inspector.onCommit = { [weak self] value in self?.submitProperty(value) }
-        controller.previewWorkspace.sidebar.inspector.onChoice = { [weak self] index in self?.chooseProperty(index) }
-        controller.previewWorkspace.viewport?.onEditCommit = { [weak self] sceneID, handleID, value in
-            self?.commitProperty(value, sceneID: sceneID, handleID: handleID)
-        }
         preview.schedule(source.snapshot, fileURL: fileURL, immediate: true)
+    }
+
+    // MARK: - Windows
+
+    private var windows: [SourceWindowController] { windowControllers.compactMap { $0 as? SourceWindowController } }
+
+    /// The window holding the feature selection, which inspector edits and handles act through.
+    private var editor: SourceWindowController? { selectionWindow ?? windows.first }
+
+    /// The window that menu commands and sheets act on.
+    private var keyEditor: SourceWindowController? {
+        windows.first { $0.window?.isKeyWindow == true } ?? editor
+    }
+
+    /// Marked text in any window keeps the whole document from changing underneath it.
+    private var isComposing: Bool { windows.contains { $0.isComposing } }
+
+    private func finishComposition() {
+        for window in windows { window.finishComposition() }
+    }
+
+    private func showEdited() {
+        for window in windows { window.window?.isDocumentEdited = isDocumentEdited }
+    }
+
+    /// Wires one window's gestures to this document. Only the selection's window acts on
+    /// inspector and handle input, and a selection made in another window moves there.
+    private func attach(_ controller: SourceWindowController) {
+        let workspace = controller.previewWorkspace
+        workspace.sidebar.onReveal = { [weak self] file, span, result in
+            self?.reveal(file: file, span: span, in: result)
+        }
+        workspace.onSelection = { [weak self, weak controller] id, point in
+            guard let self, let controller else { return }
+            moveSelection(to: controller)
+            selectFeature(id, at: point)
+        }
+        workspace.onPresentationChange = { [weak self, weak controller] in
+            if let self, controller === editor { refreshInspector() }
+        }
+        controller.onSyntaxReady = { [weak self, weak controller] in
+            if let self, controller === editor { refreshInspector() }
+        }
+        controller.onCompositionFinished = { [weak self] in
+            guard let self else { return }
+            if diskCheckPending { Task { await self.checkDisk() } }
+            resumeDeferredAutosave()
+        }
+        workspace.sidebar.inspector.onCommit = { [weak self, weak controller] value in
+            if let self, controller === editor { submitProperty(value) }
+        }
+        workspace.sidebar.inspector.onChoice = { [weak self, weak controller] index in
+            if let self, controller === editor { chooseProperty(index) }
+        }
+        workspace.viewport?.onEditCommit = { [weak self, weak controller] sceneID, handleID, value in
+            if let self, controller === editor { commitProperty(value, sceneID: sceneID, handleID: handleID) }
+        }
+    }
+
+    private func moveSelection(to controller: SourceWindowController) {
+        guard controller !== editor else { return }
+        selectFeature(nil, at: nil)
+        editor?.previewWorkspace.clearSelection()
+        selectionWindow = controller
+    }
+
+    /// Opens another window on this document. It shares the text, undo history and preview, and
+    /// keeps its own camera and text selection.
+    @IBAction func newWindowForDocument(_ sender: Any?) {
+        let reference = keyEditor
+        let controller = SourceWindowController(document: self)
+        addWindowController(controller)
+        attach(controller)
+        controller.show(source.snapshot, selecting: reference?.selection ?? NSRange(location: 0, length: 0))
+        if let lastPhase { controller.previewWorkspace.update(lastPhase) }
+        if let frame = reference?.window?.frame {
+            controller.window?.setFrameTopLeftPoint(NSPoint(x: frame.minX + 40, y: frame.maxY - 40))
+        }
+        controller.showWindow(nil)
+        controller.window?.isDocumentEdited = isDocumentEdited
+        refreshDependencyNotice()
     }
 
     // An unresolved external change or removal leaves the text unsaved even when it matches the
@@ -181,7 +273,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     // AppKit decides from this whether closing or quitting needs an autosave. Marked text is not
     // committed yet, and comparing the text with the file covers any change count it missed.
     override var hasUnautosavedChanges: Bool {
-        super.hasUnautosavedChanges || editor?.isComposing == true || hasUnwrittenText
+        super.hasUnautosavedChanges || isComposing || hasUnwrittenText
     }
 
     private var hasUnwrittenText: Bool {
@@ -189,11 +281,11 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     }
 
     override func revert(toContentsOf url: URL, ofType typeName: String) throws {
-        editor?.finishComposition()
+        finishComposition()
         endTypingGroup()
         try super.revert(toContentsOf: url, ofType: typeName)
         adoptRead()
-        editor?.show(source.snapshot, selecting: NSRange(location: 0, length: 0))
+        for window in windows { window.show(source.snapshot, selecting: NSRange(location: 0, length: 0)) }
         preview?.schedule(source.snapshot, fileURL: fileURL, immediate: true)
     }
 
@@ -251,13 +343,14 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
                 // window stays edited until Save, as in other autosaving document apps.
                 if written == snapshot.buffer.bytes, saveOperation != .autosaveInPlaceOperation {
                     self.source.acknowledgeSaved(snapshot)
-                    self.editor?.window?.isDocumentEdited = self.isDocumentEdited
+                    self.showEdited()
                 }
                 if priorURL != self.fileURL {
                     self.preview?.schedule(self.source.snapshot, fileURL: self.fileURL, immediate: true)
                 }
             }
             if let self, self.diskCheckPending { Task { await self.checkDisk() } }
+            if let self { NotificationCenter.default.post(name: Self.fileTextDidChange, object: self) }
             completionHandler(error)
             // An autosave held back by this save runs once AppKit has finished it.
             Task { @MainActor [weak self] in self?.resumeDeferredAutosave() }
@@ -282,7 +375,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         // below does not start another.
         let unavoidable = !autosavingIsImplicitlyCancellable
         autosaveDeferred = false
-        if unavoidable { editor?.finishComposition() }
+        if unavoidable { finishComposition() }
         guard let url = fileURL else {
             // An untitled document autosaves elsewhere; there is no file of its own to protect.
             super.autosave(withImplicitCancellability: autosavingIsImplicitlyCancellable,
@@ -292,15 +385,15 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         // A save in flight may have written bytes the baseline has not adopted yet, which a check
         // now would take for another program's change. The disk check waits for it the same way.
         let otherWriter = io.withLock { $0.otherWriter }
-        if !otherWriter, !saving, editor?.isComposing != true, io.withLock({ $0.disk.conflict == nil }),
+        if !otherWriter, !saving, !isComposing, io.withLock({ $0.disk.conflict == nil }),
            let disk = try? Self.readDisk(at: url) {
             applyDisk(disk, at: url, presenting: !unavoidable)
         }
         let conflict = io.withLock { $0.disk.conflict }
-        if !hasUnwrittenText, editor?.isComposing != true {
+        if !hasUnwrittenText, !isComposing {
             // Nothing to write: an undo back to the bytes last written, or text that matches them
             // again while a change is pending. Neither holds up closing or quitting.
-            updateChangeCount(.changeAutosaved)
+            record(.changeAutosaved)
             completionHandler(nil)
             return
         }
@@ -312,7 +405,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             if choice == .alertFirstButtonReturn { saveAs(nil) }
             return
         }
-        if conflict != nil || otherWriter || editor?.isComposing == true || (saving && !unavoidable) {
+        if conflict != nil || otherWriter || isComposing || (saving && !unavoidable) {
             autosaveDeferred = true
             completionHandler(CocoaError(.userCancelled))
             return
@@ -331,9 +424,9 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     // external change is pending, so closing then asks what to do with the unsaved text.
     override func canClose(withDelegate delegate: Any, shouldClose shouldCloseSelector: Selector?,
                            contextInfo: UnsafeMutableRawPointer?) {
-        editor?.finishComposition()
+        finishComposition()
         guard let conflict = io.withLock({ $0.disk.conflict }), hasUnwrittenText,
-              let window = editor?.window, window.attachedSheet == nil else {
+              let window = keyEditor?.window, window.attachedSheet == nil else {
             super.canClose(withDelegate: delegate, shouldClose: shouldCloseSelector, contextInfo: contextInfo)
             return
         }
@@ -378,7 +471,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         guard let url = fileURL, let type = fileType else { return }
         save(to: url, ofType: type, for: .saveOperation) { [weak self] error in
             guard let self, let error else { return }
-            if let window = editor?.window {
+            if let window = keyEditor?.window {
                 presentError(error, modalFor: window, delegate: nil, didPresent: nil, contextInfo: nil)
             } else {
                 presentError(error)
@@ -387,7 +480,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     }
 
     override func save(_ sender: Any?) {
-        editor?.finishComposition()
+        finishComposition()
         guard let url = fileURL else {
             super.save(sender)
             return
@@ -429,13 +522,23 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         sourceChange = nil
         propertyChoices = []
         propertyChoiceID = nil
-        editor?.previewWorkspace.sidebar.inspector.show(nil)
+        for window in windows { window.previewWorkspace.sidebar.inspector.show(nil) }
         io.withLock { $0.committed = buffer.bytes }
         history.removeAllActions()
     }
 
-    func changeText(_ ranges: [NSRange], replacements: [String], coalescing: Bool) {
+    func changeText(_ ranges: [NSRange], replacements: [String], coalescing: Bool,
+                    from window: SourceWindowController) {
         guard ranges.count == replacements.count, let first = ranges.first else { return }
+        // Text composed in another window is committed first. The ranges here were measured
+        // against the text before it, so this keystroke is dropped rather than misplaced.
+        let composing = windows.filter { $0 !== window && $0.isComposing }
+        if !composing.isEmpty {
+            for other in composing { other.finishComposition() }
+            NSSound.beep()
+            window.show(source.snapshot, selecting: nil)
+            return
+        }
         do {
             let edits = try zip(ranges, replacements).map {
                 try source.buffer.textEdit(range: $0.0, replacement: $0.1)
@@ -444,7 +547,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             let insertedLength = replacements[0].normalizedEditorSeparators.utf16.count
             let selection = NSRange(location: first.location + insertedLength, length: 0)
             try commit(edits, label: groupsTyping ? "Typing" : "Edit Source",
-                       selection: selection, coalescingFrom: groupsTyping ? first.location : nil)
+                       selection: selection, in: window, coalescingFrom: groupsTyping ? first.location : nil)
         } catch {
             presentError(error)
         }
@@ -454,11 +557,16 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         _ edits: [SourceEdit],
         label: String,
         selection: NSRange,
+        in window: SourceWindowController? = nil,
         coalescingFrom location: Int? = nil
     ) throws {
-        let previousSelection = editor?.selection ?? NSRange(location: 0, length: 0)
+        let began = CACurrentMediaTime()
+        // Undo and redo act in the key window, which gets the selection back.
+        let acting = window ?? keyEditor
+        let previousSelection = acting?.selection ?? NSRange(location: 0, length: 0)
         let inverted = try source.apply(source.transaction(edits: edits, label: label))
         if inverted.isEmpty { return }
+        let mutated = CACurrentMediaTime()
         adjustFeatureAnchors(for: edits)
         activeEdit = nil
         sourceChange = nil
@@ -468,7 +576,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         do {
             let manager = history
             if !manager.isUndoing && !manager.isRedoing {
-                updateChangeCount(.changeDone)
+                record(.changeDone)
                 if location == nil || typingEnd != location {
                     endTypingGroup()
                     manager.beginUndoGrouping()
@@ -501,9 +609,12 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             }
         }
 
-        editor?.show(snapshot, selecting: selection)
-        editor?.window?.isDocumentEdited = source.isEdited
+        for other in windows { other.show(snapshot, selecting: other === acting ? selection : nil) }
+        showEdited()
         preview?.schedule(snapshot, fileURL: fileURL, immediate: location == nil)
+        TimingLog.record("commit", at: mutated, [
+            "revision": snapshot.revision, "label": label, "handlingMs": (CACurrentMediaTime() - began) * 1_000,
+        ])
     }
 
     func endTypingGroup() {
@@ -653,7 +764,8 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
                 handle = workspace.geometry.flatMap { makeHandle(for: choice, selection: selection, geometry: $0) }
             }
             activeEdit = ActiveEdit(requestID: result.requestID, key: result.key, instanceID: selection.instanceID,
-                                    choiceID: choice.id, label: choice.label, operation: plan.operation, handle: handle)
+                                    choiceID: choice.id, label: choice.label, property: choice.title, scope: plan.scope,
+                                    operation: plan.operation, handle: handle)
             var guidesTruncated = false
             switch handle {
             case .diameter(let radial):
@@ -674,7 +786,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
                 workspace.viewport?.showLinear(handle: nil, guides: [])
             }
             workspace.showGhost(plan.affected)
-            inspection.writable = !controller.isComposing
+            inspection.writable = !isComposing
 
             var notes: [String] = []
             if let sourceChange {
@@ -774,7 +886,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         guard let controller = editor else { return }
         let workspace = controller.previewWorkspace
         let inspector = workspace.sidebar.inspector
-        guard !controller.isComposing else {
+        guard !isComposing else {
             inspector.showMessage("Finish composing text before editing this property.")
             return
         }
@@ -797,32 +909,33 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             let oldToken = String(decoding: edit.expected, as: UTF8.self)
             let newToken = String(decoding: edit.replacement, as: UTF8.self)
             try commit([edit], label: active.label,
-                       selection: NSRange(location: editedRange.location, length: newToken.utf16.count))
+                       selection: NSRange(location: editedRange.location, length: newToken.utf16.count), in: controller)
             sourceChange = "Source change · \(oldToken) → \(newToken)"
             inspector.showMessage(sourceChange ?? "")
+            Announcements.post("\(active.property) changed from \(oldToken) to \(newToken), \(active.scope)")
         } catch {
             inspector.showMessage(propertyMessage(for: error))
         }
     }
 
     @IBAction func undoSource(_ sender: Any?) {
-        editor?.finishComposition()
+        finishComposition()
         endTypingGroup()
         guard history.canUndo else { return }
         history.undo()
-        updateChangeCount(.changeUndone)
+        record(.changeUndone)
     }
 
     @IBAction func redoSource(_ sender: Any?) {
-        editor?.finishComposition()
+        finishComposition()
         endTypingGroup()
         guard history.canRedo else { return }
         history.redo()
-        updateChangeCount(.changeRedone)
+        record(.changeRedone)
     }
 
     override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
-        if let menu = item as? NSMenuItem, let viewport = editor?.previewWorkspace.viewport {
+        if let menu = item as? NSMenuItem, let viewport = keyEditor?.previewWorkspace.viewport {
             switch menu.action {
             case #selector(toggleOrthographic(_:)): menu.state = viewport.orthographic ? .on : .off
             case #selector(toggleEdges(_:)): menu.state = viewport.showsEdges ? .on : .off
@@ -833,7 +946,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             }
         }
         if item.action == #selector(revealSelectedInstance(_:)) {
-            return editor?.previewWorkspace.sidebar.canRevealOccurrence == true
+            return keyEditor?.previewWorkspace.sidebar.canRevealOccurrence == true
         }
         if item.action == #selector(undoSource(_:)) {
             let typing = typingEnd != nil
@@ -857,8 +970,8 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     /// a version it records from undo notifications, which the private history does not send,
     /// and AppKit removes a File menu item whose action is that revert.
     @objc func revertToLastSaved(_ sender: Any?) {
-        editor?.finishComposition()
-        guard fileURL != nil, let window = editor?.window, window.attachedSheet == nil else { return }
+        finishComposition()
+        guard fileURL != nil, let window = keyEditor?.window, window.attachedSheet == nil else { return }
         let alert = NSAlert()
         alert.messageText = "Revert “\(fileName)” to the last saved version?"
         alert.informativeText = "Changes since you last opened or saved it are discarded, in the file as well. "
@@ -870,8 +983,8 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             do {
                 endTypingGroup()
                 try replaceSource(with: try SourceBuffer(bytes: source.savedBytes))
-                editor?.show(source.snapshot, selecting: NSRange(location: 0, length: 0))
-                editor?.window?.isDocumentEdited = isDocumentEdited
+                for window in windows { window.show(source.snapshot, selecting: NSRange(location: 0, length: 0)) }
+                showEdited()
                 preview?.schedule(source.snapshot, fileURL: fileURL, immediate: true)
                 // Save looks at the path first, so an external change still gets its question.
                 save(nil)
@@ -885,9 +998,51 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         endTypingGroup()
         preview?.close()
         if let activation { NotificationCenter.default.removeObserver(activation) }
+        if let dependencyEdits { NotificationCenter.default.removeObserver(dependencyEdits) }
         for window in diskWindows { window.close() }
         diskWindows = []
         super.close()
+        // Unsaved text discarded here no longer differs from the file.
+        NotificationCenter.default.post(name: Self.fileTextDidChange, object: self)
+    }
+
+    /// Records a change for AppKit and tells the documents that use this file.
+    private func record(_ change: NSDocument.ChangeType) {
+        updateChangeCount(change)
+        NotificationCenter.default.post(name: Self.fileTextDidChange, object: self)
+    }
+
+    // MARK: - Dependency documents
+
+    private func noteDependencies(of result: EvaluationResult) {
+        dependencyPaths = Set(result.files.filter { $0.kind == .include || $0.kind == .use }.map {
+            Self.comparablePath(URL(fileURLWithPath: $0.resolvedPath ?? $0.logicalPath))
+        })
+        refreshDependencyNotice()
+    }
+
+    /// The worker reads included and used files from disk, so text open elsewhere that its file
+    /// does not hold yet is not in this preview. Saving that document re-evaluates this one
+    /// through the dependency watch.
+    private func refreshDependencyNotice() {
+        guard !windows.isEmpty else { return }
+        let unsaved = NSDocumentController.shared.documents.compactMap { document -> String? in
+            guard let other = document as? ScadrettoDocument, other !== self, let url = other.fileURL,
+                  dependencyPaths.contains(Self.comparablePath(url)), other.hasUnwrittenText else { return nil }
+            return url.lastPathComponent
+        }.sorted()
+        let notice = Self.dependencyNotice(for: unsaved)
+        for window in windows { window.previewWorkspace.showDependencyNotice(notice) }
+    }
+
+    private static func dependencyNotice(for names: [String]) -> String? {
+        guard let first = names.first else { return nil }
+        if names.count == 1 { return "\(first) has unsaved edits; the preview uses the saved file." }
+        return "\(first) and \(names.count - 1) more have unsaved edits; the preview uses the saved files."
+    }
+
+    private static func comparablePath(_ url: URL) -> String {
+        url.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
     // MARK: - External changes
@@ -920,12 +1075,12 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     private func checkDisk() async {
         guard let url = fileURL else { return }
         diskCheckPending = false
-        guard !saving, editor?.isComposing != true else {
+        guard !saving, !isComposing else {
             diskCheckPending = true
             return
         }
         guard let disk = await readDiskCoordinated(url), url == fileURL else { return }
-        guard !saving, editor?.isComposing != true else {
+        guard !saving, !isComposing else {
             diskCheckPending = true
             return
         }
@@ -951,7 +1106,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         if conflict == nil {
             fileModificationDate = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
         }
-        editor?.window?.isDocumentEdited = isDocumentEdited
+        showEdited()
         if presenting, case .conflict(let raised) = reaction { present(raised) }
         if conflict == nil { resumeDeferredAutosave() }
         return conflict
@@ -959,12 +1114,11 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
 
     private func replaceContents(with buffer: SourceBuffer) {
         endTypingGroup()
-        let selection = editor?.selection ?? NSRange(location: 0, length: 0)
         io.withLock { $0.pendingRead = buffer }
         adoptRead()
         // The text now matches the file, so there is nothing for AppKit to autosave.
-        updateChangeCount(.changeCleared)
-        editor?.show(source.snapshot, selecting: selection)
+        record(.changeCleared)
+        for window in windows { window.show(source.snapshot, selecting: window.selection) }
         preview?.schedule(source.snapshot, fileURL: fileURL, immediate: true)
     }
 
@@ -979,7 +1133,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             do {
                 replaceContents(with: try SourceBuffer(bytes: bytes))
                 fileModificationDate = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
-                editor?.window?.isDocumentEdited = isDocumentEdited
+                showEdited()
             } catch {
                 presentError(error)
             }
@@ -993,7 +1147,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     }
 
     private func present(_ conflict: DiskBaseline.Conflict) {
-        guard let window = editor?.window, window.attachedSheet == nil else { return }
+        guard let window = keyEditor?.window, window.attachedSheet == nil else { return }
         let alert = NSAlert()
         switch conflict {
         case .changed(let reviewed):
@@ -1033,7 +1187,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     }
 
     private func askToOverwrite(_ reviewed: Data) {
-        guard let window = editor?.window, window.attachedSheet == nil else { return }
+        guard let window = keyEditor?.window, window.attachedSheet == nil else { return }
         let alert = NSAlert()
         alert.messageText = "“\(fileName)” changed on disk"
         alert.informativeText = "Overwrite replaces the other application's version with your text. "
@@ -1096,61 +1250,61 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         let controller = NSWindowController(window: window)
         diskWindows.removeAll { $0.window?.isVisible != true }
         diskWindows.append(controller)
-        if let main = editor?.window { window.setFrameTopLeftPoint(NSPoint(x: main.frame.minX + 40, y: main.frame.maxY - 40)) }
+        if let main = keyEditor?.window { window.setFrameTopLeftPoint(NSPoint(x: main.frame.minX + 40, y: main.frame.maxY - 40)) }
         controller.showWindow(nil)
     }
 
     @IBAction func retryPreview(_ sender: Any?) { preview?.retry() }
     @IBAction func cancelPreview(_ sender: Any?) { preview?.cancel() }
     @IBAction func revealSelectedInstance(_ sender: Any?) {
-        editor?.previewWorkspace.sidebar.revealOccurrence()
+        keyEditor?.previewWorkspace.sidebar.revealOccurrence()
     }
 
-    @IBAction func frameModel(_ sender: Any?) { editor?.previewWorkspace.viewport?.frameAll() }
+    @IBAction func frameModel(_ sender: Any?) { keyEditor?.previewWorkspace.viewport?.frameAll() }
 
     @IBAction func standardView(_ sender: NSMenuItem) {
         let views = ViewportStandardView.allCases
         guard views.indices.contains(sender.tag) else { return }
-        editor?.previewWorkspace.viewport?.setStandardView(views[sender.tag])
+        keyEditor?.previewWorkspace.viewport?.setStandardView(views[sender.tag])
     }
 
     @IBAction func toggleOrthographic(_ sender: NSMenuItem) {
-        guard let viewport = editor?.previewWorkspace.viewport else { return }
+        guard let viewport = keyEditor?.previewWorkspace.viewport else { return }
         viewport.orthographic.toggle()
         sender.state = viewport.orthographic ? .on : .off
     }
 
     @IBAction func toggleEdges(_ sender: NSMenuItem) {
-        guard let viewport = editor?.previewWorkspace.viewport else { return }
+        guard let viewport = keyEditor?.previewWorkspace.viewport else { return }
         viewport.showsEdges.toggle()
         sender.state = viewport.showsEdges ? .on : .off
         UserDefaults.standard.set(viewport.showsEdges, forKey: "showsEdges")
     }
 
     @IBAction func toggleAxes(_ sender: NSMenuItem) {
-        guard let viewport = editor?.previewWorkspace.viewport else { return }
+        guard let viewport = keyEditor?.previewWorkspace.viewport else { return }
         viewport.showsAxes.toggle()
         sender.state = viewport.showsAxes ? .on : .off
         UserDefaults.standard.set(viewport.showsAxes, forKey: "showsAxes")
     }
 
     @IBAction func toggleOrbitPan(_ sender: NSMenuItem) {
-        guard let viewport = editor?.previewWorkspace.viewport else { return }
+        guard let viewport = keyEditor?.previewWorkspace.viewport else { return }
         viewport.swapsOrbitAndPan.toggle()
         sender.state = viewport.swapsOrbitAndPan ? .on : .off
         UserDefaults.standard.set(viewport.swapsOrbitAndPan, forKey: "swapsOrbitAndPan")
     }
 
     @IBAction func setDragSnap(_ sender: NSMenuItem) {
-        guard let step = sender.representedObject as? Double, let viewport = editor?.previewWorkspace.viewport else { return }
+        guard let step = sender.representedObject as? Double, let viewport = keyEditor?.previewWorkspace.viewport else { return }
         viewport.dragSnapIncrement = step
         UserDefaults.standard.set(step, forKey: "dragSnapIncrement")
-        editor?.previewWorkspace.showSnap()
+        keyEditor?.previewWorkspace.showSnap()
         refreshInspector()
     }
 
     @IBAction func showWorkerLog(_ sender: Any?) {
-        guard let window = editor?.window else { return }
+        guard let window = keyEditor?.window else { return }
         let alert = NSAlert()
         alert.messageText = "OpenSCAD Worker Log"
         let details = preview?.log ?? ""
@@ -1183,7 +1337,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             guard span.start <= span.end, span.end <= length else { return nil as NSRange? }
             return try? buffer.textRange(for: Int(span.start)..<Int(span.end))
         }
-        editor?.reveal(range)
+        keyEditor?.reveal(range)
     }
 }
 

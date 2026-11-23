@@ -18,8 +18,14 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
 
     var selection: NSRange { editor.selectedRange() }
 
+    /// One more than the highest number among the document's other windows, so each title
+    /// names a different window in the Window menu.
+    private let windowNumber: Int
+
     init(document: ScadrettoDocument) {
         self.sourceDocument = document
+        windowNumber = (document.windowControllers.compactMap { ($0 as? SourceWindowController)?.windowNumber }
+            .max() ?? 0) + 1
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1120, height: 690),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -78,6 +84,10 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         return nil
     }
 
+    override func windowTitle(forDocumentDisplayName displayName: String) -> String {
+        windowNumber > 1 ? "\(displayName) (\(windowNumber))" : displayName
+    }
+
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
         guard !placedDividers else { return }
@@ -125,12 +135,16 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         }
     }
 
-    func show(_ snapshot: SourceSnapshot, selecting selection: NSRange) {
+    /// Shows the document's text. Without a selection, as for an edit made in another window of
+    /// the same document, the current selection follows the text around the change.
+    func show(_ snapshot: SourceSnapshot, selecting requested: NSRange?) {
         let firstView = self.snapshot == nil
         self.snapshot = snapshot
         mirroring = true
+        var selection = requested ?? editor.selectedRange()
         if !editor.string.utf16.elementsEqual(snapshot.buffer.displayText.utf16) {
             let change = TextDelta.between(editor.string, snapshot.buffer.displayText)
+            if requested == nil { selection = Self.follow(selection, through: change) }
             let replacement = NSAttributedString(string: change.replacement, attributes: editor.typingAttributes)
             editor.textStorage?.replaceCharacters(in: change.range, with: replacement)
             editor.didChangeText()
@@ -142,6 +156,17 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         mirroring = false
         ruler?.needsDisplay = true
         scheduleSyntax(snapshot)
+    }
+
+    /// Keeps a selection before the change, moves one after it by the change in length and
+    /// collapses one that overlaps it to the end of the new text.
+    private static func follow(_ selection: NSRange, through change: TextDelta) -> NSRange {
+        let inserted = change.replacement.utf16.count
+        if NSMaxRange(selection) <= change.range.location { return selection }
+        if selection.location >= NSMaxRange(change.range) {
+            return NSRange(location: selection.location + inserted - change.range.length, length: selection.length)
+        }
+        return NSRange(location: change.range.location + inserted, length: 0)
     }
 
     private func resetSourceScroll() {
@@ -158,7 +183,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         if mirroring || editor.updatingComposition || editor.hasMarkedText() { return true }
         guard let sourceDocument else { return false }
         sourceDocument.changeText(affectedRanges.map(\.rangeValue),
-                                  replacements: replacementStrings, coalescing: true)
+                                  replacements: replacementStrings, coalescing: true, from: self)
         return false
     }
 
@@ -211,7 +236,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     private func commitComposedText() {
         guard let snapshot, !editor.string.utf16.elementsEqual(snapshot.buffer.displayText.utf16) else { return }
         let change = TextDelta.between(snapshot.buffer.displayText, editor.string)
-        sourceDocument?.changeText([change.range], replacements: [change.replacement], coalescing: false)
+        sourceDocument?.changeText([change.range], replacements: [change.replacement], coalescing: false, from: self)
     }
 
     private func scheduleSyntax(_ snapshot: SourceSnapshot) {

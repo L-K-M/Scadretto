@@ -117,6 +117,7 @@ public final class ViewportView: MTKView {
     private var sequence: UInt64 = 0
     private var presentationRetries = 0
     private var presentationRetryTask: Task<Void, Never>?
+    private var occlusionObserver: (any NSObjectProtocol)?
     private var editHandle: ViewportEditHandle?
     private var diameterGuides: [ViewportDiameterGuide] = []
     private var linearGuides: [ViewportLinearGuide] = []
@@ -124,6 +125,9 @@ public final class ViewportView: MTKView {
 
     public var onSelection: ((PresentedFrame, CGPoint) -> Void)?
     public var onPresentationChange: (() -> Void)?
+    /// Called on the main actor with the scene, if any, and the Metal presentation time of every
+    /// presented frame. Measurements set it; drawing does not depend on it.
+    public var onFramePresented: ((UUID?, CFTimeInterval) -> Void)?
     public var onEditPreview: ((Double?) -> Void)?
     public var onEditCommit: ((UUID, UUID, Double) -> Void)?
     public var dragSnapIncrement: Double = 0 {
@@ -184,6 +188,26 @@ public final class ViewportView: MTKView {
     public override func layout() {
         super.layout()
         if !hasAutoFramed { frameAll() }
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
+        occlusionObserver = nil
+        guard let window else { return }
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.windowOcclusionDidChange() }
+        }
+    }
+
+    /// A covered window presents nothing, and the bounded retries run out while it stays
+    /// covered. Draw again once part of it shows, so a scene that arrived meanwhile is presented.
+    private func windowOcclusionDidChange() {
+        guard window?.occlusionState.contains(.visible) == true, !presentationIsCurrent else { return }
+        resetPresentationRetry()
+        needsDisplay = true
     }
 
     /// Replaces the displayed scene. `nil` clears the mesh but keeps the
@@ -287,14 +311,27 @@ public final class ViewportView: MTKView {
         presentationRetries = 0
     }
 
+    /// An on-demand frame can be skipped or fail to acquire a drawable, and the window server
+    /// drops the frames of a window it is still recomposing, for example for a few hundred
+    /// milliseconds after another window closes over it. Retry quickly first, then back off to
+    /// one frame a second, for about twelve seconds in all.
+    private static let quickPresentationRetries = 5
+    private static let maximumPresentationRetries = 20
+
+    private static func presentationRetryDelay(after retries: Int) -> Duration {
+        let quickDelay = 40
+        guard retries >= quickPresentationRetries else { return .milliseconds(quickDelay) }
+        let doublings = min(retries - quickPresentationRetries + 1, 5)
+        return .milliseconds(min(quickDelay << doublings, 1_000))
+    }
+
     private func retryUnconfirmedFrame() {
-        // An on-demand frame can be skipped or fail to acquire a drawable.
-        // Give a visible window a bounded chance to present the new mapping.
-        guard presentationRetryTask == nil, !presentationIsCurrent, !isSceneStale,
-              sceneID != nil, window?.isVisible == true, presentationRetries < 5 else { return }
+        guard presentationRetryTask == nil, !presentationIsCurrent, !isSceneStale, sceneID != nil,
+              window?.isVisible == true, presentationRetries < Self.maximumPresentationRetries else { return }
         let mapping = self.mapping
+        let delay = Self.presentationRetryDelay(after: presentationRetries)
         presentationRetryTask = Task { @MainActor [weak self] in
-            do { try await Task.sleep(for: .milliseconds(40)) }
+            do { try await Task.sleep(for: delay) }
             catch { return }
             guard let self, self.mapping == mapping else { return }
             presentationRetryTask = nil
@@ -553,6 +590,14 @@ extension ViewportView: MTKViewDelegate {
             drawable.addPresentedHandler { [weak self] drawable in
                 guard drawable.presentedTime > 0 else { return }
                 Task { @MainActor in self?.didPresent(frame) }
+            }
+        }
+        if onFramePresented != nil {
+            let scene = isSceneStale ? nil : sceneID
+            drawable.addPresentedHandler { [weak self] drawable in
+                let time = drawable.presentedTime
+                guard time > 0 else { return }
+                Task { @MainActor in self?.onFramePresented?(scene, time) }
             }
         }
         renderer.draw(

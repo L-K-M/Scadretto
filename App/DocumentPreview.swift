@@ -197,6 +197,7 @@ final class DocumentPreview {
     private var dependencyCheck: Task<Void, Never>?
     private var generation: UInt64 = 0
     private var dependencyRetries = 0
+    private var settingsObserver: (any NSObjectProtocol)?
 
     var onUpdate: ((Phase) -> Void)?
     private(set) var request: EngineRequest?
@@ -207,6 +208,11 @@ final class DocumentPreview {
     init(engine: EngineClient?, startupError: String?) {
         self.engine = engine
         self.startupError = startupError
+        settingsObserver = NotificationCenter.default.addObserver(
+            forName: PreviewSettings.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.settingsChanged() }
+        }
     }
 
     func schedule(_ source: SourceSnapshot, fileURL: URL?, immediate: Bool) {
@@ -238,6 +244,8 @@ final class DocumentPreview {
         stopWatchingDependencies()
         input = nil
         onUpdate = nil
+        if let settingsObserver { NotificationCenter.default.removeObserver(settingsObserver) }
+        settingsObserver = nil
     }
 
     func acceptsNavigation(from source: EvaluationResult) -> Bool {
@@ -263,13 +271,8 @@ final class DocumentPreview {
         onUpdate?(.evaluating)
 
         let generation = self.generation
-        let roots = UserDefaults.standard.stringArray(forKey: "libraryRoots")?.map {
-            URL(fileURLWithPath: $0, isDirectory: true)
-        } ?? []
-        let configuredTimeout = UserDefaults.standard.double(forKey: "previewTimeoutSeconds")
-        let timeout = configuredTimeout.isFinite && configuredTimeout > 0
-            ? min(3_600, configuredTimeout) : 20
-        let limits = EngineWorkerLimits(timeout: .seconds(timeout))
+        let roots = PreviewSettings.shared.libraryRoots
+        let limits = EngineWorkerLimits(timeout: .seconds(PreviewSettings.shared.timeout))
         task = Task { [weak self] in
             do {
                 if !immediate { try await Task.sleep(for: .milliseconds(150)) }
@@ -286,9 +289,10 @@ final class DocumentPreview {
                     Task { @MainActor in self?.dependencyChanged(for: id) }
                 }
                 let prepared = await Task.detached(priority: .utility) {
+                    let began = ContinuousClock.now
                     let watch = DependencyWatch(result: result, onChange: changed)
                     let geometry = result.scene.flatMap(PreviewGeometry.init)
-                    return (watch: watch, geometry: geometry)
+                    return (watch: watch, geometry: geometry, time: began.duration(to: .now))
                 }.value
                 guard let self, isCurrent(request, input: input), !Task.isCancelled,
                       result.requestID == id, result.key == request.key else { return }
@@ -315,6 +319,15 @@ final class DocumentPreview {
                 case .rendered, .empty: lastGood = result
                 case .modelError, .unsupportedDimension: break
                 }
+                TimingLog.record("accepted", [
+                    "revision": input.source.revision, "requestID": id.uuidString,
+                    "queueMs": TimingLog.milliseconds(evaluation.queueTime),
+                    "workerMs": TimingLog.milliseconds(evaluation.workerTime),
+                    "decodeMs": TimingLog.milliseconds(evaluation.decodeTime),
+                    "prepareMs": TimingLog.milliseconds(prepared.time),
+                    "peakWorkerMB": Double(evaluation.peakWorkerBytes) / 1_048_576,
+                    "triangles": (result.scene?.mesh?.indices.count ?? 0) / 3,
+                ])
                 onUpdate?(.outcome(evaluation.outcome, prepared.geometry))
             } catch {
                 guard let self, currentID == id, !Task.isCancelled else { return }
@@ -354,6 +367,16 @@ final class DocumentPreview {
         dependencyCheck = nil
         dependencyRequest = nil
         dependencies = nil
+    }
+
+    // Library folders take part in resolution, so a result found under the previous folders is
+    // neither shown nor used for a write-back, even when the source did not change.
+    private func settingsChanged() {
+        guard input != nil, generation < UInt64.max else { return }
+        stopWatchingDependencies()
+        generation += 1
+        dependencyRetries = 0
+        begin(immediate: true)
     }
 
     private func changedDuringEvaluation() {

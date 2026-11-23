@@ -330,6 +330,9 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
     private let fieldRow = NSStackView()
     private let detail = NSTextField(wrappingLabelWithString: "")
     private var inspection: DiameterInspection?
+    /// The selection and property VoiceOver last heard about, so a refresh of the same
+    /// selection after an evaluation stays quiet.
+    private var announcedSelection: (title: String, property: String)?
 
     var onCommit: ((String) -> Void)?
     var onChoice: ((Int) -> Void)?
@@ -339,6 +342,9 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
         orientation = .vertical
         alignment = .leading
         spacing = 4
+        // A group keeps the labels and field inside reachable and carries the summary as its value.
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
         setAccessibilityIdentifier("inspector")
         setAccessibilityLabel("Property inspector")
         title.font = .boldSystemFont(ofSize: NSFont.smallSystemFontSize)
@@ -379,7 +385,17 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
     func show(_ inspection: DiameterInspection?) {
         self.inspection = inspection
         isHidden = inspection == nil
-        guard let inspection else { return }
+        guard let inspection else {
+            setAccessibilityValue(nil)
+            announcedSelection = nil
+            return
+        }
+        let summary = Self.summary(of: inspection)
+        setAccessibilityValue(summary)
+        if announcedSelection.map({ $0 != (inspection.title, inspection.property) }) ?? true {
+            announcedSelection = (inspection.title, inspection.property)
+            Announcements.post(summary)
+        }
         if choices.itemTitles != inspection.choices {
             choices.removeAllItems()
             choices.addItems(withTitles: inspection.choices)
@@ -401,6 +417,14 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
         field.setAccessibilityLabel(inspection.property)
         field.stringValue = inspection.value.map { PropertyEntry.text(of: $0) } ?? ""
         field.isEnabled = inspection.writable
+    }
+
+    /// The breadcrumb, property, evaluated value and scope in one line, or what the selection
+    /// needs next when it has no value.
+    private static func summary(of inspection: DiameterInspection) -> String {
+        let value = inspection.value.map { "\(inspection.property) \(PropertyEntry.text(of: $0))" }
+        let next = value == nil ? inspection.detail : ""
+        return [inspection.title, value ?? "", inspection.scope, next].filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
     func disableEditing() {

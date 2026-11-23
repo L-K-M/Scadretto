@@ -1,0 +1,131 @@
+#!/bin/bash
+# Measure the plan's performance workloads on this Mac with a Release build.
+#
+# Usage: Scripts/benchmark-macos [OUTPUT_DIRECTORY]
+#
+# Runs the benchmark UI tests, which drive the app and let it write timing logs, then the
+# cancellation and cleanup series, and writes environment.txt, cleanup.txt and report.md to
+# the output directory (default .build/benchmarks/<UTC time>). The UI tests need a logged-in
+# session that permits UI automation. See plan/06-Verification-and-Release.md, "Performance
+# targets", for the workloads and targets.
+set -euo pipefail
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+out=${1:-$root/.build/benchmarks/$(date -u +%Y%m%dT%H%M%SZ)}
+derived="$root/.build/benchmarks/DerivedData"
+# A stable identity keeps the UI test runner's automation permission across builds. Release
+# enables the hardened runtime, which needs the identity's team; ad hoc ("-") needs none.
+identity=${SCADRETTO_SIGN_IDENTITY:-Apple Development}
+mkdir -p "$out"
+out=$(cd "$out" && pwd)
+cd "$root"
+
+xcode=(xcodebuild -project Scadretto.xcodeproj -scheme Scadretto -configuration Release
+       -destination 'platform=macOS,arch=arm64' -derivedDataPath "$derived"
+       CODE_SIGN_IDENTITY="$identity")
+if [[ $identity != - ]]; then
+  team=$(security find-certificate -c "$identity" -p 2>/dev/null \
+    | openssl x509 -noout -subject -nameopt multiline 2>/dev/null \
+    | awk -F' = ' '/organizationalUnitName/ { print $2; exit }')
+  [[ -n $team ]] || { echo "error: no team found for the signing identity \"$identity\"" >&2; exit 1; }
+  xcode+=(DEVELOPMENT_TEAM="$team")
+fi
+"${xcode[@]}" build-for-testing > "$out/build.log" 2>&1 \
+  || { echo "error: the Release build failed; see $out/build.log" >&2; exit 1; }
+app="$derived/Build/Products/Release/Scadretto.app"
+
+{
+  echo "date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "revision: $(git rev-parse HEAD)$(git diff --quiet HEAD || echo ' (with local changes)')"
+  echo "hardware: $(sysctl -n hw.model), $(sysctl -n machdep.cpu.brand_string), $(( $(sysctl -n hw.memsize) / 1073741824 )) GiB"
+  echo "macOS: $(sw_vers -productVersion) ($(sw_vers -buildVersion))"
+  echo "xcode: $(xcodebuild -version | tr '\n' ' ')"
+  echo "build: Release, arm64"
+  echo "load average: $(sysctl -n vm.loadavg)"
+  echo "display: $(system_profiler SPDisplaysDataType 2>/dev/null | grep -E 'Resolution|UI Looks like' | sed 's/^ *//' | tr '\n' ';')"
+  for fixture in Tests/Fixtures/mounting-plate.scad Tests/Fixtures/stress-100-cutters.scad; do
+    echo "fixture: $fixture $(shasum -a 256 "$fixture" | cut -d' ' -f1)"
+  done
+} > "$out/environment.txt"
+
+rm -rf "$out/benchmarks.xcresult"
+tests=0
+TEST_RUNNER_SCADRETTO_BENCHMARK_DIR="$out" "${xcode[@]}" -parallel-testing-enabled NO \
+  -resultBundlePath "$out/benchmarks.xcresult" \
+  -only-testing:ScadrettoUITests/ScadrettoUITests/testBenchmarkPlateCommitToFrame \
+  -only-testing:ScadrettoUITests/ScadrettoUITests/testBenchmarkOrbitAndDragFrames \
+  -only-testing:ScadrettoUITests/ScadrettoUITests/testBenchmarkTypingWhileWorkerIsBusy \
+  test-without-building > "$out/ui-tests.log" 2>&1 || tests=$?
+
+# Cancellation and cleanup: end the app three ways during a long evaluation, then look for
+# worker processes and job directories left behind, before and after the next launch. Window
+# restoration is off so a relaunch does not reopen the long evaluation.
+storage="$HOME/Library/Caches/com.lkm.Scadretto/sessions"
+worker="$app/Contents/Helpers/scadretto-engine"
+slow="$out/long-evaluation.scad"
+printf 'function fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2);\necho(fib(40));\ncube(1);\n' > "$slow"
+# The helpers print counts and never fail, so `set -e` and `pipefail` do not end the series.
+jobs() { { find "$storage" -mindepth 2 -maxdepth 2 -name 'job-*' 2>/dev/null || true; } | wc -l | tr -d ' '; }
+sessions() { { find "$storage" -mindepth 1 -maxdepth 1 -name 'session-*' 2>/dev/null || true; } | wc -l | tr -d ' '; }
+workers() { { pgrep -f "$worker" || true; } | wc -l | tr -d ' '; }
+app_pid() { { pgrep -f "$app/Contents/MacOS/Scadretto" || true; } | head -1; }
+now() { perl -MTime::HiRes=time -e 'printf "%.3f", time'; }
+note() { echo "$(date -u +%H:%M:%S) $*" >> "$out/cleanup.log"; }
+# Asks the app at this path, not whichever copy owns the bundle ID, to quit.
+quit_app() { osascript -e "tell application \"$app\" to quit" > /dev/null 2>> "$out/cleanup.log"; }
+
+app_running() { [[ -n $(app_pid) ]]; }
+app_gone() { [[ -z $(app_pid) ]]; }
+worker_running() { (($(workers) > 0)); }
+
+# Runs the predicate again every 0.1 s, so pass a function rather than an expanded value.
+wait_for() { # seconds, predicate...
+  local limit=$1; shift
+  for _ in $(seq 1 $((limit * 10))); do "$@" && return 0; sleep 0.1; done
+  return 1
+}
+
+# The UI tests' own instance must be gone before the series starts.
+wait_for 30 app_gone || note "an instance from the UI tests is still running"
+{
+  echo "| Ending | Workers while evaluating | Termination latency | Workers 5 s later | Job directories 5 s later |"
+  echo "|---|---|---|---|---|"
+  for ending in quit TERM KILL; do
+    open -a "$app" "$slow" --args -ApplePersistenceIgnoreState YES
+    wait_for 30 app_running || { note "$ending: app did not start"; echo "| $ending | app did not start | | | |"; continue; }
+    pid=$(app_pid)
+    wait_for 30 worker_running || note "$ending: no worker within 30 s"
+    running=$(workers)
+    note "$ending: app $pid, $running workers, $(jobs) job directories"
+    started=$(now)
+    case $ending in
+      quit) quit_app || note "quit: osascript failed" ;;
+      *) kill -"$ending" "$pid" ;;
+    esac
+    if wait_for 30 bash -c "! kill -0 $pid 2>/dev/null"; then latency="$(perl -e "printf '%.0f ms', ($(now) - $started) * 1000")"
+    else latency="still running after 30 s"; kill -KILL "$pid" 2>/dev/null || true; fi
+    sleep 5
+    note "$ending: ended ($latency), $(workers) workers, $(jobs) job directories"
+    echo "| $ending | $running | $latency | $(workers) | $(jobs) |"
+  done
+  # The next launch reclaims sessions whose owner is gone.
+  before=$(sessions)
+  stranded=$(jobs)
+  open -a "$app" --args -ApplePersistenceIgnoreState YES
+  wait_for 30 app_running || note "relaunch: app did not start"
+  sleep 3
+  after=$(sessions)
+  remaining=$(jobs)
+  quit_app || note "relaunch: osascript failed"
+  wait_for 30 app_gone || { note "relaunch: app still running"; kill -TERM "$(app_pid)" 2>/dev/null || true; }
+  echo
+  echo "Sessions before the next launch: $before; while it runs: $after (its own included)."
+  echo "Job directories before the next launch: $stranded; while it runs: $remaining."
+} > "$out/cleanup.txt"
+
+python3 "$root/Scripts/benchmark-report" "$out" > "$out/report.md"
+cat "$out/environment.txt" "$out/report.md" "$out/cleanup.txt"
+if ((tests != 0)); then
+  echo "error: the benchmark UI tests failed; see $out/ui-tests.log" >&2
+  exit "$tests"
+fi

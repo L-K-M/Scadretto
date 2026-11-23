@@ -1,0 +1,6 @@
+13:07:20 quit: app 88090, 1 workers, 1 job directories
+13:07:25 quit: ended (232 ms), 0 workers, 0 job directories
+13:07:26 TERM: app 88367, 1 workers, 1 job directories
+13:07:31 TERM: ended (20 ms), 0 workers, 1 job directories
+13:07:31 KILL: app 88902, 1 workers, 1 job directories
+13:07:36 KILL: ended (24 ms), 0 workers, 1 job directories

@@ -1,0 +1,8 @@
+| Ending | Workers while evaluating | Termination latency | Workers 5 s later | Job directories 5 s later |
+|---|---|---|---|---|
+| quit | 1 | 232 ms | 0 | 0 |
+| TERM | 1 | 20 ms | 0 | 1 |
+| KILL | 1 | 24 ms | 0 | 1 |
+
+Sessions before the next launch: 1; while it runs: 1 (its own included).
+Job directories before the next launch: 1; while it runs: 0.

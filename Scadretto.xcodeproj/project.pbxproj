@@ -13,12 +13,16 @@
 		23C6166A18E79F8A5DCA4372 /* ScadrettoShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 841BAF814255F995154BA26B /* ScadrettoShaders.metal */; };
 		32D73B9311C1D37730EB5275 /* DocumentPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FD1D8381C8A94C94D1C70DA /* DocumentPreview.swift */; };
 		40F9B0835DA56AE1C81ADCD3 /* ScadrettoDocumentBase.m in Sources */ = {isa = PBXBuildFile; fileRef = CC7169339397A5290B227212 /* ScadrettoDocumentBase.m */; };
+		C5D6A0C0D3B24F0E9A6C1F31 /* stress-100-cutters.scad in Resources */ = {isa = PBXBuildFile; fileRef = C5D6A0C0D3B24F0E9A6C1F32 /* stress-100-cutters.scad */; };
 		594490A8A19C799244DC8A38 /* mounting-plate.scad in Resources */ = {isa = PBXBuildFile; fileRef = 2582FD20D9A8E8BE2F83FA23 /* mounting-plate.scad */; };
 		E6A1C0D3B24F0E9A6C1F0001 /* mounting-plate.scad in Resources */ = {isa = PBXBuildFile; fileRef = 2582FD20D9A8E8BE2F83FA23 /* mounting-plate.scad */; };
+		A11A0C0D3B24F0E9A6C1F011 /* Announcements.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0C0D3B24F0E9A6C1F012 /* Announcements.swift */; };
+		B3C4A0C0D3B24F0E9A6C1F21 /* TimingLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3C4A0C0D3B24F0E9A6C1F22 /* TimingLog.swift */; };
 		610C5A67DCDCC16EDF58A097 /* PreviewWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0423D8B38A0739716E934E2 /* PreviewWorkspace.swift */; };
 		69926DA9DECD33CC429B2E09 /* ScadrettoCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0D6AEED0CB0DC0C3D2A11CFC /* ScadrettoCore */; };
 		7510EDA39840F4E6811C4D6B /* SourceWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F3D6412F155EB359337E727 /* SourceWindowController.swift */; };
 		7EAB47C9A57EFFD93EF1D081 /* PreviewSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C51F6E26F6727B3C11B381 /* PreviewSidebar.swift */; };
+		5E77A1C0D3B24F0E9A6C1F01 /* PreviewSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E77A1C0D3B24F0E9A6C1F02 /* PreviewSettings.swift */; };
 		B3BAEE938B3DE7BEAC1FB1EE /* ScadrettoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */; };
 		D7240DF438FE0AF735ADA91A /* warning-only.scad in Resources */ = {isa = PBXBuildFile; fileRef = A6B1DF3941CE369D6617228D /* warning-only.scad */; };
 		F6C1EB529D983B5238B37644 /* ScadrettoDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BB55BAD86B153C539296444 /* ScadrettoDocument.swift */; };
@@ -41,6 +45,8 @@
 /* Begin PBXFileReference section */
 		0DCE9ABD2847FE35D7D90660 /* ScadrettoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ScadrettoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		23C51F6E26F6727B3C11B381 /* PreviewSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewSidebar.swift; sourceTree = "<group>"; };
+		C5D6A0C0D3B24F0E9A6C1F32 /* stress-100-cutters.scad */ = {isa = PBXFileReference; path = "stress-100-cutters.scad"; sourceTree = "<group>"; };
+		5E77A1C0D3B24F0E9A6C1F02 /* PreviewSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewSettings.swift; sourceTree = "<group>"; };
 		2582FD20D9A8E8BE2F83FA23 /* mounting-plate.scad */ = {isa = PBXFileReference; path = "mounting-plate.scad"; sourceTree = "<group>"; };
 		3A5B00664D3FEE649417C49A /* ScadrettoDocumentBase.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ScadrettoDocumentBase.h; sourceTree = "<group>"; };
 		3F3D6412F155EB359337E727 /* SourceWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceWindowController.swift; sourceTree = "<group>"; };
@@ -52,6 +58,8 @@
 		A6B1DF3941CE369D6617228D /* warning-only.scad */ = {isa = PBXFileReference; path = "warning-only.scad"; sourceTree = "<group>"; };
 		A95057B6AF7BE264494E7378 /* ScadrettoKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ScadrettoKit; path = Packages/ScadrettoKit; sourceTree = SOURCE_ROOT; };
 		CC7169339397A5290B227212 /* ScadrettoDocumentBase.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ScadrettoDocumentBase.m; sourceTree = "<group>"; };
+		A11A0C0D3B24F0E9A6C1F012 /* Announcements.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Announcements.swift; sourceTree = "<group>"; };
+		B3C4A0C0D3B24F0E9A6C1F22 /* TimingLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimingLog.swift; sourceTree = "<group>"; };
 		E0423D8B38A0739716E934E2 /* PreviewWorkspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewWorkspace.swift; sourceTree = "<group>"; };
 		E8E477BFBAF95B1641A1F784 /* editor-bom-crlf.scad */ = {isa = PBXFileReference; path = "editor-bom-crlf.scad"; sourceTree = "<group>"; };
 		EC5FDCF42FE991552F3F3E1B /* ScadrettoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScadrettoUITests.swift; sourceTree = "<group>"; };
@@ -88,6 +96,9 @@
 			children = (
 				4FD1D8381C8A94C94D1C70DA /* DocumentPreview.swift */,
 				23C51F6E26F6727B3C11B381 /* PreviewSidebar.swift */,
+				A11A0C0D3B24F0E9A6C1F012 /* Announcements.swift */,
+				B3C4A0C0D3B24F0E9A6C1F22 /* TimingLog.swift */,
+				5E77A1C0D3B24F0E9A6C1F02 /* PreviewSettings.swift */,
 				E0423D8B38A0739716E934E2 /* PreviewWorkspace.swift */,
 				73B1A06DAD7F5601F09A8B70 /* ScadrettoApp.swift */,
 				6BB55BAD86B153C539296444 /* ScadrettoDocument.swift */,
@@ -121,6 +132,7 @@
 			children = (
 				884C485CF77F5109F0C48E35 /* editor-bom-crlf-edited.scad */,
 				E8E477BFBAF95B1641A1F784 /* editor-bom-crlf.scad */,
+				C5D6A0C0D3B24F0E9A6C1F32 /* stress-100-cutters.scad */,
 				2582FD20D9A8E8BE2F83FA23 /* mounting-plate.scad */,
 				A6B1DF3941CE369D6617228D /* warning-only.scad */,
 			);
@@ -242,6 +254,7 @@
 			files = (
 				FEEB9832B98CF17B34D6752A /* editor-bom-crlf-edited.scad in Resources */,
 				074318A108FA4B47D97BF8D8 /* editor-bom-crlf.scad in Resources */,
+				C5D6A0C0D3B24F0E9A6C1F31 /* stress-100-cutters.scad in Resources */,
 				594490A8A19C799244DC8A38 /* mounting-plate.scad in Resources */,
 				D7240DF438FE0AF735ADA91A /* warning-only.scad in Resources */,
 			);
@@ -278,6 +291,9 @@
 			files = (
 				32D73B9311C1D37730EB5275 /* DocumentPreview.swift in Sources */,
 				7EAB47C9A57EFFD93EF1D081 /* PreviewSidebar.swift in Sources */,
+				A11A0C0D3B24F0E9A6C1F011 /* Announcements.swift in Sources */,
+				B3C4A0C0D3B24F0E9A6C1F21 /* TimingLog.swift in Sources */,
+				5E77A1C0D3B24F0E9A6C1F01 /* PreviewSettings.swift in Sources */,
 				610C5A67DCDCC16EDF58A097 /* PreviewWorkspace.swift in Sources */,
 				B3BAEE938B3DE7BEAC1FB1EE /* ScadrettoApp.swift in Sources */,
 				F6C1EB529D983B5238B37644 /* ScadrettoDocument.swift in Sources */,

@@ -193,6 +193,371 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
+    func testUnsavedDependencyEditsAreLabeledUntilSaved() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let part = directory.appending(path: "part.scad")
+        try Data("module part() cube(2);\n".utf8).write(to: part)
+        let parent = directory.appending(path: "Parent.scad")
+        try Data("include <part.scad>\npart();\n".utf8).write(to: parent)
+
+        _ = open(parent, in: app)
+        let parentWindow = app.windows.matching(NSPredicate(format: "title BEGINSWITH %@", "Parent")).firstMatch
+        let status = parentWindow.staticTexts["renderStatus"]
+        let notice = parentWindow.staticTexts["dependencyNotice"]
+        waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
+        XCTAssertFalse(notice.exists, "A notice appeared with nothing unsaved")
+
+        // The parent keeps evaluating the saved part and says so.
+        let partEditor = open(part, in: app)
+        partEditor.click()
+        partEditor.typeKey("a", modifierFlags: .command)
+        partEditor.typeText("module part() cylinder(r = 2, h = 2);\n")
+        waitForText("part.scad has unsaved edits", in: notice, timeout: 5)
+        settle(2)
+        XCTAssertEqual(status.value as? String, "Preview ready · 12 triangles", "The parent read unsaved text")
+
+        // Saving the part re-evaluates the parent through its dependency watch.
+        partEditor.typeKey("s", modifierFlags: .command)
+        waitForFile(part, toEqual: Data("module part() cylinder(r = 2, h = 2);\n".utf8), timeout: 5)
+        XCTAssertTrue(notice.waitForNonExistence(timeout: 5), "The notice stayed after Save")
+        // The part's window covers the parent's, whose viewport presents once it is visible.
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(partEditor.waitForNonExistence(timeout: 5), "Closing the saved part asked")
+        let cylinder = XCTNSPredicateExpectation(predicate: NSPredicate(
+            format: "value BEGINSWITH %@ AND NOT (value CONTAINS %@)", "Preview ready", "· 12 triangles"
+        ), object: status)
+        XCTAssertEqual(XCTWaiter.wait(for: [cylinder], timeout: 15), .completed,
+                       "Expected the saved cylinder, got \(status.value ?? "(no value)")")
+        XCTAssertEqual(try Data(contentsOf: parent), Data("include <part.scad>\npart();\n".utf8))
+    }
+
+    // MARK: - Benchmarks
+    //
+    // These run only when SCADRETTO_BENCHMARK_DIR names a directory, as Scripts/benchmark-macos
+    // does through TEST_RUNNER_SCADRETTO_BENCHMARK_DIR. The app writes its timing log there and
+    // Scripts/benchmark-report computes the percentiles.
+
+    private func benchmarkLog(_ name: String) throws -> URL {
+        let directory = ProcessInfo.processInfo.environment["SCADRETTO_BENCHMARK_DIR"]
+        try XCTSkipIf(directory == nil, "Set SCADRETTO_BENCHMARK_DIR to run benchmarks")
+        return URL(fileURLWithPath: directory!).appending(path: "\(name).jsonl")
+    }
+
+    /// Five warm-up and thirty measured diameter commits on the plate, each waiting for its frame.
+    @MainActor
+    func testBenchmarkPlateCommitToFrame() throws {
+        let log = try benchmarkLog("plate-commits")
+        let app = launch(arguments: ["-ScadrettoTimingLog", log.path])
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Benchmark Plate.scad")
+        try fixture("mounting-plate").write(to: url)
+
+        _ = open(url, in: app)
+        waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 30)
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        try selectThirdBore(in: viewport, app: app)
+        let field = app.textFields["diameterField"].firstMatch
+        for index in 0..<35 {
+            waitUntilEnabled(field)
+            let value = index.isMultiple(of: 2) ? "4.5" : "4"
+            field.click()
+            field.typeKey("a", modifierFlags: .command)
+            field.typeText(value + "\n")
+            let applied = XCTNSPredicateExpectation(predicate: NSPredicate(
+                format: "value == %@ AND enabled == true", value
+            ), object: field)
+            XCTAssertEqual(XCTWaiter.wait(for: [applied], timeout: 30), .completed, "Commit \(index) did not settle")
+        }
+    }
+
+    /// Twenty seconds of orbiting the plate, then the hundred-cutter plate, and a handle drag.
+    @MainActor
+    func testBenchmarkOrbitAndDragFrames() throws {
+        for (name, data) in [("orbit-plate", try fixture("mounting-plate")), ("orbit-stress", try fixture("stress-100-cutters"))] {
+            let log = try benchmarkLog(name)
+            let app = launch(arguments: ["-ScadrettoTimingLog", log.path])
+            let directory = try makeDirectory()
+            let url = directory.appending(path: "\(name).scad")
+            try data.write(to: url)
+            _ = open(url, in: app)
+            waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 60)
+            let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+            settle(2)
+            let started = Date()
+            var forward = true
+            while Date().timeIntervalSince(started) < 20 {
+                let from = viewport.coordinate(withNormalizedOffset: CGVector(dx: forward ? 0.3 : 0.7, dy: 0.5))
+                let to = viewport.coordinate(withNormalizedOffset: CGVector(dx: forward ? 0.7 : 0.3, dy: 0.55))
+                // A mouse drag, as in testViewportNavigationFromMenuAndMouse; press(...) drew no frames.
+                from.click(forDuration: 0.05, thenDragTo: to, withVelocity: 150, thenHoldForDuration: 0)
+                forward.toggle()
+            }
+            app.terminate()
+            guard name == "orbit-plate" else { continue }
+
+            // The bore's click point assumes the initial camera, so the handle drag starts over in
+            // a new launch that appends to the same log.
+            let dragging = launch(arguments: ["-ScadrettoTimingLog", log.path])
+            _ = open(url, in: dragging)
+            waitForText("Preview ready", in: dragging.staticTexts["renderStatus"].firstMatch, timeout: 60)
+            let plate = dragging.descendants(matching: .any)["viewport"].firstMatch
+            try selectThirdBore(in: plate, app: dragging)
+            let (grip, outward) = diameterDragCoordinates(in: plate)
+            grip.click(forDuration: 0.2, thenDragTo: outward, withVelocity: 20, thenHoldForDuration: 0.2)
+            waitForText("Preview ready", in: dragging.staticTexts["renderStatus"].firstMatch, timeout: 30)
+            dragging.terminate()
+        }
+    }
+
+    /// A hundred keystrokes, 120 ms apart, into the hundred-cutter plate while its evaluations run.
+    @MainActor
+    func testBenchmarkTypingWhileWorkerIsBusy() throws {
+        let log = try benchmarkLog("typing-busy")
+        let app = launch(arguments: ["-ScadrettoTimingLog", log.path])
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Benchmark Stress.scad")
+        try fixture("stress-100-cutters").write(to: url)
+
+        let editor = open(url, in: app)
+        waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 60)
+        editor.click()
+        editor.typeKey(.downArrow, modifierFlags: .command)
+        editor.typeText("// ")
+        for index in 0..<100 {
+            editor.typeText(String(index % 10))
+            Thread.sleep(forTimeInterval: 0.12)
+        }
+        waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 60)
+    }
+
+    @MainActor
+    func testRelativeBinaryImportFollowsItsFile() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let parts = directory.appending(path: "parts")
+        try FileManager.default.createDirectory(at: parts, withIntermediateDirectories: true)
+        let mesh = parts.appending(path: "wedge.stl")
+        try Data(Self.wedgeSTL.utf8).write(to: mesh)
+        let url = directory.appending(path: "Imports.scad")
+        let text = "import(\"parts/wedge.stl\");\n"
+        try Data(text.utf8).write(to: url)
+
+        // The path is relative to the document's folder, not the app's working directory.
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("Preview ready · 4 triangles", in: status, timeout: 15)
+
+        // Moving the mesh away invalidates the preview; moving it back restores it.
+        let moved = parts.appending(path: "moved.stl")
+        try FileManager.default.moveItem(at: mesh, to: moved)
+        waitForText("Could not resolve parts/wedge.stl", in: status, timeout: 15)
+        try FileManager.default.moveItem(at: moved, to: mesh)
+        waitForText("Preview ready · 4 triangles", in: status, timeout: 15)
+        XCTAssertEqual(editor.value as? String, text)
+    }
+
+    /// A tetrahedron with outward-facing triangles.
+    private static let wedgeSTL = """
+        solid wedge
+        facet normal 0 0 -1
+        outer loop
+        vertex 0 0 0
+        vertex 0 10 0
+        vertex 10 0 0
+        endloop
+        endfacet
+        facet normal 0 -1 0
+        outer loop
+        vertex 0 0 0
+        vertex 10 0 0
+        vertex 0 0 10
+        endloop
+        endfacet
+        facet normal -1 0 0
+        outer loop
+        vertex 0 0 0
+        vertex 0 0 10
+        vertex 0 10 0
+        endloop
+        endfacet
+        facet normal 1 1 1
+        outer loop
+        vertex 10 0 0
+        vertex 0 10 0
+        vertex 0 0 10
+        endloop
+        endfacet
+        endsolid wedge
+
+        """
+
+    @MainActor
+    func testAWorkerStoppedAtItsMemoryBudgetRecoversOnTheNextEdit() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Hungry.scad")
+        // A hundred million numbers need far more than the worker's memory budget; the reference
+        // CLI passes 768 MB about three seconds in. Each range stays under OpenSCAD's limit of a
+        // million elements.
+        let hungry = "values = [for (i = [0 : 99999]) [for (j = [0 : 999]) j]];\ncube(1);\n"
+        try Data(hungry.utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("exceeded its memory budget", in: status, timeout: 30)
+        XCTAssertEqual(editor.value as? String, hungry)
+
+        // The editor still takes text, and the next edit evaluates again.
+        editor.click()
+        editor.typeKey("a", modifierFlags: .command)
+        editor.typeText("cube(2);\n")
+        waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
+        editor.typeKey("s", modifierFlags: .command)
+        waitForFile(url, toEqual: Data("cube(2);\n".utf8), timeout: 10)
+    }
+
+    @MainActor
+    func testCoincidentSurfacesOfferEveryMatchingInstance() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Twins.scad")
+        let text = "for (i = [0 : 1]) cube(10);\n"
+        try Data(text.utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 15)
+
+        // Both cubes own every final surface, so a click names neither and offers both.
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let candidates = app.popUpButtons["candidateList"].firstMatch
+        XCTAssertTrue(candidates.waitForExistence(timeout: 8), "Expected a choice between the coincident cubes")
+        candidates.click()
+        let cubes = candidates.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "cube"))
+        XCTAssertTrue(cubes.firstMatch.waitForExistence(timeout: 5), "Expected the choices to open")
+        XCTAssertEqual(cubes.count, 2, "Expected both cubes")
+        let second = candidates.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "cube  (i = 1)")).firstMatch
+        XCTAssertTrue(second.exists, "Expected the second iteration among the choices")
+        second.click()
+        XCTAssertTrue(candidates.waitForNonExistence(timeout: 5), "The choice stayed after choosing")
+        let selected = app.outlines["sceneOutline"].staticTexts
+            .matching(NSPredicate(format: "label == %@", "cube  (i = 1)")).firstMatch
+        XCTAssertTrue(selected.waitForExistence(timeout: 5))
+        waitForText("cube", in: app.staticTexts["inspectorSelection"].firstMatch, timeout: 8)
+        XCTAssertEqual(editor.value as? String, text)
+    }
+
+    @MainActor
+    func testLibraryFoldersReevaluateOpenDocuments() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let fallback = directory.appending(path: "Fallback")
+        let preferred = directory.appending(path: "Preferred")
+        let work = directory.appending(path: "Work")
+        for folder in [fallback, preferred, work] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        try Data("module part() cube(2);\n".utf8).write(to: fallback.appending(path: "part.scad"))
+        try Data("module part() sphere(2);\n".utf8).write(to: preferred.appending(path: "part.scad"))
+        let url = work.appending(path: "Uses Part.scad")
+        try Data("use <part.scad>\npart();\n".utf8).write(to: url)
+
+        // Nothing provides part.scad yet.
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("Could not resolve part.scad", in: status, timeout: 15)
+
+        app.typeKey(",", modifierFlags: .command)
+        let settings = app.windows["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5), "Expected the Settings window")
+        addLibraryFolder(fallback, in: settings, app: app)
+        waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
+
+        // The same name in a folder moved first wins, although the source did not change.
+        addLibraryFolder(preferred, in: settings, app: app)
+        settings.buttons["moveLibraryRootUp"].click()
+        let sphere = XCTNSPredicateExpectation(predicate: NSPredicate(
+            format: "value CONTAINS %@ AND NOT (value CONTAINS %@)", "Preview ready", "· 12 triangles"
+        ), object: status)
+        XCTAssertEqual(XCTWaiter.wait(for: [sphere], timeout: 15), .completed,
+                       "Expected the preferred sphere, got \(status.value ?? "(no value)")")
+
+        settings.buttons["removeLibraryRoot"].click()
+        waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
+        XCTAssertEqual(editor.value as? String, "use <part.scad>\npart();\n")
+    }
+
+    @MainActor
+    func testRenamingALibraryFolderInvalidatesThePreview() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let library = directory.appending(path: "Library")
+        let renamed = directory.appending(path: "Library (old)")
+        let work = directory.appending(path: "Work")
+        for folder in [library, work] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        try Data("module part() cube(2);\n".utf8).write(to: library.appending(path: "part.scad"))
+        let url = work.appending(path: "Renamed Library.scad")
+        try Data("use <part.scad>\npart();\n".utf8).write(to: url)
+
+        app.typeKey(",", modifierFlags: .command)
+        let settings = app.windows["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5), "Expected the Settings window")
+        addLibraryFolder(library, in: settings, app: app)
+        settings.buttons[XCUIIdentifierCloseWindow].click()
+
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
+
+        // The folder keeps its place in Settings under the old name, so the file no longer resolves
+        // until the folder comes back.
+        try FileManager.default.moveItem(at: library, to: renamed)
+        waitForText("Could not resolve part.scad", in: status, timeout: 15)
+        try FileManager.default.moveItem(at: renamed, to: library)
+        waitForText("Preview ready · 12 triangles", in: status, timeout: 15)
+        XCTAssertEqual(editor.value as? String, "use <part.scad>\npart();\n")
+    }
+
+    @MainActor
+    func testPreviewTimeLimitComesFromSettings() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Slow.scad")
+        // About eight seconds of calls for the reference CLI on an M4 Max: far longer than one
+        // second, far shorter than the default limit.
+        try Data("function fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2);\necho(fib(35));\ncube(1);\n".utf8)
+            .write(to: url)
+
+        app.typeKey(",", modifierFlags: .command)
+        let settings = app.windows["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5), "Expected the Settings window")
+        let field = settings.textFields["previewTimeoutField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "Expected the time limit field")
+        XCTAssertEqual(field.value as? String, "20")
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        // Closing the window keeps a value typed without Return.
+        field.typeText("1")
+        settings.buttons[XCUIIdentifierCloseWindow].click()
+
+        _ = open(url, in: app)
+        waitForText("time limit", in: app.staticTexts["renderStatus"].firstMatch, timeout: 15)
+    }
+
+    @MainActor
     func testOpenExampleGivesAnEditableUntitledCopy() throws {
         let app = launch()
         defer { app.terminate() }
@@ -216,9 +581,7 @@ final class ScadrettoUITests: XCTestCase {
         app.sheets.firstMatch.typeKey("g", modifierFlags: [.command, .shift])
         let path = app.textFields["PathTextField"].firstMatch
         XCTAssertTrue(path.waitForExistence(timeout: 5), "Expected the Go to Folder path field")
-        path.typeKey("a", modifierFlags: .command)
-        path.typeText(directory.path)
-        path.typeKey(.return, modifierFlags: [])
+        enterPath(directory.path, into: path)
         // A click while the Go to Folder popup is still closing does not reach the Save button.
         XCTAssertTrue(path.waitForNonExistence(timeout: 5), "Expected Go to Folder to close")
         save.click()
@@ -626,10 +989,15 @@ final class ScadrettoUITests: XCTestCase {
         keep.click()
 
         // Deleting the character leaves the text the file held before the change, so there is
-        // nothing to write and nothing to lose.
+        // nothing to write and nothing to lose. The document is clean again, so a disk check
+        // that lands before Close, such as a late presenter notice, may load the external
+        // version first; closing must not ask either way.
         editor.typeKey(.delete, modifierFlags: [])
-        waitForText("cube(1);", in: editor)
-        XCTAssertEqual(editor.value as? String, "cube(1);\n")
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate(
+            format: "value == %@ OR value == %@", "cube(1);\n", "cube(2);\n"
+        ), object: editor)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 5), .completed,
+                       "Unexpected text \(editor.value ?? "(no value)")")
         choose("Close", from: "File", in: app)
         XCTAssertTrue(editor.waitForNonExistence(timeout: 5), "Closing refused with nothing to write")
         XCTAssertEqual(try Data(contentsOf: url), external, "Closing wrote over the external version")
@@ -676,6 +1044,146 @@ final class ScadrettoUITests: XCTestCase {
         discard.click()
         XCTAssertTrue(app.wait(for: .notRunning, timeout: 10), "Don’t Save did not let the app quit")
         XCTAssertEqual(try Data(contentsOf: url), external)
+    }
+
+    @MainActor
+    func testVoiceOverHearsSceneSelectionAndEditChanges() throws {
+        let directory = try makeDirectory()
+        let log = directory.appending(path: "announcements.txt")
+        let app = launch(arguments: ["-ScadrettoAnnouncementLog", log.path])
+        defer { app.terminate() }
+        let url = directory.appending(path: "Spoken.scad")
+        let text = "cylinder(h = 4, d = 6, $fn = 32);\n"
+        try Data(text.utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        let status = app.staticTexts["renderStatus"].firstMatch
+        waitForText("Preview ready", in: status, timeout: 15)
+        waitForAnnouncement("Preview ready", in: log)
+
+        // The selection summary is announced and stays readable on the inspector.
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let field = app.textFields["diameterField"].firstMatch
+        waitUntilEnabled(field)
+        let inspector = app.descendants(matching: .any)["inspector"].firstMatch
+        let summary = inspector.value as? String ?? ""
+        XCTAssertTrue(summary.contains("cylinder, Diameter 6, "), "Summary: \(summary)")
+        waitForAnnouncement(summary, in: log)
+
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("8\n")
+        waitForText("d = 8", in: editor)
+        waitForAnnouncement("Diameter changed from 6 to 8, ", in: log)
+
+        // A failure is announced once, and so is the recovery; evaluations between them that end
+        // the same way stay quiet.
+        editor.click()
+        editor.typeKey(.downArrow, modifierFlags: .command)
+        editor.typeText("cube(")
+        waitForText("Preview out of date", in: status, timeout: 15)
+        waitForAnnouncement("Preview out of date", in: log)
+        editor.typeKey(.delete, modifierFlags: [])
+        editor.typeKey(.delete, modifierFlags: [])
+        editor.typeKey(.delete, modifierFlags: [])
+        editor.typeKey(.delete, modifierFlags: [])
+        editor.typeKey(.delete, modifierFlags: [])
+        waitForText("Preview ready", in: status, timeout: 15)
+        let spoken = announcements(in: log)
+        let failure = try XCTUnwrap(spoken.lastIndex { $0.hasPrefix("Preview out of date") })
+        XCTAssertEqual(spoken.filter { $0.hasPrefix("Preview out of date") }.count, 1, "\(spoken)")
+        waitForAnnouncement("Preview ready", in: log, after: failure)
+        let heard = XCTAttachment(string: announcements(in: log).joined(separator: "\n"))
+        heard.name = "Announcements"
+        heard.lifetime = .keepAlways
+        add(heard)
+    }
+
+    @MainActor
+    func testTwoWindowsOfOneDocumentShareTextUndoAndSelectionSafely() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Shared.scad")
+        let text = "cylinder(h = 4, d = 6, $fn = 32);\n"
+        try Data(text.utf8).write(to: url)
+
+        _ = open(url, in: app)
+        let first = app.windows.matching(NSPredicate(format: "title == %@", "Shared.scad")).firstMatch
+        let second = app.windows.matching(NSPredicate(format: "title == %@", "Shared.scad (2)")).firstMatch
+        waitForText("Preview ready", in: first.staticTexts["renderStatus"], timeout: 15)
+        choose("New Window", from: "File", in: app)
+        XCTAssertTrue(second.waitForExistence(timeout: 5), "Expected a second window on the document")
+        let firstEditor = first.textViews["sourceEditor"]
+        let secondEditor = second.textViews["sourceEditor"]
+        XCTAssertEqual(secondEditor.value as? String, text)
+        waitForText("Preview ready", in: second.staticTexts["renderStatus"], timeout: 15)
+
+        // Typing in either window reaches the one buffer.
+        secondEditor.click()
+        secondEditor.typeKey(.upArrow, modifierFlags: .command)
+        // Single lines, so each window adds exactly one typing step to the undo history.
+        secondEditor.typeText("/* two */ ")
+        waitForText("/* two */", in: firstEditor)
+        choose("Shared.scad", from: "Window", in: app)
+        firstEditor.typeKey(.downArrow, modifierFlags: .command)
+        firstEditor.typeText("// one")
+        let both = "/* two */ " + text + "// one"
+        waitForText("// one", in: secondEditor)
+        XCTAssertEqual(firstEditor.value as? String, both)
+        XCTAssertEqual(secondEditor.value as? String, both)
+
+        // One undo stack: two undos remove both lines, in either window, and nothing is left.
+        choose("Undo Typing", from: "Edit", in: app)
+        waitForText(text, in: secondEditor)
+        choose("Shared.scad (2)", from: "Window", in: app)
+        choose("Undo Typing", from: "Edit", in: app)
+        let original = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", text), object: firstEditor)
+        XCTAssertEqual(XCTWaiter.wait(for: [original], timeout: 5), .completed, "Undo did not reach both windows")
+        XCTAssertEqual(secondEditor.value as? String, text)
+        app.menuBarItems["Edit"].click()
+        let undo = app.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "Undo")).firstMatch
+        XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        XCTAssertFalse(undo.isEnabled, "An undo item was registered twice")
+        app.typeKey(.escape, modifierFlags: [])
+
+        // A selection lives in one window. Selecting in the other clears it here, and an edit
+        // there leaves this window's inspector clear.
+        waitForText("Preview ready", in: second.staticTexts["renderStatus"], timeout: 15)
+        second.descendants(matching: .any)["viewport"].firstMatch
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        waitForText("cylinder", in: second.staticTexts["inspectorSelection"], timeout: 8)
+        choose("Shared.scad", from: "Window", in: app)
+        waitForText("Preview ready", in: first.staticTexts["renderStatus"], timeout: 15)
+        first.descendants(matching: .any)["viewport"].firstMatch
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let field = first.textFields["diameterField"]
+        waitUntilEnabled(field)
+        XCTAssertFalse(second.staticTexts["inspectorSelection"].exists, "The other window kept its selection")
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("8\n")
+        let edited = text.replacingOccurrences(of: "d = 6", with: "d = 8")
+        waitForText("d = 8", in: secondEditor)
+        XCTAssertEqual(firstEditor.value as? String, edited)
+        XCTAssertFalse(second.staticTexts["inspectorSelection"].exists, "The other window gained a selection")
+        choose("Undo Change Diameter", from: "Edit", in: app)
+        waitForText("d = 6", in: secondEditor)
+        XCTAssertEqual(firstEditor.value as? String, text)
+
+        // Closing one window leaves the document open in the other.
+        choose("Shared.scad (2)", from: "Window", in: app)
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(second.waitForNonExistence(timeout: 5), "The second window did not close")
+        XCTAssertTrue(firstEditor.exists, "Closing one window closed the document")
+        choose("Redo Change Diameter", from: "Edit", in: app)
+        waitForText("d = 8", in: firstEditor)
+        app.typeKey("s", modifierFlags: .command)
+        let saved = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            (try? Data(contentsOf: url)) == Data(edited.utf8)
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 5), .completed, "Save did not write the shared text")
     }
 
     @MainActor
@@ -1186,9 +1694,10 @@ final class ScadrettoUITests: XCTestCase {
     private func launch(arguments: [String] = [], autosaveDelay: TimeInterval = 600) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
-        // Each test opens its own documents rather than the last test's windows. Autosave waits
-        // ten minutes unless a test asks for it, so unsaved edits stay unsaved while it runs.
-        app.launchArguments += ["-ApplePersistenceIgnoreState", "YES",
+        // Each test opens its own documents rather than the last test's windows and starts from
+        // the default library folders and preview time limit. Autosave waits ten minutes unless a
+        // test asks for it, so unsaved edits stay unsaved while it runs.
+        app.launchArguments += ["-ApplePersistenceIgnoreState", "YES", "-ScadrettoResetPreviewSettings", "YES",
                                 "-ScadrettoAutosaveDelay", String(autosaveDelay)] + arguments
         // A failed assertion ends a test without running its defer blocks.
         addTeardownBlock { await MainActor.run { app.terminate() } }
@@ -1206,6 +1715,22 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
+    private func addLibraryFolder(_ folder: URL, in settings: XCUIElement, app: XCUIApplication) {
+        settings.buttons["addLibraryRoot"].click()
+        let panel = settings.sheets.firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 10), "Expected the folder panel")
+        panel.typeKey("g", modifierFlags: [.command, .shift])
+        let path = app.textFields["PathTextField"].firstMatch
+        XCTAssertTrue(path.waitForExistence(timeout: 5), "Expected the Go to Folder path field")
+        enterPath(folder.path, into: path)
+        let add = panel.buttons["Add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 8))
+        add.click()
+        let row = settings.staticTexts.matching(NSPredicate(format: "value == %@", folder.path)).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "Expected \(folder.lastPathComponent) in the list")
+    }
+
+    @MainActor
     private func submitOpenPanel(_ url: URL, in app: XCUIApplication) {
         let panel = app.windows["Open"]
         if !panel.exists { app.typeKey("o", modifierFlags: .command) }
@@ -1213,12 +1738,22 @@ final class ScadrettoUITests: XCTestCase {
         panel.typeKey("g", modifierFlags: [.command, .shift])
         let path = panel.sheets.firstMatch.textFields.firstMatch
         XCTAssertTrue(path.waitForExistence(timeout: 5), "Expected the Go to Folder path field")
-        path.typeKey("a", modifierFlags: .command)
-        path.typeText(url.path)
-        path.typeKey(.return, modifierFlags: [])
+        enterPath(url.path, into: path)
         let open = panel.buttons["Open"]
         XCTAssertTrue(open.waitForExistence(timeout: 8))
         open.click()
+    }
+
+    /// Types a path into Go to Folder and goes there. Under load the field sometimes drops a
+    /// keystroke, so the path is typed again while the field does not hold it exactly.
+    @MainActor
+    private func enterPath(_ path: String, into field: XCUIElement) {
+        for _ in 0..<3 {
+            field.typeKey("a", modifierFlags: .command)
+            field.typeText(path)
+            if field.value as? String == path { break }
+        }
+        field.typeKey(.return, modifierFlags: [])
     }
 
     @MainActor
@@ -1247,6 +1782,21 @@ final class ScadrettoUITests: XCTestCase {
         editor.typeKey(.leftArrow, modifierFlags: [])
         editor.typeKey(.leftArrow, modifierFlags: .shift)
         editor.typeText(text)
+    }
+
+    private func announcements(in log: URL) -> [String] {
+        ((try? String(contentsOf: log, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+    }
+
+    @MainActor
+    private func waitForAnnouncement(_ prefix: String, in log: URL, after index: Int = -1,
+                                     file: StaticString = #filePath, line: UInt = #line) {
+        let spoken = XCTNSPredicateExpectation(predicate: NSPredicate { [self] _, _ in
+            announcements(in: log).enumerated().contains { $0.offset > index && $0.element.hasPrefix(prefix) }
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [spoken], timeout: 8), .completed,
+                       "Expected an announcement starting “\(prefix)”, heard \(announcements(in: log))",
+                       file: file, line: line)
     }
 
     @MainActor

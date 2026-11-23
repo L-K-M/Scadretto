@@ -12,12 +12,17 @@ final class PreviewWorkspace {
     private(set) var geometry: PreviewGeometry?
     private let status = NSTextField(labelWithString: "Evaluating…")
     private let snap = NSTextField(labelWithString: "")
+    private let notice = NSTextField(labelWithString: "")
     private let viewportError: String?
     private var hasGeometry = false
     private var renderedStatus: String?
     private var ghostIDs: [UInt32] = []
     private(set) var ghostOmitted = 0
     private var candidateHit: SIMD3<Double>?
+    private var announcedState: SceneState?
+    /// The last scene whose first presented frame went to the timing log.
+    private var loggedScene: UUID?
+    private var evaluatingAnnouncement: Task<Void, Never>?
     var onSelection: ((UInt32?, SIMD3<Double>?) -> Void)?
     var onPresentationChange: (() -> Void)?
 
@@ -59,13 +64,22 @@ final class PreviewWorkspace {
         snap.textColor = .secondaryLabelColor
         snap.setAccessibilityIdentifier("dragSnap")
         snap.setContentCompressionResistancePriority(.required, for: .horizontal)
-        for item in [renderingView, status, snap] {
+        notice.font = status.font
+        notice.textColor = .systemOrange
+        notice.lineBreakMode = .byTruncatingTail
+        // The status names the scene; the notice truncates first and keeps its full text in a tooltip.
+        notice.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        notice.isHidden = true
+        notice.setAccessibilityIdentifier("dependencyNotice")
+        for item in [renderingView, status, notice, snap] {
             item.translatesAutoresizingMaskIntoConstraints = false
             panel.addSubview(item)
         }
         NSLayoutConstraint.activate([
             status.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 10),
-            status.trailingAnchor.constraint(lessThanOrEqualTo: snap.leadingAnchor, constant: -8),
+            status.trailingAnchor.constraint(lessThanOrEqualTo: notice.leadingAnchor, constant: -12),
+            notice.trailingAnchor.constraint(lessThanOrEqualTo: snap.leadingAnchor, constant: -8),
+            notice.firstBaselineAnchor.constraint(equalTo: status.firstBaselineAnchor),
             snap.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -10),
             snap.firstBaselineAnchor.constraint(equalTo: status.firstBaselineAnchor),
             status.topAnchor.constraint(equalTo: panel.topAnchor, constant: 7),
@@ -80,6 +94,9 @@ final class PreviewWorkspace {
             self?.onPresentationChange?()
         }
         viewport?.onEditPreview = { [weak sidebar = self.sidebar] value in sidebar?.inspector.showPreview(value) }
+        if TimingLog.isEnabled {
+            viewport?.onFramePresented = { [weak self] scene, time in self?.logFrame(scene: scene, at: time) }
+        }
         showSnap()
         sidebar.onOccurrence = { [weak self] id in self?.onSelection?(id, nil) }
         sidebar.onCandidate = { [weak self] id in
@@ -90,14 +107,35 @@ final class PreviewWorkspace {
         }
     }
 
+    /// What VoiceOver last heard about the scene. Evaluations that end the way the last one did
+    /// stay quiet, so typing does not repeat "Preview ready".
+    private enum SceneState: Equatable {
+        case evaluating
+        case ready
+        case canceled
+        case failed(String)
+    }
+
+    /// Seconds an evaluation runs before VoiceOver hears that it is still evaluating.
+    private static let evaluatingAnnouncementDelay = 1.5
+
     func update(_ phase: DocumentPreview.Phase) {
+        evaluatingAnnouncement?.cancel()
+        evaluatingAnnouncement = nil
         switch phase {
         case .evaluating:
             setPending("Evaluating…")
+            evaluatingAnnouncement = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(Self.evaluatingAnnouncementDelay))
+                guard !Task.isCancelled else { return }
+                self?.announce(.evaluating, "Evaluating", priority: .low)
+            }
         case .cancelled:
             setPending("Preview canceled")
+            announce(.canceled, "Preview canceled")
         case .failure(let reason):
             setPending(reason)
+            announce(.failed(reason), status.stringValue, priority: .high)
         case .outcome(let outcome, let geometry):
             let result = outcome.result
             sidebar.show(result: result, instances: result.scene?.instances ?? [],
@@ -122,6 +160,7 @@ final class PreviewWorkspace {
                 viewport?.setAccessibilityHelp(mesh.map {
                     "Model bounds \($0.bounds.min) to \($0.bounds.max)."
                 } ?? "This evaluation has no solid geometry.")
+                announce(.ready, label)
             case .modelError, .unsupportedDimension:
                 self.result = nil
                 self.geometry = nil
@@ -131,6 +170,7 @@ final class PreviewWorkspace {
                 viewport?.setSceneStale(hasGeometry)
                 let reason = result.diagnostics.first { $0.severity == .error }?.message ?? "Evaluation failed"
                 displayStatus(hasGeometry ? "Preview out of date · \(reason)" : reason)
+                announce(.failed(reason), status.stringValue, priority: .high)
             }
         }
     }
@@ -148,6 +188,21 @@ final class PreviewWorkspace {
         displayStatus(hasGeometry ? "Preview out of date · \(text)" : text)
     }
 
+    /// Says which open documents hold text that this preview's included files do not have yet.
+    func showDependencyNotice(_ text: String?) {
+        guard notice.stringValue != (text ?? "") else { return }
+        notice.stringValue = text ?? ""
+        notice.toolTip = text
+        notice.isHidden = text == nil
+        if let text { Announcements.post(text) }
+    }
+
+    private func announce(_ state: SceneState, _ text: String, priority: NSAccessibilityPriorityLevel = .medium) {
+        guard state != announcedState else { return }
+        announcedState = state
+        Announcements.post(text, priority: priority)
+    }
+
     private func displayStatus(_ text: String) {
         status.stringValue = text
         status.toolTip = text
@@ -160,6 +215,23 @@ final class PreviewWorkspace {
         } else {
             displayStatus(renderedStatus)
         }
+    }
+
+    private func logFrame(scene: UUID?, at time: CFTimeInterval) {
+        TimingLog.record("frame", at: time, scene.map { ["scene": $0.uuidString] } ?? [:])
+        guard let scene, scene != loggedScene, scene == result?.requestID else { return }
+        loggedScene = scene
+        TimingLog.record("presented", at: time, ["requestID": scene.uuidString])
+    }
+
+    /// Drops this window's selection display when the selection moves to another window.
+    func clearSelection() {
+        candidateHit = nil
+        sidebar.showCandidates([])
+        sidebar.selectOccurrence(nil)
+        sidebar.inspector.show(nil)
+        viewport?.showDiameter(handle: nil, guides: [])
+        showGhost([])
     }
 
     func showGhost(_ ids: [UInt32]) {
