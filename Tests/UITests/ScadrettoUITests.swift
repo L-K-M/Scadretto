@@ -273,14 +273,16 @@ final class ScadrettoUITests: XCTestCase {
         defer { app.terminate() }
         let directory = try makeDirectory()
         let url = directory.appending(path: "Slow.scad")
-        // Millions of calls: far longer than one second, far shorter than the default limit.
-        try Data("function fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2);\necho(fib(32));\ncube(1);\n".utf8)
+        // About eight seconds of calls for the reference CLI on an M4 Max: far longer than one
+        // second, far shorter than the default limit.
+        try Data("function fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2);\necho(fib(35));\ncube(1);\n".utf8)
             .write(to: url)
 
         app.typeKey(",", modifierFlags: .command)
         let settings = app.windows["Settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 5), "Expected the Settings window")
         let field = settings.textFields["previewTimeoutField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "Expected the time limit field")
         XCTAssertEqual(field.value as? String, "20")
         field.click()
         field.typeKey("a", modifierFlags: .command)

@@ -70,6 +70,7 @@ final class PreviewSettingsWindowController: NSWindowController, NSTableViewData
     private let moveDown = NSButton()
     private let timeoutField = NSTextField()
     private var roots: [URL] = []
+    private var changeObserver: (any NSObjectProtocol)?
 
     init(settings: PreviewSettings = .shared) {
         self.settings = settings
@@ -82,6 +83,13 @@ final class PreviewSettingsWindowController: NSWindowController, NSTableViewData
         window.contentView = makeContent()
         window.center()
         reload()
+        // A change written elsewhere, such as with `defaults write`, refreshes the window, so its
+        // next edit starts from the stored folders instead of writing an older list back.
+        changeObserver = NotificationCenter.default.addObserver(
+            forName: PreviewSettings.didChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.settingsDidChange() }
+        }
     }
 
     @available(*, unavailable)
@@ -162,6 +170,12 @@ final class PreviewSettingsWindowController: NSWindowController, NSTableViewData
         }
         timeoutField.integerValue = Int(settings.timeout)
         updateButtons()
+    }
+
+    private func settingsDidChange() {
+        // The window's own edits have already reloaded by the time their notification arrives.
+        guard roots != settings.libraryRoots || timeoutField.integerValue != Int(settings.timeout) else { return }
+        reload(selecting: table.selectedRow)
     }
 
     private func updateButtons() {

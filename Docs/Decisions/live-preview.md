@@ -33,7 +33,9 @@ Settings (Command-comma) lists the ordered library folders searched before
 limit: 1 to 3,600 seconds, 20 by default. Both live in the app's defaults.
 A change re-evaluates every open document under a new dependency
 generation, because a different folder order can choose a different file
-while the source stays the same. UI tests clear both settings with the
+while the source stays the same. A change written elsewhere, such as with
+`defaults write`, also refreshes an open Settings window, so its next edit
+does not write an older list back. UI tests clear both settings with the
 hidden launch default `ScadrettoResetPreviewSettings`. In
 `testLibraryFoldersReevaluateOpenDocuments` an unresolved `use` resolves
 when its folder is added, a folder moved ahead with the same file name
