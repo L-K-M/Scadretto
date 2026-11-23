@@ -77,8 +77,25 @@ private let later = Data("cube(3);\n".utf8)
     _ = baseline.observe(.bytes(external), local: edited)
     // Undo brought the text back to the acknowledged bytes, so reloading loses nothing.
     #expect(baseline.observe(.bytes(later), local: saved) == .reload(later))
+    #expect(baseline.conflict == .changed(external), "The kept conflict stands until the new bytes load")
+    #expect(!baseline.allowsWrite(over: .bytes(later)))
     baseline.adopt(later)
     #expect(baseline.conflict == nil)
+}
+
+@Test func aFileThatReturnsWithOtherBytesIsANewDecision() {
+    var baseline = DiskBaseline(acknowledged: saved)
+    _ = baseline.observe(.missing, local: edited)
+    #expect(baseline.observe(.bytes(external), local: edited) == .conflict(.changed(external)))
+    #expect(!baseline.allowsWrite(over: .bytes(external)))
+}
+
+@Test func aRemovalDuringAContentConflictIsANewDecision() {
+    var baseline = DiskBaseline(acknowledged: saved)
+    _ = baseline.observe(.bytes(external), local: edited)
+    baseline.approveOverwrite()
+    #expect(baseline.observe(.missing, local: edited) == .conflict(.removed))
+    #expect(!baseline.allowsWrite(over: .missing), "An approval for the old version does not carry over")
 }
 
 @Test func writingOrReloadingAdoptsTheBytes() {

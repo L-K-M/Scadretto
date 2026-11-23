@@ -21,7 +21,10 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         // UI tests start from the default library folders and time limit.
         if UserDefaults.standard.bool(forKey: "ScadrettoResetPreviewSettings") { PreviewSettings.shared.reset() }
-        NSDocumentController.shared.autosavingDelay = 0
+        // A hidden default lets UI tests shorten or postpone in-place autosave. Without it AppKit
+        // keeps its own schedule, about 15 seconds after an edit on macOS 27.
+        let autosaveDelay = UserDefaults.standard.double(forKey: "ScadrettoAutosaveDelay")
+        if autosaveDelay > 0 { NSDocumentController.shared.autosavingDelay = autosaveDelay }
         do {
             engineClient = EngineClient(runtime: try WorkerRuntime(bundle: .main))
         } catch {
@@ -80,7 +83,8 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
         let saveAs = file.addItem(withTitle: "Save As…", action: #selector(NSDocument.saveAs(_:)),
                                   keyEquivalent: "s")
         saveAs.keyEquivalentModifierMask = [.command, .shift]
-        file.addItem(withTitle: "Revert to Saved", action: #selector(NSDocument.revertToSaved(_:)), keyEquivalent: "")
+        file.addItem(withTitle: "Revert to Saved", action: #selector(ScadrettoDocument.revertToLastSaved(_:)),
+                     keyEquivalent: "")
 
         let edit = addMenu("Edit", to: menu)
         edit.addItem(withTitle: "Undo", action: #selector(ScadrettoDocument.undoSource(_:)), keyEquivalent: "z")

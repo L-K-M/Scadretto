@@ -18,9 +18,8 @@ OpenSCAD's pinned macOS bundle declares the `.scad` extension and gives
 no exported type identifier. Scadretto imports
 `com.lkm.scadretto.scad`, conforming to `public.source-code`, with the
 Editor role and Alternate handler rank. The native document controller
-owns opening, safe save, Save As and Revert. Autosaving is disabled in
-the M1 shell while explicit saves verify the bytes last read or written
-at the document URL.
+owns opening, safe save, Save As and Revert. The M1 shell saved only on
+request; M5 turns on autosave in place once the disk checks below exist.
 
 The document does not follow a file that another program moves.
 `NSDocument` adopts the new location by default once the old path has
@@ -45,6 +44,55 @@ Checks wait for a running save or text composition. Once the path is
 checked, Save calls `save(to:ofType:for:completionHandler:)` directly,
 because AppKit's Save asks again about a move the user has accepted.
 `writeSafely` rechecks the bytes inside the coordinated write.
+
+Documents autosave in place, about 15 seconds after an edit on macOS
+27.0.1. An autosave writes the committed bytes and moves the disk
+baseline. The window stays edited until Save, and Revert to Saved
+restores the last opened or saved version on disk as well as in the
+editor. An autosave waits while text is being composed, while another
+program's coordinated write is under way and while an external change
+is pending. It resumes when that clears. Closing and quitting finish a
+composition and autosave the text. With a pending change, closing or
+quitting asks Save As, Cancel or Don't Save instead of closing with the
+text unsaved. Opening the menu bar during a dead-key composition
+cancels it; that is the input system's behavior.
+
+Several AppKit defaults had to give way, each found by a native test:
+
+- `presentedItemDidChange` reverted an autosaving document AppKit
+  thought was clean, discarding text typed while another writer held
+  the file. The document no longer calls it and reloads only through
+  `DiskBaseline`.
+- NSDocument observes its undo manager. When a group closes it waits on
+  the main thread for any running save or close, and Scadretto's typing
+  groups close on a timer, so closing right after typing hung on the
+  document activity semaphore (sampled), and an autosave finished later
+  from AppKit's close crashed it. The source's undo history is now
+  private to the document, which reports each edit, undo and redo
+  through `updateChangeCount`. AppKit's check before the first edit of
+  an old file or one in Downloads ran from those notifications and no
+  longer does; its check when a document opens still runs.
+- AppKit decides from `hasUnautosavedChanges` whether closing or
+  quitting needs an autosave. It also counts marked text and compares
+  the committed bytes with the baseline.
+- AppKit's close and quit sequences expect an autosave to hand over to
+  `super` before it returns. The path check is therefore synchronous
+  and uncoordinated; `writeSafely` checks again inside the coordinated
+  write.
+- AppKit's own autosave compares modification dates and offers a Revert
+  that discards the local text. Each autosave first reads the path and
+  applies it through `DiskBaseline`, so a change already on disk raises
+  Scadretto's question instead. A plain write that lands between that
+  check and AppKit's write is not covered and would bring up AppKit's
+  alert; no test produces that timing. `writeSafely` still refuses a
+  write over bytes the document has not agreed with.
+- AppKit's Revert restores a version it records from undo
+  notifications, which the private history no longer sends, and with
+  autosave in place it removes a menu item whose action is that revert.
+  Revert to Saved therefore puts back the bytes last opened or saved,
+  clears the undo history and writes them through the checked Save, so
+  a pending external change still gets its question. Browsing earlier
+  versions is not offered yet.
 
 ## Text system measurements
 

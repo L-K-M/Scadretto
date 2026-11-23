@@ -171,7 +171,7 @@ final class ScadrettoUITests: XCTestCase {
         editor.typeText("10")
         waitForText("size = 10; // keep this", in: editor)
         choose("Save", from: "File", in: app)
-        XCTAssertEqual(try Data(contentsOf: url), expected)
+        waitForFile(url, toEqual: expected, timeout: 5)
 
         choose("Close", from: "File", in: app)
         let reopened = open(url, in: app)
@@ -183,7 +183,7 @@ final class ScadrettoUITests: XCTestCase {
         reopened.typeText("// unsaved")
         waitForText("// unsaved", in: reopened)
         choose("Revert to Saved", from: "File", in: app)
-        let confirmation = app.buttons["Revert"].firstMatch
+        let confirmation = app.sheets.buttons["Revert"].firstMatch
         XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
         confirmation.click()
         let savedText = "// 🔧 original\nsize = 10; // keep this\ncube(size);\n"
@@ -329,7 +329,7 @@ final class ScadrettoUITests: XCTestCase {
 
         // Keep the edits through any external-change sheet, then try to save them.
         let keep = app.sheets.buttons["Keep Editing"].firstMatch
-        if keep.exists { keep.click() }
+        if keep.waitForExistence(timeout: 5) { keep.click() }
         choose("Save", from: "File", in: app)
         // A followed move makes Save, under the new name, the default answer of AppKit's sheet.
         let acceptDefault = app.sheets.buttons["Save"].firstMatch
@@ -358,9 +358,44 @@ final class ScadrettoUITests: XCTestCase {
         let external = Data("cube(2);\n".utf8)
         try external.write(to: url, options: .atomic)
         waitForText("cube(2);", in: editor, timeout: 8)
+        settle(1)
         XCTAssertEqual(app.sheets.count, 0, "A document without edits needs no decision")
         choose("Save", from: "File", in: app)
+        settle(1)
+        XCTAssertEqual(app.sheets.count, 0, "Saving the reloaded text needs no decision")
         XCTAssertEqual(try Data(contentsOf: url), external)
+    }
+
+    @MainActor
+    func testOverwriteAfterASecondExternalChangeAsksAgain() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Twice.scad")
+        try Data("cube(1);\n".utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        editor.typeText("// local ")
+        waitForText("// local cube(1);", in: editor)
+        try Data("cube(2);\n".utf8).write(to: url, options: .atomic)
+        let keep = app.sheets.buttons["Keep Editing"].firstMatch
+        XCTAssertTrue(keep.waitForExistence(timeout: 8), "Expected the external change sheet")
+        keep.click()
+
+        // The file changes again while Save's question is open.
+        choose("Save", from: "File", in: app)
+        let overwrite = app.sheets.buttons["Overwrite"].firstMatch
+        XCTAssertTrue(overwrite.waitForExistence(timeout: 5), "Expected Save to ask before overwriting")
+        let second = Data("cube(3);\n".utf8)
+        try second.write(to: url, options: .atomic)
+        settle(3)
+        overwrite.click()
+        XCTAssertTrue(keep.waitForExistence(timeout: 5), "Overwrite did not show the newer version")
+        XCTAssertEqual(try Data(contentsOf: url), second, "Overwrite replaced a version the user had not seen")
+        XCTAssertEqual(editor.value as? String, "// local cube(1);\n")
     }
 
     @MainActor
@@ -478,6 +513,238 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
+    func testAutosaveWritesCommittedTextInPlace() throws {
+        let app = launch(autosaveDelay: 2)
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Autosaved.scad")
+        try Data("cube(1);\n".utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        editor.typeText("// kept ")
+        waitForFile(url, toEqual: Data("// kept cube(1);\n".utf8), timeout: 12)
+
+        // The text is already in the file, so closing needs no decision.
+        choose("Close", from: "File", in: app)
+        settle(1)
+        XCTAssertEqual(app.sheets.count, 0)
+        XCTAssertFalse(editor.exists)
+        XCTAssertEqual(try Data(contentsOf: url), Data("// kept cube(1);\n".utf8))
+    }
+
+    @MainActor
+    func testRevertAfterAutosaveRestoresTheSavedVersion() throws {
+        let app = launch(autosaveDelay: 2)
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Drafted.scad")
+        let saved = Data("cube(1);\n".utf8)
+        try saved.write(to: url)
+
+        let editor = open(url, in: app)
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        editor.typeText("// draft ")
+        waitForFile(url, toEqual: Data("// draft cube(1);\n".utf8), timeout: 12)
+
+        // The file now holds the draft; Revert goes back to what was opened, on disk as well.
+        choose("Revert to Saved", from: "File", in: app)
+        let confirmation = app.sheets.buttons["Revert"].firstMatch
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5), "Expected Revert to ask first")
+        confirmation.click()
+        waitForText("cube(1);", in: editor)
+        XCTAssertEqual(editor.value as? String, "cube(1);\n")
+        waitForFile(url, toEqual: saved, timeout: 5)
+        settle(4)
+        XCTAssertEqual(try Data(contentsOf: url), saved, "An autosave wrote the reverted draft back")
+    }
+
+    @MainActor
+    func testClosingOrQuittingRightAfterTypingKeepsTheText() throws {
+        // Autosave is ten minutes away, so only closing and quitting write these files.
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let closed = directory.appending(path: "Closed.scad")
+        let quit = directory.appending(path: "Quit.scad")
+        try Data("cube(1);\n".utf8).write(to: closed)
+        try Data("cube(1);\n".utf8).write(to: quit)
+
+        // Both keys follow the typing well inside the pause that ends a typing group.
+        let first = open(closed, in: app)
+        first.click()
+        first.typeKey(.upArrow, modifierFlags: .command)
+        first.typeText("// closed ")
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(first.waitForNonExistence(timeout: 5), "Closing asked instead of autosaving")
+        waitForFile(closed, toEqual: Data("// closed cube(1);\n".utf8), timeout: 5)
+
+        let second = open(quit, in: app)
+        second.click()
+        second.typeKey(.upArrow, modifierFlags: .command)
+        second.typeText("// quit ")
+        app.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 10), "Quitting asked instead of autosaving")
+        XCTAssertEqual(try Data(contentsOf: quit), Data("// quit cube(1);\n".utf8))
+    }
+
+    @MainActor
+    func testAutosaveLeavesMarkedTextToItsComposition() throws {
+        let app = launch(autosaveDelay: 2)
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Composed.scad")
+        let original = Data("cube(1);\n".utf8)
+        try original.write(to: url)
+
+        let editor = open(url, in: app)
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        // On the Swiss German layout this key is a dead circumflex, which stays marked text. On a
+        // layout where it types a plain caret, nothing here composes.
+        try XCTSkipUnless(Self.keyboardLayoutID == "com.apple.keylayout.SwissGerman",
+                          "Needs the Swiss German layout, where ^ is a dead key")
+        editor.typeText("// ")
+        editor.typeKey("^", modifierFlags: [])
+        // The typed "// " is due for autosave during the composition, which holds it back.
+        settle(6)
+        XCTAssertEqual(try Data(contentsOf: url), original, "Autosave wrote during the composition")
+        editor.typeText("e")
+        waitForText("// ê", in: editor)
+        waitForFile(url, toEqual: Data("// êcube(1);\n".utf8), timeout: 12)
+
+        // Closing commits a pending composition and autosaves it with the rest. The window's
+        // close button is used because the input method takes Command-W while a dead key is
+        // pending, and opening the menu bar cancels the composition.
+        editor.typeKey("^", modifierFlags: [])
+        app.windows["Composed.scad"].buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 5), "Closing asked instead of autosaving")
+        waitForFile(url, toEqual: Data("// ê^cube(1);\n".utf8), timeout: 5)
+    }
+
+    /// The current keyboard layout's input source ID, such as com.apple.keylayout.SwissGerman.
+    private static var keyboardLayoutID: String? {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let property = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else { return nil }
+        return Unmanaged<CFString>.fromOpaque(property).takeUnretainedValue() as String
+    }
+
+    @MainActor
+    func testAutosaveNeverWritesOverAPendingConflict() throws {
+        let app = launch(autosaveDelay: 2)
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Contested.scad")
+        try Data("cube(1);\n".utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        editor.typeText("// local ")
+        let external = Data("cube(2);\n".utf8)
+        try external.write(to: url, options: .atomic)
+        let keep = app.sheets.buttons["Keep Editing"].firstMatch
+        XCTAssertTrue(keep.waitForExistence(timeout: 8), "Expected the external change sheet")
+        keep.click()
+        settle(6)
+        XCTAssertEqual(try Data(contentsOf: url), external, "Autosave wrote over the external version")
+        XCTAssertEqual(editor.value as? String, "// local cube(1);\n")
+
+        // Closing asks in a sheet and quitting in an alert, instead of dropping the text or
+        // failing quietly.
+        let discard = app.buttons["Don’t Save"].firstMatch
+        choose("Close", from: "File", in: app)
+        XCTAssertTrue(discard.waitForExistence(timeout: 5), "Closing did not ask about the unsaved text")
+        app.sheets.buttons["Cancel"].firstMatch.click()
+        app.typeKey("q", modifierFlags: .command)
+        XCTAssertTrue(discard.waitForExistence(timeout: 5), "Quitting did not ask about the unsaved text")
+        app.buttons["Cancel"].firstMatch.click()
+        settle(2)
+        XCTAssertEqual(app.state, .runningForeground, "Cancel did not keep the app open")
+        XCTAssertEqual(try Data(contentsOf: url), external)
+        XCTAssertEqual(editor.value as? String, "// local cube(1);\n")
+
+        choose("Close", from: "File", in: app)
+        XCTAssertTrue(discard.waitForExistence(timeout: 5))
+        discard.click()
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 5), "Don’t Save kept the window open")
+        XCTAssertEqual(try Data(contentsOf: url), external, "Closing wrote over the external version")
+    }
+
+    @MainActor
+    func testClosingWithNothingLeftToWriteIgnoresAPendingChange() throws {
+        let app = launch(autosaveDelay: 2)
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Settled.scad")
+        try Data("cube(1);\n".utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        editor.typeText("x")
+        let external = Data("cube(2);\n".utf8)
+        try external.write(to: url, options: .atomic)
+        let keep = app.sheets.buttons["Keep Editing"].firstMatch
+        XCTAssertTrue(keep.waitForExistence(timeout: 8), "Expected the external change sheet")
+        keep.click()
+
+        // Deleting the character leaves the text the file held before the change, so there is
+        // nothing to write and nothing to lose.
+        editor.typeKey(.delete, modifierFlags: [])
+        waitForText("cube(1);", in: editor)
+        XCTAssertEqual(editor.value as? String, "cube(1);\n")
+        choose("Close", from: "File", in: app)
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 5), "Closing refused with nothing to write")
+        XCTAssertEqual(try Data(contentsOf: url), external, "Closing wrote over the external version")
+    }
+
+    @MainActor
+    func testACoordinatedWriterHoldingTheFileWinsOverAutosave() throws {
+        let app = launch(autosaveDelay: 2)
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Held.scad")
+        try Data("cube(1);\n".utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        // Another program takes the file before the autosave is due and replaces it after.
+        let external = Data("cube(2);\n".utf8)
+        let writerDone = XCTestExpectation(description: "The other writer finished")
+        let holding = XCTestExpectation(description: "The other writer holds the file")
+        Thread.detachNewThread {
+            var coordination: NSError?
+            NSFileCoordinator().coordinate(writingItemAt: url, options: .forReplacing, error: &coordination) { target in
+                holding.fulfill()
+                Thread.sleep(forTimeInterval: 6)
+                try? external.write(to: target, options: .atomic)
+            }
+            writerDone.fulfill()
+        }
+        XCTAssertEqual(XCTWaiter.wait(for: [holding], timeout: 5), .completed)
+        editor.typeText("// local ")
+        XCTAssertEqual(XCTWaiter.wait(for: [writerDone], timeout: 12), .completed)
+        settle(4)
+        XCTAssertEqual(try Data(contentsOf: url), external, "Autosave replaced the other writer's version")
+        XCTAssertEqual(editor.value as? String, "// local cube(1);\n")
+        let keep = app.sheets.buttons["Keep Editing"].firstMatch
+        XCTAssertTrue(keep.waitForExistence(timeout: 5), "Expected the external change sheet")
+        keep.click()
+
+        // Quitting without saving leaves the other writer's version in place.
+        app.typeKey("q", modifierFlags: .command)
+        let discard = app.buttons["Don’t Save"].firstMatch
+        XCTAssertTrue(discard.waitForExistence(timeout: 5), "Quitting did not ask about the unsaved text")
+        discard.click()
+        XCTAssertTrue(app.wait(for: .notRunning, timeout: 10), "Don’t Save did not let the app quit")
+        XCTAssertEqual(try Data(contentsOf: url), external)
+    }
+
+    @MainActor
     func testNativeUndoRedoAndIndependentDocuments() throws {
         let app = launch()
         defer { app.terminate() }
@@ -567,17 +834,17 @@ final class ScadrettoUITests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: url), original)
 
         choose("Save", from: "File", in: app)
-        XCTAssertEqual(try Data(contentsOf: url), edited)
+        waitForFile(url, toEqual: edited, timeout: 5)
 
         choose("Undo", from: "Edit", in: app, prefix: true)
         waitForText("hole_d = 4;", in: editor)
         choose("Save", from: "File", in: app)
-        XCTAssertEqual(try Data(contentsOf: url), original)
+        waitForFile(url, toEqual: original, timeout: 5)
 
         choose("Redo", from: "Edit", in: app, prefix: true)
         waitForText("hole_d = 5;", in: editor)
         choose("Save", from: "File", in: app)
-        XCTAssertEqual(try Data(contentsOf: url), edited)
+        waitForFile(url, toEqual: edited, timeout: 5)
 
         choose("Close", from: "File", in: app)
         let reopened = open(url, in: app)
@@ -605,7 +872,7 @@ final class ScadrettoUITests: XCTestCase {
         let field = app.textFields["diameterField"].firstMatch
         waitForText("Preview ready · 1052 triangles", in: status, timeout: 15)
         choose("Save", from: "File", in: app)
-        XCTAssertEqual(try Data(contentsOf: url), original)
+        waitForFile(url, toEqual: original, timeout: 5)
 
         try selectThirdBore(in: viewport, app: app)
         waitForText("Shared parameter · 4 cutters", in: app.staticTexts["targetScope"].firstMatch)
@@ -706,7 +973,7 @@ final class ScadrettoUITests: XCTestCase {
         waitForText("Preview ready", in: status, timeout: 15)
         waitForText("Source change · 20 → 22", in: detail, timeout: 8)
         choose("Save", from: "File", in: app)
-        XCTAssertEqual(try Data(contentsOf: url), Data(pitchedText.utf8))
+        waitForFile(url, toEqual: Data(pitchedText.utf8), timeout: 5)
         let saved = XCTAttachment(data: Data(pitchedText.utf8), uniformTypeIdentifier: "public.source-code")
         saved.name = "Saved Pitched Plate.scad"
         saved.lifetime = .keepAlways
@@ -827,7 +1094,7 @@ final class ScadrettoUITests: XCTestCase {
         waitForText("4,5", in: diameter, timeout: 8)
 
         choose("Save", from: "File", in: app)
-        XCTAssertEqual(try Data(contentsOf: url), Data(editedText.utf8))
+        waitForFile(url, toEqual: Data(editedText.utf8), timeout: 5)
         choose("Undo Change Diameter", from: "Edit", in: app)
         waitForText("d = 4,", in: editor)
         XCTAssertEqual(editor.value as? String, originalText)
@@ -982,13 +1249,14 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
-    private func launch(arguments: [String] = []) -> XCUIApplication {
+    private func launch(arguments: [String] = [], autosaveDelay: TimeInterval = 600) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
-        // Each test opens its own documents rather than the last test's windows, and starts from
-        // the default library folders and preview time limit.
-        app.launchArguments += ["-ApplePersistenceIgnoreState", "YES", "-ScadrettoResetPreviewSettings", "YES"]
-            + arguments
+        // Each test opens its own documents rather than the last test's windows and starts from
+        // the default library folders and preview time limit. Autosave waits ten minutes unless a
+        // test asks for it, so unsaved edits stay unsaved while it runs.
+        app.launchArguments += ["-ApplePersistenceIgnoreState", "YES", "-ScadrettoResetPreviewSettings", "YES",
+                                "-ScadrettoAutosaveDelay", String(autosaveDelay)] + arguments
         // A failed assertion ends a test without running its defer blocks.
         addTeardownBlock { await MainActor.run { app.terminate() } }
         app.launch()
@@ -1081,6 +1349,17 @@ final class ScadrettoUITests: XCTestCase {
         let expectation = XCTNSPredicateExpectation(predicate: matches, object: element)
         XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: timeout), .completed,
                        "Expected “\(text)”, got \(element.value ?? "(no value)")", file: file, line: line)
+    }
+
+    @MainActor
+    private func waitForFile(_ url: URL, toEqual expected: Data, timeout: TimeInterval,
+                             file: StaticString = #filePath, line: UInt = #line) {
+        let written = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            (try? Data(contentsOf: url)) == expected
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [written], timeout: timeout), .completed,
+                       "Expected \(url.lastPathComponent) to hold \(String(decoding: expected, as: UTF8.self))",
+                       file: file, line: line)
     }
 
     /// File presenter notices arrive asynchronously and have no element to wait for.
