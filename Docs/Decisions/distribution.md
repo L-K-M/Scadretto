@@ -117,12 +117,12 @@ These come from one development Mac: Mac16,9 (Apple M4 Max, 36 GiB),
 macOS 27.0.1 (26A434), Xcode 27.2, one 1920 × 1080 display at backing scale 1,
 Swiss German keyboard layout, Homebrew installed, no system OpenSCAD.
 
-`Scripts/package-macos --local` on revision `030d172`, 2026-11-23:
+`Scripts/package-macos --local` on revision `d30efc9`, 2026-11-23:
 
 | Item | Result |
 |---|---|
-| Image | `Scadretto-local.dmg`, 258 MB, SHA-256 `b0c3eca24975304ab278ee732e10fa811ea2893b7c90e025fcafc7f17d77755b` |
-| App executable | SHA-256 `2a85c267c87c19b451af8ee5e29b2eee902eda6de73d70d9210c6c29f18e3273` |
+| Image | `Scadretto-local.dmg`, 258 MB, SHA-256 `7073876cbe082aafb072817595ccfff62d72a3fabb85160633d85a0d78c7c4cf` |
+| App executable | SHA-256 `ba6c380a916a511194fd762ff63c079859e9f229da8ac82741f529dcbf6b9721` |
 | Worker | SHA-256 `60a9b08a19a8c3326286d84c6f3f525adf63fc4d369fbfa4f771928bd7f4332e` |
 | Signing | Ad hoc, no hardened runtime; no entitlements on the app or the worker |
 | Mach-O checks | 9 files (app, worker, 7 libraries): arm64 only, minimum macOS 14.0 or older, no problems |
@@ -142,20 +142,22 @@ synthesized mouse and keyboard events.
 1. The installed app's signature verifies, and its example is
    byte-identical to `Tests/Fixtures/mounting-plate.scad`.
 2. Help > Open Example opens an untitled "Mounting Plate" that evaluates
-   offline: "Preview ready · 1052 triangles".
+   offline: "Preview ready · 1052 triangles". The editor shows the start
+   of every line.
 3. A click on the third bore's wall selects "i = 2 · mounting_hole ·
    cylinder", a shared parameter of 4 cutters. Dragging the diameter handle
-   changes `hole_d = 4;` to `hole_d = 5.00002242771;` (the synthesized drag
+   changes `hole_d = 4;` to `hole_d = 4.9753561478;` (the synthesized drag
    path is not pixel-exact). Undo restores `hole_d = 4;` and Redo reapplies
    it, from the Edit menu and from the keyboard.
 4. After typing `// copy ` at the top, Save asks where to save the untitled copy.
    The saved file outside the bundle equals the fixture with only those two
    changes.
 5. The app quits without a prompt. Launched again with the saved file, it shows
-   the same text and "Preview ready · 1052 triangles".
+   the same text and "Preview ready · 1052 triangles", again from the start
+   of each line.
 6. The bundled example is unchanged and the app's signature still verifies.
 7. The unmodified reference CLI renders the saved copy to 1052 facets with
-   all four bores at radius 2.5 (the fixture's are 2.0).
+   all four bores at radius 2.4877 (the fixture's are 2.0).
 
 The packaged worker contract checks cover the worker's fonts, includes and
 `use` from library roots, imports and `surface()` data from inside the
