@@ -26,7 +26,7 @@ jobs:
       - name: Check repository scripts
         run: |
           set -euo pipefail
-          shellcheck -x Scripts/*.sh Scripts/bootstrap-macos Scripts/build-engine Scripts/verify-engine Scripts/stage-worker Engine/build-dependencies
+          shellcheck -x Scripts/*.sh Scripts/bootstrap-macos Scripts/build-engine Scripts/verify-engine Scripts/stage-worker Scripts/benchmark-macos Engine/build-dependencies
           Scripts/build.sh --help
           Scripts/release.sh --help
           if Scripts/release.sh --preflight 01.2.3 > "$RUNNER_TEMP/invalid-version" 2>&1; then

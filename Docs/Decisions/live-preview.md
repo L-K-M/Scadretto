@@ -28,12 +28,66 @@ record the file at the read boundary and the parent checks its digest again.
 M5 covers coordinated replacements, provider hydration and concurrent file
 changes.
 
+Settings (Command-comma) lists the ordered library folders searched before
+`OPENSCADPATH` and `~/Documents/OpenSCAD/libraries`, and the preview time
+limit: 1 to 3,600 seconds, 20 by default. Both live in the app's defaults.
+A change re-evaluates every open document under a new dependency
+generation, because a different folder order can choose a different file
+while the source stays the same. A change written elsewhere, such as with
+`defaults write`, also refreshes an open Settings window, so its next edit
+does not write an older list back. UI tests clear both settings with the
+hidden launch default `ScadrettoResetPreviewSettings`. In
+`testLibraryFoldersReevaluateOpenDocuments` an unresolved `use` resolves
+when its folder is added, a folder moved ahead with the same file name
+wins, and removing it brings back the first file. The test file stays
+unchanged. `testPreviewTimeLimitComesFromSettings` stops a long evaluation
+at a one-second limit.
+
 The Metal renderer receives decoded double-precision positions. CPU mesh
 preparation subtracts a double-precision render origin before converting
 vertices to float. The renderer uses a precompiled app metallib. The engine
 process, payload decoder and mesh preparation run off the main actor. The
 document window updates the console, outline and viewport from one accepted
 request. It preserves the camera when a newer mesh or an empty model arrives.
+A window covered by another one presents no frame. Its viewport draws again
+when the window shows, so a scene that arrived while it was covered is
+presented then.
+
+An included or used file opens as its own document. The worker reads such
+files from disk, so a parent's preview shows the saved state of a
+dependency open in another window. The parent's status row names those
+files until their text is written, and saving one re-evaluates the parent
+through the dependency watch. `testUnsavedDependencyEditsAreLabeledUntilSaved`
+checks the label, the unchanged parent preview while the part is unsaved,
+and the new geometry after Save.
+
+VoiceOver hears scene changes, the selection and committed edits as
+announcements. A failure is announced at high priority with the status text,
+and the next successful evaluation is announced once. Evaluations that end
+the way the last one did stay quiet, so typing does not repeat "Preview
+ready". An evaluation that runs longer than 1.5 seconds is announced as
+evaluating at low priority. The inspector exposes its breadcrumb, property,
+value and scope as one summary, which is announced when the selection or
+property changes. A committed edit is announced with its old and new values
+and its scope, which carries the affected count. The hidden launch default
+`ScadrettoAnnouncementLog` writes each announcement to a file, and
+`testVoiceOverHearsSceneSelectionAndEditChanges` checks that sequence. Speech
+itself and VoiceOver navigation still need the manual check on a real Mac.
+
+File > New Window opens another window on the same document. The windows
+share the source buffer, the transaction path, the undo history and the
+preview; each keeps its own camera and text selection. An edit made in one
+window moves the other window's text selection with the text around the
+change. The feature selection, inspector and handles live in one window at a
+time: selecting in another window clears them in the first, so no handle
+outlives a change it did not see. Composed text in one window is committed
+before another window's edit, and that edit's keystroke is dropped with a
+beep because its ranges predate the composed text. A property edit waits
+while any window of the document composes. Later windows of a
+document carry a number in their title, which also tells them apart in the
+Window menu. `testTwoWindowsOfOneDocumentShareTextUndoAndSelectionSafely`
+types in both windows, undoes both steps from either window until Undo is
+disabled, moves the selection, edits a diameter and closes one window.
 
 ## Verification
 
