@@ -38,8 +38,22 @@ jobs:
             exit 1
           }
 
+      - name: Install engine build tools
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: brew install cmake ninja pkgconf bison flex meson gettext
+
       - name: Verify app and engine
-        run: Scripts/verify
+        run: Scripts/verify --output "$RUNNER_TEMP/verify"
+
+      - name: Retain verification logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-verification
+          path: |
+            ${{ runner.temp }}/verify/*.log
+            ${{ runner.temp }}/verify/summary.txt
 
       - name: Check distribution credentials
         env:
