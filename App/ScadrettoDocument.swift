@@ -786,7 +786,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
                 workspace.viewport?.showLinear(handle: nil, guides: [])
             }
             workspace.showGhost(plan.affected)
-            inspection.writable = !controller.isComposing
+            inspection.writable = !isComposing
 
             var notes: [String] = []
             if let sourceChange {
@@ -886,7 +886,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         guard let controller = editor else { return }
         let workspace = controller.previewWorkspace
         let inspector = workspace.sidebar.inspector
-        guard !controller.isComposing else {
+        guard !isComposing else {
             inspector.showMessage("Finish composing text before editing this property.")
             return
         }
