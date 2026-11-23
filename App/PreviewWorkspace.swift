@@ -67,6 +67,8 @@ final class PreviewWorkspace {
         notice.font = status.font
         notice.textColor = .systemOrange
         notice.lineBreakMode = .byTruncatingTail
+        // The status names the scene; the notice truncates first and keeps its full text in a tooltip.
+        notice.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         notice.isHidden = true
         notice.setAccessibilityIdentifier("dependencyNotice")
         for item in [renderingView, status, notice, snap] {
