@@ -193,6 +193,40 @@ final class ScadrettoUITests: XCTestCase {
     }
 
     @MainActor
+    func testOpenExampleGivesAnEditableUntitledCopy() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let example = try fixture("mounting-plate")
+
+        choose("Open Example", from: "Help", in: app)
+        let editor = sourceEditor(for: directory.appending(path: "Mounting Plate.scad"), in: app)
+        XCTAssertTrue(editor.waitForExistence(timeout: 8), "Expected the example's window")
+        XCTAssertEqual(editor.value as? String, String(decoding: example, as: UTF8.self))
+        waitForText("Preview ready · 1052 triangles", in: app.staticTexts["renderStatus"].firstMatch, timeout: 30)
+
+        // The copy is untitled, so Save asks where to put it.
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        editor.typeText("// copy ")
+        app.typeKey("s", modifierFlags: .command)
+        let save = app.sheets.buttons["Save"].firstMatch
+        XCTAssertTrue(save.waitForExistence(timeout: 10), "Expected the Save panel")
+        app.sheets.firstMatch.typeKey("g", modifierFlags: [.command, .shift])
+        let path = app.textFields["PathTextField"].firstMatch
+        XCTAssertTrue(path.waitForExistence(timeout: 5), "Expected the Go to Folder path field")
+        path.typeKey("a", modifierFlags: .command)
+        path.typeText(directory.path)
+        path.typeKey(.return, modifierFlags: [])
+        // A click while the Go to Folder popup is still closing does not reach the Save button.
+        XCTAssertTrue(path.waitForNonExistence(timeout: 5), "Expected Go to Folder to close")
+        save.click()
+        let saved = directory.appending(path: "Mounting Plate.scad")
+        waitForFile(saved, toEqual: Data("// copy ".utf8) + example, timeout: 10)
+    }
+
+    @MainActor
     func testExternalBackupRenameDoesNotRedirectSave() throws {
         try saveAfterExternalMove(refilledWith: Data("cube(2);\n".utf8))
     }
