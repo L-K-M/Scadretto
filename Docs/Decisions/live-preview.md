@@ -67,7 +67,8 @@ change. The feature selection, inspector and handles live in one window at a
 time: selecting in another window clears them in the first, so no handle
 outlives a change it did not see. Composed text in one window is committed
 before another window's edit, and that edit's keystroke is dropped with a
-beep because its ranges predate the composed text. Later windows of a
+beep because its ranges predate the composed text. A property edit waits
+while any window of the document composes. Later windows of a
 document carry a number in their title, which also tells them apart in the
 Window menu. `testTwoWindowsOfOneDocumentShareTextUndoAndSelectionSafely`
 types in both windows, undoes both steps from either window until Undo is
