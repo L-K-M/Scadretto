@@ -31,6 +31,21 @@ and a coordinated replacement sends a deletion notice before its change
 notice. Handlers must check the path's contents rather than trust the
 kind of notice.
 
+`DiskBaseline` in `ScadrettoCore` holds the bytes the document last
+read or wrote and classifies each read of the path. The document reads
+the path, under coordination and off the main thread, after a presenter
+notice, when the app becomes active (a plain delete sends no notice)
+and before Save. A document without edits reloads a changed file. With
+unsaved edits it offers Compare, Keep Editing and Reload from Disk, and
+Save asks before overwriting. The approval covers only the reviewed
+version, so a later change needs a new decision. A missing file keeps
+the text and offers Save As. A moved file is followed only through Use
+New Location. A conflict marks the document edited until resolved.
+Checks wait for a running save or text composition. Once the path is
+checked, Save calls `save(to:ofType:for:completionHandler:)` directly,
+because AppKit's Save asks again about a move the user has accepted.
+`writeSafely` rechecks the bytes inside the coordinated write.
+
 ## Text system measurements
 
 On a Mac16,9 with M4 Max and 36 GiB RAM, macOS 27.0.1 (26A434), Xcode

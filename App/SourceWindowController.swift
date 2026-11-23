@@ -119,7 +119,10 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         editor.textContainer?.containerSize = editor.maxSize
         editor.setAccessibilityIdentifier("sourceEditor")
         editor.delegate = self
-        editor.onCompositionEnd = { [weak self] in self?.commitComposedText() }
+        editor.onCompositionEnd = { [weak self] in
+            self?.commitComposedText()
+            self?.onCompositionFinished?()
+        }
     }
 
     func show(_ snapshot: SourceSnapshot, selecting selection: NSRange) {
@@ -170,6 +173,8 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     }
 
     var isComposing: Bool { editor.hasMarkedText() }
+    /// Called after composed text reaches the document, or after the composition is cancelled.
+    var onCompositionFinished: (() -> Void)?
 
     private(set) var currentSyntax: SyntaxSnapshot?
     var onSyntaxReady: (() -> Void)?
