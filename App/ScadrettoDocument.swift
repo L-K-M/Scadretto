@@ -259,6 +259,8 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             }
             if let self, self.diskCheckPending { Task { await self.checkDisk() } }
             completionHandler(error)
+            // An autosave held back by this save runs once AppKit has finished it.
+            Task { @MainActor [weak self] in self?.resumeDeferredAutosave() }
         }
     }
 
@@ -287,12 +289,21 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
                            completionHandler: completionHandler)
             return
         }
+        // A save in flight may have written bytes the baseline has not adopted yet, which a check
+        // now would take for another program's change. The disk check waits for it the same way.
         let otherWriter = io.withLock { $0.otherWriter }
-        if !otherWriter, editor?.isComposing != true, io.withLock({ $0.disk.conflict == nil }),
+        if !otherWriter, !saving, editor?.isComposing != true, io.withLock({ $0.disk.conflict == nil }),
            let disk = try? Self.readDisk(at: url) {
             applyDisk(disk, at: url, presenting: !unavoidable)
         }
         let conflict = io.withLock { $0.disk.conflict }
+        if !hasUnwrittenText, editor?.isComposing != true {
+            // Nothing to write: an undo back to the bytes last written, or text that matches them
+            // again while a change is pending. Neither holds up closing or quitting.
+            updateChangeCount(.changeAutosaved)
+            completionHandler(nil)
+            return
+        }
         if unavoidable, let conflict, hasUnwrittenText {
             // AppKit's quit sequence expects an answer before it continues.
             autosaveDeferred = true
@@ -301,15 +312,9 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             if choice == .alertFirstButtonReturn { saveAs(nil) }
             return
         }
-        if conflict != nil || otherWriter || editor?.isComposing == true {
+        if conflict != nil || otherWriter || editor?.isComposing == true || (saving && !unavoidable) {
             autosaveDeferred = true
             completionHandler(CocoaError(.userCancelled))
-            return
-        }
-        if !hasUnwrittenText {
-            // An undo back to the bytes last written leaves nothing to write.
-            updateChangeCount(.changeAutosaved)
-            completionHandler(nil)
             return
         }
         super.autosave(withImplicitCancellability: autosavingIsImplicitlyCancellable,

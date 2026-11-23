@@ -479,7 +479,7 @@ final class ScadrettoUITests: XCTestCase {
         first.typeText("// closed ")
         app.typeKey("w", modifierFlags: .command)
         XCTAssertTrue(first.waitForNonExistence(timeout: 5), "Closing asked instead of autosaving")
-        XCTAssertEqual(try Data(contentsOf: closed), Data("// closed cube(1);\n".utf8))
+        waitForFile(closed, toEqual: Data("// closed cube(1);\n".utf8), timeout: 5)
 
         let second = open(quit, in: app)
         second.click()
@@ -502,12 +502,15 @@ final class ScadrettoUITests: XCTestCase {
         let editor = open(url, in: app)
         editor.click()
         editor.typeKey(.upArrow, modifierFlags: .command)
+        // On the Swiss German layout this key is a dead circumflex, which stays marked text. On a
+        // layout where it types a plain caret, nothing here composes.
+        try XCTSkipUnless(Self.keyboardLayoutID == "com.apple.keylayout.SwissGerman",
+                          "Needs the Swiss German layout, where ^ is a dead key")
         editor.typeText("// ")
-        // On the Swiss German layout this key is a dead circumflex, which stays marked text.
         editor.typeKey("^", modifierFlags: [])
+        // The typed "// " is due for autosave during the composition, which holds it back.
         settle(6)
-        let composing = try Data(contentsOf: url)
-        XCTAssertFalse(String(decoding: composing, as: UTF8.self).contains("^"), "Autosave wrote marked text")
+        XCTAssertEqual(try Data(contentsOf: url), original, "Autosave wrote during the composition")
         editor.typeText("e")
         waitForText("// ê", in: editor)
         waitForFile(url, toEqual: Data("// êcube(1);\n".utf8), timeout: 12)
@@ -518,7 +521,14 @@ final class ScadrettoUITests: XCTestCase {
         editor.typeKey("^", modifierFlags: [])
         app.windows["Composed.scad"].buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertTrue(editor.waitForNonExistence(timeout: 5), "Closing asked instead of autosaving")
-        XCTAssertEqual(try Data(contentsOf: url), Data("// ê^cube(1);\n".utf8))
+        waitForFile(url, toEqual: Data("// ê^cube(1);\n".utf8), timeout: 5)
+    }
+
+    /// The current keyboard layout's input source ID, such as com.apple.keylayout.SwissGerman.
+    private static var keyboardLayoutID: String? {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let property = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else { return nil }
+        return Unmanaged<CFString>.fromOpaque(property).takeUnretainedValue() as String
     }
 
     @MainActor
@@ -560,6 +570,34 @@ final class ScadrettoUITests: XCTestCase {
         XCTAssertTrue(discard.waitForExistence(timeout: 5))
         discard.click()
         XCTAssertTrue(editor.waitForNonExistence(timeout: 5), "Don’t Save kept the window open")
+        XCTAssertEqual(try Data(contentsOf: url), external, "Closing wrote over the external version")
+    }
+
+    @MainActor
+    func testClosingWithNothingLeftToWriteIgnoresAPendingChange() throws {
+        let app = launch(autosaveDelay: 2)
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        let url = directory.appending(path: "Settled.scad")
+        try Data("cube(1);\n".utf8).write(to: url)
+
+        let editor = open(url, in: app)
+        editor.click()
+        editor.typeKey(.upArrow, modifierFlags: .command)
+        editor.typeText("x")
+        let external = Data("cube(2);\n".utf8)
+        try external.write(to: url, options: .atomic)
+        let keep = app.sheets.buttons["Keep Editing"].firstMatch
+        XCTAssertTrue(keep.waitForExistence(timeout: 8), "Expected the external change sheet")
+        keep.click()
+
+        // Deleting the character leaves the text the file held before the change, so there is
+        // nothing to write and nothing to lose.
+        editor.typeKey(.delete, modifierFlags: [])
+        waitForText("cube(1);", in: editor)
+        XCTAssertEqual(editor.value as? String, "cube(1);\n")
+        choose("Close", from: "File", in: app)
+        XCTAssertTrue(editor.waitForNonExistence(timeout: 5), "Closing refused with nothing to write")
         XCTAssertEqual(try Data(contentsOf: url), external, "Closing wrote over the external version")
     }
 
