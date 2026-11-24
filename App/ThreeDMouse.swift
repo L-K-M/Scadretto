@@ -224,6 +224,8 @@ final class ThreeDMouseSettingsSection: NSStackView {
         orientation = .vertical
         alignment = .leading
         spacing = 8
+        // A wrapping label wraps at the width it is given; unpinned, a long status runs past the margin.
+        statusLabel.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
         reload()
         statusObserver = NotificationCenter.default.addObserver(
             forName: ThreeDMouseController.statusDidChange, object: nil, queue: .main

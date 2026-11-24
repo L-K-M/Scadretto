@@ -140,8 +140,8 @@ final class PreviewSettingsWindowController: NSWindowController, NSTableViewData
 
         let separator = NSBox()
         separator.boxType = .separator
-        let stack = NSStackView(views: [heading, explanation, scroll, buttons, timeout, separator,
-                                        ThreeDMouseSettingsSection()])
+        let mouse = ThreeDMouseSettingsSection()
+        let stack = NSStackView(views: [heading, explanation, scroll, buttons, timeout, separator, mouse])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
@@ -149,6 +149,7 @@ final class PreviewSettingsWindowController: NSWindowController, NSTableViewData
         scroll.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40).isActive = true
         explanation.widthAnchor.constraint(equalTo: scroll.widthAnchor).isActive = true
         separator.widthAnchor.constraint(equalTo: scroll.widthAnchor).isActive = true
+        mouse.widthAnchor.constraint(equalTo: scroll.widthAnchor).isActive = true
         return stack
     }
 
