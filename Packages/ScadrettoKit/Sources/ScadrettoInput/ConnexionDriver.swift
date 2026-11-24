@@ -109,7 +109,7 @@ final class ConnexionDriverBackend: ThreeDMouseBackend {
     /// The backend that receives the driver's callbacks, which carry no context.
     private static weak var current: ConnexionDriverBackend?
 
-    var sink: ThreeDMouseSink?
+    weak var sink: ThreeDMouseSink?
     private let api: API
     private var clientID: UInt16 = 0
     private var clientName: UnsafeMutablePointer<UInt8>?

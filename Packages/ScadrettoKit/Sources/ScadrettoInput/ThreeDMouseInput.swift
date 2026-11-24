@@ -38,6 +38,7 @@ protocol ThreeDMouseSink: AnyObject {
 /// One way of reading a 3D mouse.
 @MainActor
 protocol ThreeDMouseBackend: AnyObject {
+    /// The input that owns this backend; hold it weakly.
     var sink: ThreeDMouseSink? { get set }
     func start() -> ThreeDMouseStatus
     /// Called with true while Scadretto is the active application.
@@ -194,7 +195,7 @@ extension ThreeDMouseInput: ThreeDMouseSink {
 /// application without a device.
 @MainActor
 final class SimulatedBackend: ThreeDMouseBackend {
-    var sink: ThreeDMouseSink?
+    weak var sink: ThreeDMouseSink?
     private let motion: ThreeDMouseMotion
 
     init(motion: ThreeDMouseMotion) {

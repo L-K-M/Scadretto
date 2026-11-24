@@ -43,7 +43,7 @@ final class HIDMultiAxisBackend: ThreeDMouseBackend {
 
     private static let log = Logger(subsystem: "com.lkm.Scadretto", category: "3DMouse")
 
-    var sink: ThreeDMouseSink?
+    weak var sink: ThreeDMouseSink?
     private let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
     private var devices: [Device] = []
     private var axes = [Double](repeating: 0, count: ThreeDMouseAxes.count)

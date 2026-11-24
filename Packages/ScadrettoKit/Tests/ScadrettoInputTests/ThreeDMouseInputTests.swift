@@ -195,4 +195,19 @@ final class ThreeDMouseInputTests: XCTestCase {
         input.setActive(false)
         XCTAssertEqual(motions.last, .zero)
     }
+
+    func testDroppingARunningInputReleasesItAndItsBackend() {
+        weak var droppedInput: ThreeDMouseInput?
+        weak var droppedBackend: SimulatedBackend?
+        do {
+            let backend = SimulatedBackend(motion: ThreeDMouseMotion(rotation: SIMD3(0, 0.5, 0)))
+            let input = ThreeDMouseInput(backend: { backend })
+            input.start()
+            input.setActive(true)
+            droppedInput = input
+            droppedBackend = backend
+        }
+        XCTAssertNil(droppedInput, "A backend must not keep its input alive")
+        XCTAssertNil(droppedBackend)
+    }
 }
