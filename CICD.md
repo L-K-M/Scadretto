@@ -69,7 +69,7 @@ describes its checks, the bundled licenses and the corresponding source.
 
 The pinned GLM workflow reviews ready PRs from branches in this repository and
 cancels obsolete runs when new commits arrive. It reads `ZAI_API_KEY` from
-repository secrets. `MIMO_API_KEY` and `STEPFUN_API_KEY` enable optional review
+repository secrets. `STEPFUN_API_KEY` enables optional review
 providers. The workflow runs from the base branch. Follow the review rules in
 [AGENTS.md](AGENTS.md).
 
