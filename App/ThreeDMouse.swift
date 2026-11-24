@@ -165,10 +165,10 @@ final class ThreeDMouseController {
             "3D mouse input is off."
         case .driver(deviceConnected: nil):
             "Using the 3Dconnexion driver."
-        case .driver(deviceConnected: true):
-            "A 3D mouse is connected through the 3Dconnexion driver."
-        case .driver(deviceConnected: false):
-            "The 3Dconnexion driver reports no 3D mouse."
+        // Xcode 16 does not count `true` and `false` patterns on an optional Bool as exhaustive.
+        case .driver(deviceConnected: let connected?):
+            connected ? "A 3D mouse is connected through the 3Dconnexion driver."
+                : "The 3Dconnexion driver reports no 3D mouse."
         case .noDevice:
             "No 3D mouse is connected."
         case .connected(let name):
