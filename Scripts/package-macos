@@ -134,10 +134,11 @@ component. The disk image carries the corresponding source of the worker and its
 the Source folder, with the scripts that build it.
 EOF
 
-# Sign inside out: libraries, then the worker, then the app.
+# Sign inside out: libraries, then the worker, then the app. The app's one entitlement lets it
+# load the 3Dconnexion driver's client framework; see Docs/Decisions/3d-mouse.md.
 for library in "$app"/Contents/Frameworks/*.dylib; do "${sign[@]}" "$library"; done
 "${sign[@]}" "$app/Contents/Helpers/scadretto-engine"
-"${sign[@]}" "$app"
+"${sign[@]}" --entitlements App/Scadretto.entitlements "$app"
 
 # Mach-O checks: architecture, minimum macOS, library paths and run paths.
 problems=0

@@ -59,7 +59,7 @@ final class PreviewSettings: NSObject {
     }
 }
 
-/// Settings window: the ordered library folders and the preview time limit.
+/// Settings window: the ordered library folders, the preview time limit and the 3D mouse.
 @MainActor
 final class PreviewSettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate,
     NSWindowDelegate {
@@ -138,13 +138,17 @@ final class PreviewSettingsWindowController: NSWindowController, NSTableViewData
         timeoutField.widthAnchor.constraint(equalToConstant: 70).isActive = true
         let timeout = NSStackView(views: [timeoutLabel, timeoutField, NSTextField(labelWithString: "seconds")])
 
-        let stack = NSStackView(views: [heading, explanation, scroll, buttons, timeout])
+        let separator = NSBox()
+        separator.boxType = .separator
+        let stack = NSStackView(views: [heading, explanation, scroll, buttons, timeout, separator,
+                                        ThreeDMouseSettingsSection()])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         scroll.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40).isActive = true
         explanation.widthAnchor.constraint(equalTo: scroll.widthAnchor).isActive = true
+        separator.widthAnchor.constraint(equalTo: scroll.widthAnchor).isActive = true
         return stack
     }
 

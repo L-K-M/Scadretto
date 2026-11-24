@@ -46,6 +46,7 @@ public enum ViewportShader {
 /// | Shift + precise scroll | Pan | Orbit |
 /// | Imprecise scroll (mouse wheel) | Zoom about cursor | same |
 /// | Pinch (`magnify`) | Zoom about cursor | same |
+/// | 3D mouse (`setNavigationMotion`) | Model follows the cap: pan, zoom, rotate | same |
 ///
 /// Orbit drags scale by view height: one viewport height of drag is one full
 /// revolution. Imprecise scroll zooms by `exp(deltaY * 0.2)`. Momentum-phase
@@ -122,6 +123,9 @@ public final class ViewportView: MTKView {
     private var diameterGuides: [ViewportDiameterGuide] = []
     private var linearGuides: [ViewportLinearGuide] = []
     private var handleDragState: HandleDrag?
+    private var navigationMotion = ViewportMotion.zero
+    private var navigationLink: CADisplayLink?
+    private var lastNavigationTime: CFTimeInterval?
 
     public var onSelection: ((PresentedFrame, CGPoint) -> Void)?
     public var onPresentationChange: (() -> Void)?
@@ -194,6 +198,10 @@ public final class ViewportView: MTKView {
         super.viewDidMoveToWindow()
         if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
         occlusionObserver = nil
+        // A display link follows one window's screen; the motion carries over to the new window.
+        navigationLink?.invalidate()
+        navigationLink = nil
+        updateNavigationLink()
         guard let window else { return }
         occlusionObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
@@ -499,6 +507,37 @@ public final class ViewportView: MTKView {
         } else {
             zoomBy(factor: exp(event.scrollingDeltaY * 0.2), anchoredAt: point)
         }
+    }
+
+    /// Continuous navigation velocity, as a 3D mouse reports it. The camera
+    /// moves every display frame until the motion returns to zero; see
+    /// `ViewportCamera.navigate`. Like scrolling, it leaves the camera alone
+    /// while a handle drag is in progress.
+    public func setNavigationMotion(_ motion: ViewportMotion) {
+        navigationMotion = motion
+        updateNavigationLink()
+    }
+
+    /// Runs a display link while there is motion and a window to draw in.
+    private func updateNavigationLink() {
+        if navigationMotion.isZero || window == nil {
+            navigationLink?.invalidate()
+            navigationLink = nil
+            lastNavigationTime = nil
+        } else if navigationLink == nil {
+            let link = displayLink(target: self, selector: #selector(advanceNavigation(_:)))
+            link.add(to: .main, forMode: .common)
+            navigationLink = link
+            lastNavigationTime = nil
+        }
+    }
+
+    @objc private func advanceNavigation(_ link: CADisplayLink) {
+        let time = link.targetTimestamp
+        let seconds = lastNavigationTime.map { time - $0 } ?? link.duration
+        lastNavigationTime = time
+        guard handleDragState == nil, bounds.width > 0, bounds.height > 0 else { return }
+        camera.navigate(navigationMotion, seconds: seconds, transform: viewportTransform())
     }
 
     /// Pinch zoom about the cursor.

@@ -33,6 +33,30 @@ public enum ViewportStandardView: String, CaseIterable, Sendable {
     }
 }
 
+/// Continuous navigation velocity, such as a 3D mouse reports.
+///
+/// Both vectors use view axes: x to the right, y up and z toward the viewer.
+/// `translation` moves the model across the view and toward the viewer;
+/// `rotation` turns it right-handed about those axes through the orbit center.
+/// Components are about -1...1 at full deflection, before any speed scaling.
+public struct ViewportMotion: Equatable, Sendable {
+    public var translation: SIMD3<Double>
+    public var rotation: SIMD3<Double>
+
+    public init(translation: SIMD3<Double> = .zero, rotation: SIMD3<Double> = .zero) {
+        self.translation = translation
+        self.rotation = rotation
+    }
+
+    public static let zero = ViewportMotion()
+
+    public var isZero: Bool { translation == .zero && rotation == .zero }
+
+    var isFinite: Bool {
+        (0..<3).allSatisfy { translation[$0].isFinite && rotation[$0].isFinite }
+    }
+}
+
 /// Orbit camera state in double-precision world coordinates.
 ///
 /// The camera looks at `center` from `distance` along `-forward`, with `up`
@@ -137,6 +161,47 @@ public struct ViewportCamera: Equatable, Sendable {
         if let before, let anchor,
            let after = transform(self).worldPointOnFocusPlane(throughViewPoint: anchor) {
             center += before - after
+        }
+    }
+
+    /// Full-deflection rotation speed of continuous navigation, in radians a second.
+    public static let navigationRotationRate = 2.0
+    /// Full-deflection pan speed of continuous navigation, in view heights a second.
+    public static let navigationPanRate = 1.0
+    /// Full-deflection zoom speed of continuous navigation: the view scales by
+    /// `exp(rate)` a second.
+    public static let navigationZoomRate = 1.2
+    /// The longest time one navigation step covers, so a stalled frame cannot jump the view.
+    public static let maximumNavigationStep = 0.1
+
+    /// Advances continuous navigation, such as from a 3D mouse, by `seconds`.
+    ///
+    /// The model follows `motion`: it turns about `center` around the view axes
+    /// and slides across the view plane, and moving it toward the viewer zooms
+    /// in. The camera makes the opposite move. Pan speed scales with the visible
+    /// height at the focus plane, from `transform`, so it feels the same at any
+    /// zoom.
+    public mutating func navigate(_ motion: ViewportMotion, seconds: Double, transform: ViewportTransform) {
+        let step = min(max(seconds, 0), Self.maximumNavigationStep)
+        guard step > 0, motion.isFinite, !motion.isZero else { return }
+        let right = self.right, screenUp = self.screenUp, back = -simd_normalize(forward)
+
+        let turn = motion.rotation * Self.navigationRotationRate * step
+        let angle = simd_length(turn)
+        if angle > 0 {
+            let axis = simd_normalize(right * turn.x + screenUp * turn.y + back * turn.z)
+            let inverse = simd_quaternion(-angle, axis)
+            forward = inverse.act(forward)
+            up = inverse.act(screenUp)
+            orthonormalize()
+        }
+
+        let viewHeight = transform.worldPerPoint * Double(transform.viewSize.height)
+        let slide = motion.translation * Self.navigationPanRate * viewHeight * step
+        center -= right * slide.x + screenUp * slide.y
+
+        if motion.translation.z != 0 {
+            zoom(factor: exp(motion.translation.z * Self.navigationZoomRate * step), anchoredAt: nil) { _ in transform }
         }
     }
 
