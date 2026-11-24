@@ -134,15 +134,22 @@ component. The disk image carries the corresponding source of the worker and its
 the Source folder, with the scripts that build it.
 EOF
 
-# Sign inside out: libraries, then the worker, then the app.
+# Sign inside out: libraries, then the worker, then the app. The app's one entitlement lets it
+# load the 3Dconnexion driver's client framework; see Docs/Decisions/3d-mouse.md.
 for library in "$app"/Contents/Frameworks/*.dylib; do "${sign[@]}" "$library"; done
 "${sign[@]}" "$app/Contents/Helpers/scadretto-engine"
-"${sign[@]}" "$app"
+"${sign[@]}" --entitlements App/Scadretto.entitlements "$app"
 
 # Mach-O checks: architecture, minimum macOS, library paths and run paths.
 problems=0
 problem() { log "PROBLEM: $*"; problems=$((problems + 1)); }
 version_le() { [[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" == "$1" ]]; }
+# The signed entitlement keys, space separated. Plain `codesign -d --entitlements -` prints a
+# [Key] listing, and --xml prints the plist on one line, so read the keys from the XML.
+entitlement_keys() {
+  { codesign -d --entitlements - --xml "$1" 2> /dev/null || true; } \
+    | { grep -o '<key>[^<]*</key>' || true; } | sed -e 's/<key>//' -e 's/<\/key>//' | paste -sd ' ' -
+}
 machos=()
 while IFS= read -r -d '' file; do
   file -b "$file" | grep -q 'Mach-O' && machos+=("$file")
@@ -173,7 +180,14 @@ done
 codesign --verify --strict --deep "$app" 2>> "$report" || problem 'the app fails codesign --verify --strict --deep'
 cmp -s "$app/Contents/Resources/mounting-plate.scad" Tests/Fixtures/mounting-plate.scad \
   || problem 'the bundled example differs from Tests/Fixtures/mounting-plate.scad'
-log "entitlements: app $(codesign -d --entitlements - "$app" 2>/dev/null | grep -c '<key>' || true), worker $(codesign -d --entitlements - "$app/Contents/Helpers/scadretto-engine" 2>/dev/null | grep -c '<key>' || true)"
+# Without its entitlement the app cannot load the 3Dconnexion framework, and the worker keeps none.
+library_validation_entitlement=com.apple.security.cs.disable-library-validation
+app_entitlements=$(entitlement_keys "$app")
+worker_entitlements=$(entitlement_keys "$app/Contents/Helpers/scadretto-engine")
+[[ $app_entitlements == "$library_validation_entitlement" ]] \
+  || problem "the app has entitlements '$app_entitlements' instead of only $library_validation_entitlement"
+[[ -z $worker_entitlements ]] || problem "the worker has entitlements: $worker_entitlements"
+log "entitlements: app ${app_entitlements:-none}, worker ${worker_entitlements:-none}"
 
 # The packaged worker passes the contract checks with Homebrew and /usr/local unreadable.
 reference=.build/engine/reference/bin

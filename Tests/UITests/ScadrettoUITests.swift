@@ -31,6 +31,48 @@ final class ScadrettoUITests: XCTestCase {
         app.typeKey(.escape, modifierFlags: [])
     }
 
+    /// A simulated 3D mouse turns the model in the front window, keeps turning it while the
+    /// Settings window is in front, and stops when its input is switched off.
+    @MainActor
+    func testThreeDMouseMovesTheFrontViewport() throws {
+        let app = launch(arguments: ["-ScadrettoSimulated3DMouse", "0 0 0 0 0.5 0"])
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Spin.scad")
+        try fixture("mounting-plate").write(to: url)
+        _ = open(url, in: app)
+        waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 15)
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        XCTAssertTrue(viewport.waitForExistence(timeout: 6))
+
+        func frameChanges(within seconds: TimeInterval) -> Bool {
+            let first = viewport.screenshot().pngRepresentation
+            let deadline = Date().addingTimeInterval(seconds)
+            while Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.2)
+                if viewport.screenshot().pngRepresentation != first { return true }
+            }
+            return false
+        }
+        XCTAssertTrue(frameChanges(within: 3), "The 3D mouse must turn the model")
+
+        app.typeKey(",", modifierFlags: .command)
+        let settings = app.windows["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 5), "Expected the Settings window")
+        waitForText("simulated 3D mouse", in: settings.staticTexts["threeDMouseStatus"])
+        XCTAssertTrue(frameChanges(within: 3), "The front document must keep turning behind Settings")
+
+        let enabled = settings.checkBoxes["threeDMouseEnabled"]
+        XCTAssertEqual(enabled.value as? Int, 1)
+        enabled.click()
+        waitForText("off", in: settings.staticTexts["threeDMouseStatus"])
+        settings.buttons[XCUIIdentifierCloseWindow].click()
+        let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: settings)
+        XCTAssertEqual(XCTWaiter.wait(for: [closed], timeout: 5), .completed, "Expected Settings to close")
+        XCTAssertFalse(frameChanges(within: 1.5), "Switching the 3D mouse off must stop the motion")
+    }
+
     @MainActor
     func testLiveMountingPlatePreviewRecoversAfterSyntaxError() throws {
         let app = launch()

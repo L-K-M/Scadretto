@@ -19,8 +19,11 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
-        // UI tests start from the default library folders and time limit.
-        if UserDefaults.standard.bool(forKey: "ScadrettoResetPreviewSettings") { PreviewSettings.shared.reset() }
+        // UI tests start from the default library folders, time limit and 3D mouse settings.
+        if UserDefaults.standard.bool(forKey: "ScadrettoResetPreviewSettings") {
+            PreviewSettings.shared.reset()
+            ThreeDMouseController.resetSettings()
+        }
         // A hidden default lets UI tests shorten or postpone in-place autosave. Without it AppKit
         // keeps its own schedule, about 15 seconds after an edit on macOS 27.
         let autosaveDelay = UserDefaults.standard.double(forKey: "ScadrettoAutosaveDelay")
@@ -31,6 +34,14 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
             engineStartupError = error.localizedDescription
         }
         NSApp.mainMenu = makeMainMenu()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        ThreeDMouseController.shared.start()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        ThreeDMouseController.shared.stop()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

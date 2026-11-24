@@ -26,17 +26,20 @@ The disk image adds `Source/scadretto-worker-source-X.Y.Z.tar` and
 developer account. It produces a local development build and says so in its
 report.
 
-`--distribution` signs every dylib, the worker and the app with a Developer
-ID Application identity, the hardened runtime and a secure timestamp. Neither
-the app nor the worker has entitlements, so the worker's library validation
-accepts only libraries signed by the same team. The script then submits the
-app to the notary service and staples it, so a copy installed from the image
-passes Gatekeeper offline, builds the image, signs, submits and staples it,
-and assesses both with `spctl`. Notarization inputs come from the environment
-(`NOTARY_APPLE_ID`, `NOTARY_PASSWORD`, `NOTARY_TEAM_ID`); the identity comes
-from the keychain, or `SCADRETTO_DEVELOPER_ID` when there are several. The
-release workflow imports the identity into a temporary keychain from the
-`distribution` environment, as [CI/CD](../../CICD.md#distribution) describes.
+`--distribution` signs every dylib, the worker and the app with a Developer ID
+Application identity, the hardened runtime and a secure timestamp. The worker
+has no entitlements, so its library validation accepts only libraries signed
+by the same team. The app has one,
+`com.apple.security.cs.disable-library-validation`, so it can load the
+3Dconnexion driver's client framework; see [3D mouse](3d-mouse.md). The script
+then submits the app to the notary service and staples it, so a copy installed
+from the image passes Gatekeeper offline, builds the image, signs, submits and
+staples it, and assesses both with `spctl`. Notarization inputs come from the
+environment (`NOTARY_APPLE_ID`, `NOTARY_PASSWORD`, `NOTARY_TEAM_ID`); the
+identity comes from the keychain, or `SCADRETTO_DEVELOPER_ID` when there are
+several. The release workflow imports the identity into a temporary keychain
+from the `distribution` environment, as [CI/CD](../../CICD.md#distribution)
+describes.
 
 Other local users can read a process's arguments, so the password never
 appears in one: `notarytool store-credentials` reads it from standard input
