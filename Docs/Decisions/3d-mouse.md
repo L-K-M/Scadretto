@@ -49,7 +49,8 @@ framework is signed by 3Dconnexion, so the app carries one entitlement,
 `com.apple.security.cs.disable-library-validation`
 (`App/Scadretto.entitlements`); `Scripts/package-macos` signs the app with it
 in both modes. The worker keeps no entitlements, so its own library
-validation is unchanged. A separate helper process could have kept validation
+validation is unchanged. Packaging fails unless the app carries exactly this
+entitlement and the worker none. A separate helper process could have kept validation
 in the app, but the driver delivers input to the client of the active
 application, and a helper is never that application.
 
