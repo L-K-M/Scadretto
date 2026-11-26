@@ -166,12 +166,17 @@ final class ComparisonCutOverlay: NSView {
         (focused ? NSColor.keyboardFocusIndicatorColor : Self.mint).setStroke()
         knob.lineWidth = focused ? 2 : 1
         knob.stroke()
-        let arrows = NSAttributedString(string: "‹  ›", attributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 16, weight: .semibold),
-            .foregroundColor: NSColor.white,
-        ])
-        let size = arrows.size()
-        arrows.draw(at: CGPoint(x: grip.midX - size.width / 2, y: grip.midY - size.height / 2))
+        let arrows = NSBezierPath()
+        for direction: CGFloat in [-1, 1] {
+            arrows.move(to: CGPoint(x: grip.midX + 7 * direction, y: grip.midY - 3))
+            arrows.line(to: CGPoint(x: grip.midX + 10 * direction, y: grip.midY))
+            arrows.line(to: CGPoint(x: grip.midX + 7 * direction, y: grip.midY + 3))
+        }
+        arrows.lineWidth = 1.5
+        arrows.lineCapStyle = .round
+        arrows.lineJoinStyle = .round
+        NSColor.white.setStroke()
+        arrows.stroke()
         drawLabel("Before", value: beforeLabel, color: Self.brass, trailing: false)
         drawLabel("After", value: afterLabel, color: Self.mint, trailing: true)
     }

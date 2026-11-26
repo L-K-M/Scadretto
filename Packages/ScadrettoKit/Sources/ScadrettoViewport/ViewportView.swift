@@ -346,7 +346,7 @@ public final class ViewportView: MTKView {
         let wasComparing = isComparing
         isComparisonPinned.toggle()
         updateComparisonVisibility(wasComparing: wasComparing)
-        if isComparing { focusComparison() }
+        if isComparing { window?.makeFirstResponder(comparisonOverlay) }
         return true
     }
 
@@ -369,7 +369,7 @@ public final class ViewportView: MTKView {
             return nil
         }
         updateComparisonVisibility(wasComparing: wasComparing)
-        focusComparison()
+        window?.makeFirstResponder(comparisonOverlay)
     }
 
     private func removeSpaceMonitor() {
@@ -418,10 +418,6 @@ public final class ViewportView: MTKView {
         }
         needsDisplay = true
         onOverlayGeometryChange?()
-    }
-
-    private func focusComparison() {
-        window?.makeFirstResponder(comparisonOverlay)
     }
 
     private func revealComparison(at target: CGFloat) {
@@ -558,7 +554,7 @@ public final class ViewportView: MTKView {
         lastDragPoint = mouseDownPoint
         activeButton = true
         if isComparing {
-            focusComparison()
+            window?.makeFirstResponder(comparisonOverlay)
             return
         }
         window?.makeFirstResponder(self)

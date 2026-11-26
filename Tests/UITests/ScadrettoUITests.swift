@@ -1570,7 +1570,7 @@ final class ScadrettoUITests: XCTestCase {
         app.typeKey(.space, modifierFlags: [])
         waitForText(edited + " ", in: editor)
         app.typeKey("z", modifierFlags: .command)
-        waitForText(edited, in: editor)
+        XCTAssertEqual(editor.value as? String, edited)
         app.typeKey("z", modifierFlags: .command)
         waitForText("pitch = 20;", in: editor)
         waitForText("Preview ready", in: status, timeout: 15)
