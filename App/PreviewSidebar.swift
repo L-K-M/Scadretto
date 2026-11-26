@@ -361,7 +361,14 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
 }
 
 struct DiameterInspection {
+    struct Target: Equatable {
+        let scene: UUID
+        let instance: UInt32
+        let property: String
+    }
+
     let title: String
+    var target: Target?
     var property = "Diameter"
     var fieldIdentifier = "diameterField"
     var choices: [String] = []
@@ -435,6 +442,7 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
         field.delegate = self
         field.setAccessibilityIdentifier("diameterField")
         field.setAccessibilityLabel("Diameter in model units")
+        field.setAccessibilityHelp("Press Return to apply the value or Escape to discard the draft.")
         field.widthAnchor.constraint(equalToConstant: 72).isActive = true
         fieldRow.addArrangedSubview(field)
         for view in [empty, title, choices, binding, scope, fieldRow, detail] {
@@ -447,8 +455,8 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
     required init?(coder: NSCoder) { nil }
 
     func show(_ inspection: DiameterInspection?) {
-        let sameProperty = self.inspection?.title == inspection?.title
-            && self.inspection?.property == inspection?.property && self.inspection?.value == inspection?.value
+        let sameProperty = self.inspection?.target == inspection?.target
+            && self.inspection?.value == inspection?.value
         if !sameProperty { discardDraft() }
         self.inspection = inspection
         empty.isHidden = inspection != nil

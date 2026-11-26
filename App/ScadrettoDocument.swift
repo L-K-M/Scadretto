@@ -259,8 +259,9 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         controller.showWindow(nil)
     }
 
-    private func makeAdditionalWindow(selecting selection: NSRange?) -> SourceWindowController {
-        let controller = SourceWindowController(document: self)
+    private func makeAdditionalWindow(selecting selection: NSRange?,
+                                      restoringWindowNumber: Int? = nil) -> SourceWindowController {
+        let controller = SourceWindowController(document: self, restoringWindowNumber: restoringWindowNumber)
         addWindowController(controller)
         attach(controller)
         controller.show(source.snapshot, selecting: selection ?? NSRange(location: 0, length: 0))
@@ -274,9 +275,8 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
                                 completionHandler: @escaping @Sendable (NSWindow?, (any Error)?) -> Void) {
         if let controller = windows.first(where: { $0.window?.identifier == identifier }) {
             completionHandler(controller.window, nil)
-        } else if identifier.rawValue.hasPrefix("Scadretto.Document.") {
-            let controller = makeAdditionalWindow(selecting: nil)
-            controller.window?.identifier = identifier
+        } else if let number = SourceWindowController.windowNumber(for: identifier) {
+            let controller = makeAdditionalWindow(selecting: nil, restoringWindowNumber: number)
             completionHandler(controller.window, nil)
         } else {
             super.restoreWindow(withIdentifier: identifier, state: state, completionHandler: completionHandler)
@@ -739,6 +739,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         }
         let choice = propertyChoices[selectedIndex]
         propertyChoiceID = choice.id
+        inspection.target = DiameterInspection.Target(scene: result.requestID, instance: instance.id, property: choice.id)
         inspection.property = choice.title
         inspection.fieldIdentifier = choice.fieldIdentifier
         showProperty(choice, selection: selection, result: result, instances: byID,
@@ -965,7 +966,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             }
         }
         if item.action == #selector(frameModel(_:)) {
-            return keyEditor?.previewWorkspace.viewport?.presentedSceneID != nil
+            return keyEditor?.previewWorkspace.canFrameModel == true
         }
         if item.action == #selector(cancelPreview(_:)) {
             if case .cancelled = lastPhase { return false }

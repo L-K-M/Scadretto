@@ -1577,6 +1577,7 @@ final class ScadrettoUITests: XCTestCase {
 
         // Iteration zero cannot define a drag, and still accepts the number.
         // A wall point whose sight line clears the opening's rim by one unit.
+        app.typeKey("0", modifierFlags: .command)
         let firstBore = plateCoordinate(CGPoint(x: 180.18168, y: 239.88722), in: viewport)
         firstBore.click()
         waitForText("i = 0", in: app.staticTexts["inspectorSelection"].firstMatch, timeout: 8)
@@ -1746,13 +1747,9 @@ final class ScadrettoUITests: XCTestCase {
 
     @MainActor
     private func selectThirdBore(in viewport: XCUIElement, app: XCUIApplication, afterDiameterEdit: Bool = false) throws {
-        // Projected centroids of final triangles 352 (original) and 307
-        // (saved five-bore variant) in the initial 608 × 638 viewport.
-        let size = viewport.frame.size
-        let expected = Self.plateViewportSize
-        let matchesViewport = abs(size.width - expected.width) <= 1 && abs(size.height - expected.height) <= 1
-        _ = try XCTUnwrap(matchesViewport ? size : nil,
-                          "The bore ray requires a 608 × 638 point viewport. Measured \(size).")
+        // Projected centroids of final triangles 352 (original) and 307 (five bores)
+        // in the reference viewport. Frame against the current pane geometry first.
+        app.typeKey("0", modifierFlags: .command)
         let point = afterDiameterEdit ? CGPoint(x: 280.75186, y: 303.55458) : CGPoint(x: 283.52664, y: 303.54620)
         let bore = plateCoordinate(point, in: viewport)
         let selection = app.staticTexts["inspectorSelection"].firstMatch
@@ -1775,8 +1772,24 @@ final class ScadrettoUITests: XCTestCase {
 
     @MainActor
     private func plateCoordinate(_ point: CGPoint, in viewport: XCUIElement) -> XCUICoordinate {
-        let size = Self.plateViewportSize
-        return viewport.coordinate(withNormalizedOffset: CGVector(dx: point.x / size.width, dy: point.y / size.height))
+        let reference = Self.plateViewportSize
+        let size = viewport.frame.size
+        let halfFOVTangent = tan(15 * Double.pi / 180)
+        let referenceAspect = min(Double(reference.width / reference.height), 1)
+        let aspect = min(Double(size.width / size.height), 1)
+        let distanceScale = sin(atan(halfFOVTangent * referenceAspect)) / sin(atan(halfFOVTangent * aspect))
+
+        // Reproject each recorded point at the fixture's mid-height. The diagonal
+        // camera's vertical screen axis has sqrt(2) times its forward axis's Z
+        // component. Frame Model changes only the distance for another aspect.
+        let referenceY = Double(0.5 - point.y / reference.height)
+        let depth = 1 / (1 - 2 * referenceY * halfFOVTangent * sqrt(2))
+        let projectionScale = depth / (depth + distanceScale - 1)
+        let x = CGFloat(projectionScale) * (point.x / reference.width - 0.5) * (reference.width / reference.height)
+        return viewport.coordinate(withNormalizedOffset: CGVector(
+            dx: 0.5 + x * size.height / size.width,
+            dy: 0.5 - CGFloat(referenceY * projectionScale)
+        ))
     }
 
     @MainActor

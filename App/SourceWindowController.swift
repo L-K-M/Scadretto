@@ -29,10 +29,10 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSTo
     /// names a different window in the Window menu.
     private let windowNumber: Int
 
-    init(document: ScadrettoDocument) {
+    init(document: ScadrettoDocument, restoringWindowNumber: Int? = nil) {
         self.sourceDocument = document
-        windowNumber = (document.windowControllers.compactMap { ($0 as? SourceWindowController)?.windowNumber }
-            .max() ?? 0) + 1
+        windowNumber = restoringWindowNumber
+            ?? (document.windowControllers.compactMap { ($0 as? SourceWindowController)?.windowNumber }.max() ?? 0) + 1
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1120, height: 690),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -69,6 +69,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSTo
         toolbar.autosavesConfiguration = true
         window.toolbarStyle = .unified
         window.toolbar = toolbar
+        window.autorecalculatesKeyViewLoop = true
         window.initialFirstResponder = editor
         window.center()
         previewWorkspace.onConsoleVisibilityChange = { [weak self] in self?.paneVisibilityChanged() }
@@ -121,8 +122,15 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSTo
 
     // MARK: - Window state and pane commands
 
-    static func identifier(for windowNumber: Int) -> NSUserInterfaceItemIdentifier {
-        NSUserInterfaceItemIdentifier("Scadretto.Document.\(windowNumber)")
+    private static let windowIdentifierPrefix = "Scadretto.Document."
+
+    private static func identifier(for windowNumber: Int) -> NSUserInterfaceItemIdentifier {
+        NSUserInterfaceItemIdentifier(windowIdentifierPrefix + String(windowNumber))
+    }
+
+    static func windowNumber(for identifier: NSUserInterfaceItemIdentifier) -> Int? {
+        guard identifier.rawValue.hasPrefix(windowIdentifierPrefix) else { return nil }
+        return Int(identifier.rawValue.dropFirst(windowIdentifierPrefix.count))
     }
 
     required init?(coder: NSCoder) {
@@ -181,11 +189,12 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSTo
 
     @IBAction func toggleSourcePane(_ sender: Any?) {
         let hiding = !sourceItem.isCollapsed
-        if hiding { finishComposition() }
-        sourceItem.isCollapsed = hiding
-        if hiding {
+        if hiding && focusIsInside(sourcePane.view) {
+            finishComposition()
             window?.makeFirstResponder(previewWorkspace.viewport)
-        } else {
+        }
+        sourceItem.isCollapsed = hiding
+        if !hiding {
             window?.makeFirstResponder(editor)
         }
         paneVisibilityChanged()

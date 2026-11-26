@@ -24,6 +24,7 @@ final class PreviewWorkspace {
     private let notice = NSTextField(labelWithString: "")
     private let viewportError: String?
     private var hasGeometry = false
+    var canFrameModel: Bool { hasGeometry && viewport != nil }
     private var renderedStatus: String?
     private var ghostIDs: [UInt32] = []
     private(set) var ghostOmitted = 0
@@ -174,10 +175,10 @@ final class PreviewWorkspace {
         switch phase {
         case .evaluating:
             setPending("Evaluating…")
-            progress.startAnimation(nil)
             evaluatingAnnouncement = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(Self.evaluatingAnnouncementDelay))
                 guard !Task.isCancelled else { return }
+                self?.progress.startAnimation(nil)
                 self?.announce(.evaluating, "Evaluating", priority: .low)
             }
         case .cancelled:
