@@ -67,8 +67,14 @@ final class ScadrettoUITests: XCTestCase {
         XCTAssertFalse(console.isHittable)
         XCTAssertTrue(viewport.isHittable)
 
+        let normalFrame = window.frame
         choose("Enter Full Screen", from: "View", in: app)
-        choose("Exit Full Screen", from: "View", in: app)
+        let entered = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in window.frame != normalFrame }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [entered], timeout: 5), .completed)
+        // The macOS menu bar can be hidden in this Space. The native shortcut remains active.
+        app.typeKey("f", modifierFlags: [.command, .control])
+        let exited = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in window.frame == normalFrame }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [exited], timeout: 5), .completed)
         XCTAssertTrue(editor.isHittable)
         app.typeKey("s", modifierFlags: .command)
         waitForFile(url, toEqual: original, timeout: 5)
@@ -1646,6 +1652,7 @@ final class ScadrettoUITests: XCTestCase {
         diameter.click()
         diameter.typeKey("a", modifierFlags: .command)
         diameter.typeText("4,5")
+        XCTAssertEqual(diameter.value as? String, "4,5")
         diameter.typeKey(.return, modifierFlags: [])
         waitForText("d = 4.5,", in: editor, timeout: 8)
         XCTAssertEqual(editor.value as? String, editedText)

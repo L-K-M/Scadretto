@@ -24,6 +24,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSTo
     let previewWorkspace = PreviewWorkspace()
 
     var selection: NSRange { editor.selectedRange() }
+    var sourceHasFocus: Bool { window?.firstResponder === editor }
 
     /// One more than the highest number among the document's other windows, so each title
     /// names a different window in the Window menu.
@@ -33,14 +34,15 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSTo
         self.sourceDocument = document
         windowNumber = restoringWindowNumber
             ?? (document.windowControllers.compactMap { ($0 as? SourceWindowController)?.windowNumber }.max() ?? 0) + 1
+        let workspaceSize = NSSize(width: 1160, height: 690)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1120, height: 690),
+            contentRect: NSRect(origin: .zero, size: workspaceSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         super.init(window: window)
-        window.contentMinSize = NSSize(width: 850, height: 440)
+        window.contentMinSize = NSSize(width: 880, height: 440)
         window.identifier = Self.identifier(for: windowNumber)
         window.isRestorable = true
         window.collectionBehavior.insert(.fullScreenPrimary)
@@ -51,7 +53,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSTo
         layout.splitView.dividerStyle = .thin
         let modelItem = NSSplitViewItem(viewController: host(previewWorkspace.panel))
         modelItem.minimumThickness = 290
-        for (item, minimum, fraction) in [(sourceItem, 290.0, 0.34), (inspectorItem, 250.0, 0.24)] {
+        for (item, minimum, fraction) in [(sourceItem, 330.0, 0.34), (inspectorItem, 250.0, 0.24)] {
             item.canCollapse = true
             item.canCollapseFromWindowResize = false
             item.collapseBehavior = .preferResizingSiblingsWithFixedSplitView
@@ -71,6 +73,8 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSTo
         window.toolbar = toolbar
         window.autorecalculatesKeyViewLoop = true
         window.initialFirstResponder = editor
+        // Installing a split view controller can resize the window to its minimum fitting size.
+        window.setContentSize(workspaceSize)
         window.center()
         previewWorkspace.onConsoleVisibilityChange = { [weak self] in self?.paneVisibilityChanged() }
         previewWorkspace.onEvaluationActivityChange = { [weak self] in self?.window?.toolbar?.validateVisibleItems() }
@@ -144,14 +148,14 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSTo
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
         guard !placedDividers else { return }
-        placeDividers()
+        placeInitialDividers()
     }
 
-    private func placeDividers() {
+    func placeInitialDividers() {
         window?.contentView?.layoutSubtreeIfNeeded()
         let split = layout.splitView
         let width = split.bounds.width
-        guard !placedDividers, width >= 850 else { return }
+        guard !placedDividers, width >= 880 else { return }
         let sourceWidth = min(restoredSourceWidth ?? width * 0.34, width - 560)
         let inspectorWidth = min(restoredInspectorWidth ?? 272, width - sourceWidth - 292)
         if !sourceItem.isCollapsed { split.setPosition(sourceWidth, ofDividerAt: 0) }
@@ -181,7 +185,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSTo
         inspectorItem.isCollapsed = coder.decodeBool(forKey: "inspectorHidden")
         previewWorkspace.setConsoleVisible(coder.decodeBool(forKey: "consoleVisible"))
         placedDividers = false
-        placeDividers()
+        placeInitialDividers()
         if sourceItem.isCollapsed {
             window?.initialFirstResponder = previewWorkspace.viewport
         }

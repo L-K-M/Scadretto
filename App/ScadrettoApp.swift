@@ -4,7 +4,7 @@ import ScadrettoViewport
 
 @main
 @MainActor
-final class ScadrettoApp: NSObject, NSApplicationDelegate {
+final class ScadrettoApp: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private(set) var engineClient: EngineClient?
     private(set) var engineStartupError: String?
     private let recentDocuments = RecentDocumentsMenu(title: "Open Recent")
@@ -56,16 +56,6 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
 
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        if hasVisibleWindows { return true }
-        if let minimized = sender.windows.first(where: { $0.isMiniaturized && $0.windowController?.document != nil }) {
-            minimized.deminiaturize(nil)
-            minimized.makeKeyAndOrderFront(nil)
-            return true
-        }
-        return applicationOpenUntitledFile(sender)
-    }
-
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
         do {
             try NSDocumentController.shared.openUntitledDocumentAndDisplay(true)
@@ -80,6 +70,59 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
         let controller = settingsWindow ?? PreviewSettingsWindowController()
         settingsWindow = controller
         controller.showWindow(sender)
+    }
+
+    /// Source edits use checked document transactions. Other editable text views, such as the
+    /// inspector and Find field editors, keep their own AppKit editing history.
+    private var focusedTextEditor: NSTextView? {
+        guard let window = NSApp.keyWindow, let text = window.firstResponder as? NSTextView,
+              text.isEditable, text.window === window,
+              !text.isFieldEditor || text.delegate != nil,
+              (window.windowController as? SourceWindowController)?.sourceHasFocus != true else { return nil }
+        return text
+    }
+
+    private var activeDocument: ScadrettoDocument? {
+        NSApp.keyWindow?.windowController?.document as? ScadrettoDocument
+    }
+
+    @objc private func undoEditing(_ sender: Any?) {
+        if let editor = focusedTextEditor {
+            editor.breakUndoCoalescing()
+            editor.undoManager?.undo()
+        } else {
+            activeDocument?.undo(sender)
+        }
+    }
+
+    @objc private func redoEditing(_ sender: Any?) {
+        if let editor = focusedTextEditor {
+            editor.breakUndoCoalescing()
+            editor.undoManager?.redo()
+        } else {
+            activeDocument?.redo(sender)
+        }
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(undoEditing(_:)):
+            if let editor = focusedTextEditor {
+                item.title = editor.undoManager?.undoMenuItemTitle ?? "Undo"
+                return editor.allowsUndo && editor.undoManager?.canUndo == true
+            }
+            item.title = activeDocument?.undoSourceTitle ?? "Undo"
+            return activeDocument?.canUndoSource == true
+        case #selector(redoEditing(_:)):
+            if let editor = focusedTextEditor {
+                item.title = editor.undoManager?.redoMenuItemTitle ?? "Redo"
+                return editor.allowsUndo && editor.undoManager?.canRedo == true
+            }
+            item.title = activeDocument?.redoSourceTitle ?? "Redo"
+            return activeDocument?.canRedoSource == true
+        default:
+            return true
+        }
     }
 
     private func makeMainMenu() -> NSMenu {
@@ -126,9 +169,9 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
                      keyEquivalent: "")
 
         let edit = addMenu("Edit", to: menu)
-        edit.addItem(withTitle: "Undo", action: #selector(ScadrettoDocument.undo(_:)), keyEquivalent: "z")
-        let redo = edit.addItem(withTitle: "Redo", action: #selector(ScadrettoDocument.redo(_:)),
-                                keyEquivalent: "z")
+        edit.addItem(withTitle: "Undo", action: #selector(undoEditing(_:)), keyEquivalent: "z").target = self
+        let redo = edit.addItem(withTitle: "Redo", action: #selector(redoEditing(_:)), keyEquivalent: "z")
+        redo.target = self
         redo.keyEquivalentModifierMask = [.command, .shift]
         edit.addItem(.separator())
         edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")

@@ -183,6 +183,11 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         preview.schedule(source.snapshot, fileURL: fileURL, immediate: true)
     }
 
+    override func showWindows() {
+        super.showWindows()
+        for controller in windows { controller.placeInitialDividers() }
+    }
+
     // MARK: - Windows
 
     private var windows: [SourceWindowController] { windowControllers.compactMap { $0 as? SourceWindowController } }
@@ -938,6 +943,11 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         }
     }
 
+    var canUndoSource: Bool { typingEnd != nil || history.canUndo }
+    var canRedoSource: Bool { history.canRedo }
+    var undoSourceTitle: String { typingEnd != nil ? "Undo Typing" : history.undoMenuItemTitle }
+    var redoSourceTitle: String { history.redoMenuItemTitle }
+
     @IBAction func undo(_ sender: Any?) {
         finishComposition()
         endTypingGroup()
@@ -989,15 +999,12 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             return keyEditor?.previewWorkspace.sidebar.canRevealOccurrence == true
         }
         if item.action == #selector(undo(_:)) {
-            let typing = typingEnd != nil
-            if let menu = item as? NSMenuItem {
-                menu.title = typing ? "Undo Typing" : history.undoMenuItemTitle
-            }
-            return typing || history.canUndo
+            (item as? NSMenuItem)?.title = undoSourceTitle
+            return canUndoSource
         }
         if item.action == #selector(redo(_:)) {
-            if let menu = item as? NSMenuItem { menu.title = history.redoMenuItemTitle }
-            return history.canRedo
+            (item as? NSMenuItem)?.title = redoSourceTitle
+            return canRedoSource
         }
         if item.action == #selector(revertToLastSaved(_:)) {
             return fileURL != nil && (isDocumentEdited || hasUnautosavedChanges)

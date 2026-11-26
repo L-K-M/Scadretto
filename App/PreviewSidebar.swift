@@ -134,8 +134,8 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
             inspector.widthAnchor.constraint(equalTo: panel.widthAnchor),
         ])
         inspector.onFinishEditing = { [weak self] in
-            guard let self else { return }
-            window?.makeFirstResponder(instanceOutline)
+            guard let self, let window else { return }
+            if !window.makeFirstResponder(instanceOutline) { window.makeFirstResponder(nil) }
         }
         configureConsole(scroll: consoleScroll)
         setCurrent(false)
@@ -220,11 +220,11 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
 
     func setCurrent(_ isCurrent: Bool) {
         current = isCurrent
+        if !isCurrent { inspector.disableEditing() }
         instanceOutline.isEnabled = isCurrent
         consoleHeading.stringValue = !isCurrent && result != nil ? "Evaluation Console · Out of Date" : "Evaluation Console"
         diagnosticMenu.isEnabled = isCurrent && !(result?.diagnostics.isEmpty ?? true)
         candidateList.isEnabled = isCurrent
-        if !isCurrent { inspector.disableEditing() }
     }
 
     func showCandidates(_ ids: [UInt32]) {
@@ -287,6 +287,7 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
             diagnosticMenu.lastItem?.tag = index + 1
         }
         diagnosticMenu.selectItem(at: 0)
+        diagnosticMenu.isHidden = diagnostics.isEmpty
     }
 
     @objc private func revealDiagnostic() {
@@ -308,7 +309,7 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
             content.append(NSAttributedString(string: row.text + "\n", attributes: attributes))
         }
         if content.length == 0 {
-            let text = result == nil ? "No evaluation messages yet." : "No messages for this filter."
+            let text = messages.isEmpty ? "No evaluation messages." : "No messages for this filter."
             content.append(NSAttributedString(string: text, attributes: [
                 .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
                 .foregroundColor: NSColor.secondaryLabelColor,
@@ -488,7 +489,7 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
             label.isHidden = text.isEmpty
         }
         fieldRow.isHidden = inspection.value == nil
-        dimension.stringValue = inspection.property
+        dimension.stringValue = choices.isHidden ? inspection.property : "Value"
         field.setAccessibilityIdentifier(inspection.fieldIdentifier)
         field.setAccessibilityLabel(inspection.property)
         if field.currentEditor() == nil {
@@ -538,7 +539,9 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
     }
 
     func controlTextDidEndEditing(_ notification: Notification) {
-        field.stringValue = committedValue
+        // AppKit delivers this notification before the control's Return action reads its value.
+        let movement = notification.userInfo?["NSTextMovement"] as? Int
+        if movement != NSTextMovement.return.rawValue { field.stringValue = committedValue }
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy command: Selector) -> Bool {
@@ -554,14 +557,21 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
         return true
     }
 
-    @objc private func commit() { onCommit?(field.stringValue) }
+    @objc private func commit() {
+        onCommit?(field.currentEditor()?.string ?? field.stringValue)
+    }
     @objc private func changeProperty() {
         onChoice?(choices.indexOfSelectedItem)
     }
 }
 
 private final class PropertyFieldCell: NSTextFieldCell {
-    private let editor = PropertyFieldEditor()
+    private let editor: PropertyFieldEditor = {
+        let editor = PropertyFieldEditor(usingTextLayoutManager: false)
+        editor.isFieldEditor = true
+        editor.allowsUndo = true
+        return editor
+    }()
 
     override func fieldEditor(for controlView: NSView) -> NSTextView? {
         editor
@@ -573,14 +583,6 @@ private final class PropertyFieldEditor: NSTextView {
     private let draftHistory = UndoManager()
 
     override var undoManager: UndoManager? { draftHistory }
-
-    init() {
-        super.init(frame: .zero, textContainer: nil)
-        isFieldEditor = true
-        allowsUndo = true
-    }
-
-    required init?(coder: NSCoder) { nil }
 
     override func resignFirstResponder() -> Bool {
         guard super.resignFirstResponder() else { return false }
