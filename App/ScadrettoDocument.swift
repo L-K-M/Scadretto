@@ -129,7 +129,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         toWriter writer: @escaping @Sendable ((@Sendable () -> Void)?) -> Void
     ) {
         io.withLock { $0.otherWriter = true }
-        super.relinquishPresentedItem(toWriter: { reacquirer in
+        super.relinquishPresentedItem(toWriter: { [self] reacquirer in
             writer { [weak self] in
                 self?.io.withLock { $0.otherWriter = false }
                 reacquirer?()
@@ -183,6 +183,11 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         preview.schedule(source.snapshot, fileURL: fileURL, immediate: true)
     }
 
+    override func showWindows() {
+        super.showWindows()
+        for controller in windows { controller.placeInitialDividers() }
+    }
+
     // MARK: - Windows
 
     private var windows: [SourceWindowController] { windowControllers.compactMap { $0 as? SourceWindowController } }
@@ -219,6 +224,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             selectFeature(id, at: point)
         }
         workspace.onPresentationChange = { [weak self, weak controller] in
+            controller?.window?.toolbar?.validateVisibleItems()
             if let self, controller === editor { refreshInspector() }
         }
         controller.onSyntaxReady = { [weak self, weak controller] in
@@ -251,17 +257,35 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     /// keeps its own camera and text selection.
     @IBAction func newWindowForDocument(_ sender: Any?) {
         let reference = keyEditor
-        let controller = SourceWindowController(document: self)
-        addWindowController(controller)
-        attach(controller)
-        controller.show(source.snapshot, selecting: reference?.selection ?? NSRange(location: 0, length: 0))
-        if let lastPhase { controller.previewWorkspace.update(lastPhase) }
+        let controller = makeAdditionalWindow(selecting: reference?.selection)
         if let frame = reference?.window?.frame {
             controller.window?.setFrameTopLeftPoint(NSPoint(x: frame.minX + 40, y: frame.maxY - 40))
         }
         controller.showWindow(nil)
+    }
+
+    private func makeAdditionalWindow(selecting selection: NSRange?,
+                                      restoringWindowNumber: Int? = nil) -> SourceWindowController {
+        let controller = SourceWindowController(document: self, restoringWindowNumber: restoringWindowNumber)
+        addWindowController(controller)
+        attach(controller)
+        controller.show(source.snapshot, selecting: selection ?? NSRange(location: 0, length: 0))
+        if let lastPhase { controller.previewWorkspace.update(lastPhase) }
         controller.window?.isDocumentEdited = isDocumentEdited
         refreshDependencyNotice()
+        return controller
+    }
+
+    override func restoreWindow(withIdentifier identifier: NSUserInterfaceItemIdentifier, state: NSCoder,
+                                completionHandler: @escaping @Sendable (NSWindow?, (any Error)?) -> Void) {
+        if let controller = windows.first(where: { $0.window?.identifier == identifier }) {
+            completionHandler(controller.window, nil)
+        } else if let number = SourceWindowController.windowNumber(for: identifier) {
+            let controller = makeAdditionalWindow(selecting: nil, restoringWindowNumber: number)
+            completionHandler(controller.window, nil)
+        } else {
+            super.restoreWindow(withIdentifier: identifier, state: state, completionHandler: completionHandler)
+        }
     }
 
     // An unresolved external change or removal leaves the text unsaved even when it matches the
@@ -720,6 +744,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         }
         let choice = propertyChoices[selectedIndex]
         propertyChoiceID = choice.id
+        inspection.target = DiameterInspection.Target(scene: result.requestID, instance: instance.id, property: choice.id)
         inspection.property = choice.title
         inspection.fieldIdentifier = choice.fieldIdentifier
         showProperty(choice, selection: selection, result: result, instances: byID,
@@ -918,7 +943,12 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         }
     }
 
-    @IBAction func undoSource(_ sender: Any?) {
+    var canUndoSource: Bool { typingEnd != nil || history.canUndo }
+    var canRedoSource: Bool { history.canRedo }
+    var undoSourceTitle: String { typingEnd != nil ? "Undo Typing" : history.undoMenuItemTitle }
+    var redoSourceTitle: String { history.redoMenuItemTitle }
+
+    @IBAction func undo(_ sender: Any?) {
         finishComposition()
         endTypingGroup()
         guard history.canUndo else { return }
@@ -926,7 +956,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         record(.changeUndone)
     }
 
-    @IBAction func redoSource(_ sender: Any?) {
+    @IBAction func redo(_ sender: Any?) {
         finishComposition()
         endTypingGroup()
         guard history.canRedo else { return }
@@ -945,19 +975,36 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             default: break
             }
         }
+        if item.action == #selector(frameModel(_:)) {
+            return keyEditor?.previewWorkspace.canFrameModel == true
+        }
+        if item.action == #selector(cancelPreview(_:)) {
+            if case .cancelled = lastPhase { return false }
+            return preview != nil
+        }
+        if item.action == #selector(retryPreview(_:)) {
+            if let menu = item as? NSMenuItem, menu.menu?.title == "Model" {
+                switch lastPhase {
+                case .failure, .cancelled: menu.title = "Retry Preview"
+                case .outcome(.modelError, _), .outcome(.unsupportedDimension, _): menu.title = "Retry Preview"
+                default: menu.title = "Evaluate Preview"
+                }
+            }
+            return preview != nil && keyEditor?.previewWorkspace.isEvaluating != true
+        }
+        if item.action == #selector(showWorkerLog(_:)) {
+            return keyEditor?.window?.attachedSheet == nil
+        }
         if item.action == #selector(revealSelectedInstance(_:)) {
             return keyEditor?.previewWorkspace.sidebar.canRevealOccurrence == true
         }
-        if item.action == #selector(undoSource(_:)) {
-            let typing = typingEnd != nil
-            if let menu = item as? NSMenuItem {
-                menu.title = typing ? "Undo Typing" : history.undoMenuItemTitle
-            }
-            return typing || history.canUndo
+        if item.action == #selector(undo(_:)) {
+            (item as? NSMenuItem)?.title = undoSourceTitle
+            return canUndoSource
         }
-        if item.action == #selector(redoSource(_:)) {
-            if let menu = item as? NSMenuItem { menu.title = history.redoMenuItemTitle }
-            return history.canRedo
+        if item.action == #selector(redo(_:)) {
+            (item as? NSMenuItem)?.title = redoSourceTitle
+            return canRedoSource
         }
         if item.action == #selector(revertToLastSaved(_:)) {
             return fileURL != nil && (isDocumentEdited || hasUnautosavedChanges)

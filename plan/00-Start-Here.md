@@ -31,7 +31,7 @@ See the [build and release guide](../CICD.md) for repository checks and the macO
 | Arbitrary OpenSCAD | Let the pinned engine evaluate valid 3D programs within its supported features and file inputs. Code navigation and inspection remain available for constructs without an editable handle. Report unsupported inputs explicitly, including a valid top-level 2D result. Keep its source editable. |
 | macOS delivery | Native Apple silicon application, working offline after installation. Deliver a Developer ID distribution build when release credentials are available. |
 
-**Platform assumption.** “Mac OS X” means modern macOS. Use macOS 14 or later on arm64 for the first release. Record the exact Xcode, SDK, deployment target and engine revision at M0. Intel support can follow once the dependency stack and helper pass the same fixture on an Intel Mac. The document format is independent of the CPU.
+**Platform assumption.** “Mac OS X” means modern macOS. The editor targets macOS Tahoe 26 or later on arm64. The earlier M0 record documents the original engine toolchain and deployment target. Intel support can follow once the dependency stack and helper pass the same fixture on an Intel Mac. The document format is independent of the CPU.
 
 **Editing boundary.** The first release operates on authored values and operations. Explicitly breaking one instance out of a procedural pattern, editing imported mesh topology, arbitrary face push/pull, simultaneous multi-file rewrites, and an interactive 2D sketcher are follow-on work. An included module remains useful in v1 because an explicit argument in the current file can still be edited. File 05 lists prerequisites and acceptance examples for follow-on work.
 

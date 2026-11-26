@@ -14,5 +14,5 @@ under [`plan/`](plan/) are parts of a single document covering
 architecture, source-edit rules, the OpenSCAD worker protocol, the macOS
 editor, milestones and verification.
 
-Targets: macOS 14+, arm64, Swift/AppKit + MetalKit, with an
+Targets: macOS Tahoe 26 or later, arm64, Swift/AppKit + MetalKit, with an
 out-of-process pinned OpenSCAD build as the geometry engine.

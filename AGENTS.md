@@ -8,8 +8,8 @@ for repository checks and entry points.
 
 ## Architecture and verification
 
-- Target Apple silicon and macOS 14 or later. M0 records the Xcode, SDK, CMake
-  and engine pins. Use the shared `Scadretto` scheme and the local
+- Target Apple silicon and macOS Tahoe 26 or later for the app. M0 records
+  the original Xcode, SDK, CMake and engine pins. Use the shared `Scadretto` scheme and the local
   `Packages/ScadrettoKit` package described in the plan.
 - Keep the document application in Swift and AppKit, the renderer in MetalKit,
   and upstream-dependent C++ in the separate OpenSCAD worker. Tree-sitter

@@ -164,7 +164,7 @@ the hashes, machine and results.
 | 2. Licenses and corresponding source | Notices and worker source bundled; the application licensing and publication decision is pending with the owner |
 | 3. Signing and notarization | Ad hoc local package passed; Developer ID signing, notarization and `spctl` pending the owner's credentials |
 | 4. Offline install and example | Passed on the development Mac with Homebrew, `/usr/local` and IP networking denied; a clean Mac and a quarantined download pending |
-| 5. Release report | Recorded for the local package; macOS 14 not yet run |
+| 5. Release report | Recorded for the local package; minimum-OS verification remains open |
 
 ## Implementation references
 

@@ -31,6 +31,55 @@ final class ScadrettoUITests: XCTestCase {
         app.typeKey(.escape, modifierFlags: [])
     }
 
+    @MainActor
+    func testToolbarPaneShortcutsAndFullScreenKeepTheDocument() throws {
+        let app = launch()
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "NativeWorkspace.scad")
+        let original = Data("// Keep the original line endings\r\ncube(2);\r\n".utf8)
+        try original.write(to: url)
+        let editor = open(url, in: app)
+        let window = app.windows.matching(NSPredicate(format: "title BEGINSWITH %@", "NativeWorkspace")).firstMatch
+        let status = window.staticTexts["renderStatus"]
+        waitForText("Preview ready", in: status, timeout: 15)
+        let viewport = window.descendants(matching: .any)["viewport"].firstMatch
+        let toolbar = window.toolbars.firstMatch
+        XCTAssertTrue(toolbar.waitForExistence(timeout: 5))
+        let source = toolbar.buttons["Source"]
+        XCTAssertTrue(source.isHittable)
+        source.click()
+        XCTAssertFalse(editor.isHittable)
+        app.typeKey("f", modifierFlags: .command)
+        XCTAssertTrue(editor.isHittable, "Find must reveal the source when it is hidden")
+        app.typeKey(.escape, modifierFlags: [])
+
+        let outline = window.outlines["sceneOutline"]
+        XCTAssertTrue(outline.isHittable)
+        app.typeKey("2", modifierFlags: [.command, .option])
+        XCTAssertFalse(outline.isHittable)
+        app.typeKey("2", modifierFlags: [.command, .option])
+        XCTAssertTrue(outline.isHittable)
+        let console = window.textViews["console"]
+        app.typeKey("3", modifierFlags: [.command, .option])
+        XCTAssertTrue(console.isHittable)
+        app.typeKey("3", modifierFlags: [.command, .option])
+        XCTAssertFalse(console.isHittable)
+        XCTAssertTrue(viewport.isHittable)
+
+        let normalFrame = window.frame
+        choose("Enter Full Screen", from: "View", in: app)
+        let entered = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in window.frame != normalFrame }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [entered], timeout: 5), .completed)
+        // The macOS menu bar can be hidden in this Space. The native shortcut remains active.
+        app.typeKey("f", modifierFlags: [.command, .control])
+        let exited = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in window.frame == normalFrame }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [exited], timeout: 5), .completed)
+        XCTAssertTrue(editor.isHittable)
+        app.typeKey("s", modifierFlags: .command)
+        waitForFile(url, toEqual: original, timeout: 5)
+    }
+
     /// A simulated 3D mouse turns the model in the front window, keeps turning it while the
     /// Settings window is in front, and stops when its input is switched off.
     @MainActor
@@ -1330,6 +1379,17 @@ final class ScadrettoUITests: XCTestCase {
 
         field.click()
         field.typeKey("a", modifierFlags: .command)
+        field.typeText("-")
+        XCTAssertEqual(field.value as? String, "-")
+        field.typeKey("z", modifierFlags: .command)
+        XCTAssertEqual(field.value as? String, "4", "Undo inside the field must only undo the draft")
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("6")
+        field.typeKey(.escape, modifierFlags: [])
+        XCTAssertEqual(field.value as? String, "4", "Escape must discard the draft")
+        XCTAssertEqual(editor.value as? String, originalText)
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
         field.typeText("5")
         XCTAssertEqual(field.value as? String, "5")
         field.typeKey(.return, modifierFlags: [])
@@ -1523,6 +1583,7 @@ final class ScadrettoUITests: XCTestCase {
 
         // Iteration zero cannot define a drag, and still accepts the number.
         // A wall point whose sight line clears the opening's rim by one unit.
+        app.typeKey("0", modifierFlags: .command)
         let firstBore = plateCoordinate(CGPoint(x: 180.18168, y: 239.88722), in: viewport)
         firstBore.click()
         waitForText("i = 0", in: app.staticTexts["inspectorSelection"].firstMatch, timeout: 8)
@@ -1591,6 +1652,7 @@ final class ScadrettoUITests: XCTestCase {
         diameter.click()
         diameter.typeKey("a", modifierFlags: .command)
         diameter.typeText("4,5")
+        XCTAssertEqual(diameter.value as? String, "4,5")
         diameter.typeKey(.return, modifierFlags: [])
         waitForText("d = 4.5,", in: editor, timeout: 8)
         XCTAssertEqual(editor.value as? String, editedText)
@@ -1692,13 +1754,9 @@ final class ScadrettoUITests: XCTestCase {
 
     @MainActor
     private func selectThirdBore(in viewport: XCUIElement, app: XCUIApplication, afterDiameterEdit: Bool = false) throws {
-        // Projected centroids of final triangles 352 (original) and 307
-        // (saved five-bore variant) in the initial 608 × 638 viewport.
-        let size = viewport.frame.size
-        let expected = Self.plateViewportSize
-        let matchesViewport = abs(size.width - expected.width) <= 1 && abs(size.height - expected.height) <= 1
-        _ = try XCTUnwrap(matchesViewport ? size : nil,
-                          "The bore ray requires a 608 × 638 point viewport. Measured \(size).")
+        // Projected centroids of final triangles 352 (original) and 307 (five bores)
+        // in the reference viewport. Frame against the current pane geometry first.
+        app.typeKey("0", modifierFlags: .command)
         let point = afterDiameterEdit ? CGPoint(x: 280.75186, y: 303.55458) : CGPoint(x: 283.52664, y: 303.54620)
         let bore = plateCoordinate(point, in: viewport)
         let selection = app.staticTexts["inspectorSelection"].firstMatch
@@ -1721,8 +1779,24 @@ final class ScadrettoUITests: XCTestCase {
 
     @MainActor
     private func plateCoordinate(_ point: CGPoint, in viewport: XCUIElement) -> XCUICoordinate {
-        let size = Self.plateViewportSize
-        return viewport.coordinate(withNormalizedOffset: CGVector(dx: point.x / size.width, dy: point.y / size.height))
+        let reference = Self.plateViewportSize
+        let size = viewport.frame.size
+        let halfFOVTangent = tan(15 * Double.pi / 180)
+        let referenceAspect = min(Double(reference.width / reference.height), 1)
+        let aspect = min(Double(size.width / size.height), 1)
+        let distanceScale = sin(atan(halfFOVTangent * referenceAspect)) / sin(atan(halfFOVTangent * aspect))
+
+        // Reproject each recorded point at the fixture's mid-height. The diagonal
+        // camera's vertical screen axis has sqrt(2) times its forward axis's Z
+        // component. Frame Model changes only the distance for another aspect.
+        let referenceY = Double(0.5 - point.y / reference.height)
+        let depth = 1 / (1 - 2 * referenceY * halfFOVTangent * sqrt(2))
+        let projectionScale = depth / (depth + distanceScale - 1)
+        let x = CGFloat(projectionScale) * (point.x / reference.width - 0.5) * (reference.width / reference.height)
+        return viewport.coordinate(withNormalizedOffset: CGVector(
+            dx: 0.5 + x * size.height / size.width,
+            dy: 0.5 - CGFloat(referenceY * projectionScale)
+        ))
     }
 
     @MainActor
