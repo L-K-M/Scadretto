@@ -174,15 +174,30 @@ public final class ViewportView: MTKView {
         super.init(frame: frame, device: device)
         colorPixelFormat = .bgra8Unorm
         depthStencilPixelFormat = .depth32Float
-        clearColor = MTLClearColor(red: 0.15, green: 0.16, blue: 0.19, alpha: 1)
         isPaused = true
         enableSetNeedsDisplay = true
         delegate = self
+        updateCanvasColor()
     }
 
     @available(*, unavailable, message: "Create ViewportView with init(device:library:frame:)")
     required init(coder: NSCoder) {
         fatalError("ViewportView does not support Interface Builder archiving")
+    }
+
+    public override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateCanvasColor()
+    }
+
+    private func updateCanvasColor() {
+        let color: MTLClearColor
+        switch effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) {
+        case .darkAqua: color = MTLClearColor(red: 0.15, green: 0.16, blue: 0.19, alpha: 1)
+        default: color = MTLClearColor(red: 0.90, green: 0.92, blue: 0.94, alpha: 1)
+        }
+        clearColor = color
+        needsDisplay = true
     }
 
     /// Flipped so view points are top-left origin, matching Metal's viewport

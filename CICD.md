@@ -1,41 +1,28 @@
 # CI/CD
 
 Scadretto starts with the [macOS engine spike](plan/05-Milestones.md#m0--prove-the-engine-on-a-mac).
-The supported target is macOS 14 or later on Apple silicon. Record the exact
-Xcode, SDK, CMake and engine revisions in M0.
+The app requires macOS Tahoe 26 or later on Apple silicon. Build it with
+Xcode 26 or later and the Metal Toolchain component. The pinned engine
+build has its own deployment target.
 
 ## Development
 
-On an Apple silicon development Mac, build and verify the pinned headless
-engine first:
+From a fresh checkout on an Apple silicon Mac with Homebrew and full
+Xcode installed and selected, build and launch the developer app:
 
-```sh
-Scripts/bootstrap-macos
-Scripts/build-engine
-Scripts/verify-engine
-```
+1. `brew install cmake ninja python pkgconf bison flex meson gettext`
+2. `xcodebuild -downloadComponent MetalToolchain`
+3. `Scripts/build-engine`
+4. `xcodebuild -project Scadretto.xcodeproj -scheme Scadretto -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/xcode build`
+5. `open .build/xcode/Build/Products/Debug/Scadretto.app`
 
-Bootstrap checks the native build tools and fetches the pinned source.
-The build stages the two executables and their runtime libraries under
-`.build/engine/`. Verification records its evidence there. See
-[the engine decision record](Docs/Decisions/engine-spike.md) for the
-build flags, observed runtime trace and geometry checks.
+The engine build fetches and checks the pinned sources and stages the
+worker in `.build/engine/worker`. Xcode copies the worker and its runtime
+into the app. Run `Scripts/verify-engine` to check the pinned engine or
+`swift test --package-path Packages/ScadrettoKit` to run the package tests.
 
-Install the [shared release tool](https://github.com/L-K-M/release-tool) for
-`lkm-build` and `lkm-release`. Use the shared `Scadretto` scheme in
-`Scadretto.xcodeproj` from the repository:
-
-```sh
-Scripts/build.sh --debug
-swift test --package-path Packages/ScadrettoKit
-```
-
-The build wrapper uses the standard Xcode build engine and leaves the app in
-the build directory. Xcode stages the pinned worker, runtime libraries and
-resources from `.build/engine/worker` and compiles the Metal shaders into the
-app. Build the engine before using the app scheme. If Xcode reports that its
-Metal toolchain is missing, install that component with
-`xcodebuild -downloadComponent MetalToolchain`.
+`Scripts/build.sh --debug` is also available with
+[`lkm-build`](https://github.com/L-K-M/release-tool) installed.
 
 The [verification guide](plan/06-Verification-and-Release.md#build-and-verification-entry-points)
 lists the test and release entry points.

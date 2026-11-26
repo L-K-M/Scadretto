@@ -10,6 +10,15 @@ final class PreviewWorkspace {
     private(set) var viewport: ViewportView?
     private(set) var result: EvaluationResult?
     private(set) var geometry: PreviewGeometry?
+    private let canvas = NSView()
+    private let consoleDivider = NSBox()
+    private let progress = NSProgressIndicator()
+    private var consoleHeight: NSLayoutConstraint?
+    private var showedDiagnostics = false
+    private(set) var isConsoleVisible = false
+    private(set) var isEvaluating = false
+    var onConsoleVisibilityChange: (() -> Void)?
+    var onEvaluationActivityChange: (() -> Void)?
     private let status = NSTextField(labelWithString: "Evaluating…")
     private let snap = NSTextField(labelWithString: "")
     private let notice = NSTextField(labelWithString: "")
@@ -71,22 +80,48 @@ final class PreviewWorkspace {
         notice.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         notice.isHidden = true
         notice.setAccessibilityIdentifier("dependencyNotice")
-        for item in [renderingView, status, notice, snap] {
+        progress.style = .spinning
+        progress.controlSize = .small
+        progress.isDisplayedWhenStopped = false
+        progress.setAccessibilityLabel("Evaluating preview")
+        consoleDivider.boxType = .separator
+        let stack = NSStackView(views: [canvas, consoleDivider, sidebar.consolePane])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 0
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        panel.addSubview(stack)
+        consoleHeight = sidebar.consolePane.heightAnchor.constraint(equalToConstant: 146)
+        sidebar.consolePane.isHidden = true
+        consoleDivider.isHidden = true
+
+        for item in [renderingView, status, notice, snap, progress] {
             item.translatesAutoresizingMaskIntoConstraints = false
-            panel.addSubview(item)
+            canvas.addSubview(item)
         }
         NSLayoutConstraint.activate([
-            status.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 10),
+            stack.topAnchor.constraint(equalTo: panel.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: panel.bottomAnchor),
+            canvas.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            consoleDivider.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            sidebar.consolePane.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            progress.leadingAnchor.constraint(equalTo: canvas.leadingAnchor, constant: 10),
+            progress.centerYAnchor.constraint(equalTo: status.centerYAnchor),
+            progress.widthAnchor.constraint(equalToConstant: 14),
+            progress.heightAnchor.constraint(equalToConstant: 14),
+            status.leadingAnchor.constraint(equalTo: progress.trailingAnchor, constant: 5),
             status.trailingAnchor.constraint(lessThanOrEqualTo: notice.leadingAnchor, constant: -12),
             notice.trailingAnchor.constraint(lessThanOrEqualTo: snap.leadingAnchor, constant: -8),
             notice.firstBaselineAnchor.constraint(equalTo: status.firstBaselineAnchor),
-            snap.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -10),
+            snap.trailingAnchor.constraint(equalTo: canvas.trailingAnchor, constant: -10),
             snap.firstBaselineAnchor.constraint(equalTo: status.firstBaselineAnchor),
-            status.topAnchor.constraint(equalTo: panel.topAnchor, constant: 7),
-            renderingView.topAnchor.constraint(equalTo: status.bottomAnchor, constant: 7),
-            renderingView.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
-            renderingView.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
-            renderingView.bottomAnchor.constraint(equalTo: panel.bottomAnchor),
+            status.bottomAnchor.constraint(equalTo: canvas.bottomAnchor, constant: -6),
+            renderingView.topAnchor.constraint(equalTo: canvas.topAnchor),
+            renderingView.leadingAnchor.constraint(equalTo: canvas.leadingAnchor),
+            renderingView.trailingAnchor.constraint(equalTo: canvas.trailingAnchor),
+            renderingView.bottomAnchor.constraint(equalTo: status.topAnchor, constant: -6),
         ])
         viewport?.onSelection = { [weak self] frame, point in self?.pick(frame: frame, at: point) }
         viewport?.onPresentationChange = { [weak self] in
@@ -119,12 +154,27 @@ final class PreviewWorkspace {
     /// Seconds an evaluation runs before VoiceOver hears that it is still evaluating.
     private static let evaluatingAnnouncementDelay = 1.5
 
+    func setConsoleVisible(_ visible: Bool) {
+        guard visible != isConsoleVisible else { return }
+        isConsoleVisible = visible
+        consoleHeight?.isActive = false
+        consoleDivider.isHidden = !visible
+        sidebar.consolePane.isHidden = !visible
+        consoleHeight?.isActive = visible
+        onConsoleVisibilityChange?()
+    }
+
     func update(_ phase: DocumentPreview.Phase) {
         evaluatingAnnouncement?.cancel()
         evaluatingAnnouncement = nil
+        progress.stopAnimation(nil)
+        let wasEvaluating = isEvaluating
+        if case .evaluating = phase { isEvaluating = true } else { isEvaluating = false }
+        defer { if wasEvaluating != isEvaluating { onEvaluationActivityChange?() } }
         switch phase {
         case .evaluating:
             setPending("Evaluating…")
+            progress.startAnimation(nil)
             evaluatingAnnouncement = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(Self.evaluatingAnnouncementDelay))
                 guard !Task.isCancelled else { return }
@@ -140,6 +190,9 @@ final class PreviewWorkspace {
             let result = outcome.result
             sidebar.show(result: result, instances: result.scene?.instances ?? [],
                          operations: result.scene?.operations ?? [])
+            let needsAttention = sidebar.hasConsoleDiagnostics
+            if needsAttention && !showedDiagnostics { setConsoleVisible(true) }
+            showedDiagnostics = needsAttention
             switch outcome {
             case .rendered, .empty:
                 let mesh = result.scene?.mesh

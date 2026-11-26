@@ -1,12 +1,16 @@
 import AppKit
 import ScadrettoCore
 import ScadrettoSyntax
+import ScadrettoViewport
 
-final class SourceWindowController: NSWindowController, NSTextViewDelegate {
+final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSToolbarDelegate, NSUserInterfaceValidations {
     private weak var sourceDocument: ScadrettoDocument?
     private let editor = SourceTextView(usingTextLayoutManager: false)
     private let scroll = NSScrollView()
-    private let split = NSSplitView()
+    private let layout = NSSplitViewController()
+    private let sourcePane = NSViewController()
+    private lazy var sourceItem = NSSplitViewItem(viewController: sourcePane)
+    private lazy var inspectorItem = NSSplitViewItem(inspectorWithViewController: host(previewWorkspace.sidebar))
     private let status = NSTextField(labelWithString: "")
     private let parser = SyntaxParser()
     private var parseTask: Task<Void, Never>?
@@ -14,6 +18,9 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     private var mirroring = false
     private var ruler: LineRuler?
     private var placedDividers = false
+    private var restoredSourceWidth: CGFloat?
+    private var restoredInspectorWidth: CGFloat?
+    private let position = NSTextField(labelWithString: "")
     let previewWorkspace = PreviewWorkspace()
 
     var selection: NSRange { editor.selectedRange() }
@@ -33,10 +40,48 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
             defer: false
         )
         super.init(window: window)
-        window.minSize = NSSize(width: 780, height: 390)
-        window.center()
+        window.contentMinSize = NSSize(width: 850, height: 440)
+        window.identifier = Self.identifier(for: windowNumber)
+        window.isRestorable = true
+        window.collectionBehavior.insert(.fullScreenPrimary)
         configureEditor()
+        configureSourcePane()
 
+        layout.splitView.isVertical = true
+        layout.splitView.dividerStyle = .thin
+        let modelItem = NSSplitViewItem(viewController: host(previewWorkspace.panel))
+        modelItem.minimumThickness = 290
+        for (item, minimum, fraction) in [(sourceItem, 290.0, 0.34), (inspectorItem, 250.0, 0.24)] {
+            item.canCollapse = true
+            item.canCollapseFromWindowResize = false
+            item.collapseBehavior = .preferResizingSiblingsWithFixedSplitView
+            item.minimumThickness = minimum
+            item.maximumThickness = 620
+            item.preferredThicknessFraction = fraction
+            item.holdingPriority = .defaultHigh
+        }
+        for item in [sourceItem, modelItem, inspectorItem] { layout.addSplitViewItem(item) }
+        window.contentViewController = layout
+
+        let toolbar = NSToolbar(identifier: "Scadretto.Document")
+        toolbar.delegate = self
+        toolbar.allowsUserCustomization = true
+        toolbar.autosavesConfiguration = true
+        window.toolbarStyle = .unified
+        window.toolbar = toolbar
+        window.initialFirstResponder = editor
+        window.center()
+        previewWorkspace.onConsoleVisibilityChange = { [weak self] in self?.paneVisibilityChanged() }
+        previewWorkspace.onEvaluationActivityChange = { [weak self] in self?.window?.toolbar?.validateVisibleItems() }
+    }
+
+    private func host(_ view: NSView) -> NSViewController {
+        let controller = NSViewController()
+        controller.view = view
+        return controller
+    }
+
+    private func configureSourcePane() {
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = true
         scroll.autohidesScrollers = true
@@ -49,35 +94,35 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         scroll.verticalRulerView = ruler
         self.ruler = ruler
 
-        status.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        status.textColor = .secondaryLabelColor
+        let footer = NSStackView(views: [status, NSView(), position])
+        footer.orientation = .horizontal
+        footer.alignment = .firstBaseline
+        for label in [status, position] {
+            label.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+            label.textColor = .secondaryLabelColor
+        }
         status.setAccessibilityIdentifier("statusArea")
         let content = NSView()
-        window.contentView = content
-        split.isVertical = true
-        split.dividerStyle = .thin
-        split.translatesAutoresizingMaskIntoConstraints = false
-        for pane in [scroll, previewWorkspace.panel, previewWorkspace.sidebar] {
-            split.addArrangedSubview(pane)
+        sourcePane.view = content
+        for view in [scroll, footer] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            content.addSubview(view)
         }
-        split.setHoldingPriority(.defaultHigh, forSubviewAt: 0)
-        split.setHoldingPriority(.defaultHigh, forSubviewAt: 2)
-        status.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(split)
-        content.addSubview(status)
         NSLayoutConstraint.activate([
-            split.topAnchor.constraint(equalTo: content.topAnchor),
-            split.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            split.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            scroll.widthAnchor.constraint(greaterThanOrEqualToConstant: 310),
-            previewWorkspace.panel.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
-            previewWorkspace.sidebar.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
-            status.topAnchor.constraint(equalTo: split.bottomAnchor, constant: 5),
-            status.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
-            status.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -12),
-            status.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -5),
+            scroll.topAnchor.constraint(equalTo: content.topAnchor),
+            scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            footer.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 5),
+            footer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
+            footer.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+            footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -5),
         ])
-        window.initialFirstResponder = editor
+    }
+
+    // MARK: - Window state and pane commands
+
+    static func identifier(for windowNumber: Int) -> NSUserInterfaceItemIdentifier {
+        NSUserInterfaceItemIdentifier("Scadretto.Document.\(windowNumber)")
     }
 
     required init?(coder: NSCoder) {
@@ -91,14 +136,182 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
         guard !placedDividers else { return }
+        placeDividers()
+    }
+
+    private func placeDividers() {
         window?.contentView?.layoutSubtreeIfNeeded()
+        let split = layout.splitView
         let width = split.bounds.width
-        guard width >= 780 else { return }
-        split.setPosition(width * 0.31, ofDividerAt: 0)
-        split.setPosition(width - 240, ofDividerAt: 1)
+        guard !placedDividers, width >= 850 else { return }
+        let sourceWidth = min(restoredSourceWidth ?? width * 0.34, width - 560)
+        let inspectorWidth = min(restoredInspectorWidth ?? 272, width - sourceWidth - 292)
+        if !sourceItem.isCollapsed { split.setPosition(sourceWidth, ofDividerAt: 0) }
+        if !inspectorItem.isCollapsed { split.setPosition(width - inspectorWidth, ofDividerAt: 1) }
         placedDividers = true
         resetSourceScroll()
     }
+
+    override func encodeRestorableState(with coder: NSCoder) {
+        super.encodeRestorableState(with: coder)
+        coder.encode(sourceItem.isCollapsed, forKey: "sourceHidden")
+        coder.encode(inspectorItem.isCollapsed, forKey: "inspectorHidden")
+        coder.encode(previewWorkspace.isConsoleVisible, forKey: "consoleVisible")
+        if !sourceItem.isCollapsed { coder.encode(Double(sourcePane.view.bounds.width), forKey: "sourceWidth") }
+        if !inspectorItem.isCollapsed {
+            coder.encode(Double(previewWorkspace.sidebar.bounds.width), forKey: "inspectorWidth")
+        }
+    }
+
+    override func restoreState(with coder: NSCoder) {
+        super.restoreState(with: coder)
+        if coder.containsValue(forKey: "sourceWidth") { restoredSourceWidth = coder.decodeDouble(forKey: "sourceWidth") }
+        if coder.containsValue(forKey: "inspectorWidth") {
+            restoredInspectorWidth = coder.decodeDouble(forKey: "inspectorWidth")
+        }
+        sourceItem.isCollapsed = coder.decodeBool(forKey: "sourceHidden")
+        inspectorItem.isCollapsed = coder.decodeBool(forKey: "inspectorHidden")
+        previewWorkspace.setConsoleVisible(coder.decodeBool(forKey: "consoleVisible"))
+        placedDividers = false
+        placeDividers()
+        if sourceItem.isCollapsed {
+            window?.initialFirstResponder = previewWorkspace.viewport
+        }
+    }
+
+    @IBAction func toggleSourcePane(_ sender: Any?) {
+        let hiding = !sourceItem.isCollapsed
+        if hiding { finishComposition() }
+        sourceItem.isCollapsed = hiding
+        if hiding {
+            window?.makeFirstResponder(previewWorkspace.viewport)
+        } else {
+            window?.makeFirstResponder(editor)
+        }
+        paneVisibilityChanged()
+    }
+
+    @IBAction func toggleInspectorPane(_ sender: Any?) {
+        let hiding = !inspectorItem.isCollapsed
+        if hiding && focusIsInside(previewWorkspace.sidebar) {
+            window?.makeFirstResponder(sourceItem.isCollapsed ? previewWorkspace.viewport : editor)
+        }
+        inspectorItem.isCollapsed = hiding
+        if !hiding { window?.makeFirstResponder(previewWorkspace.sidebar.outlineFocusView) }
+        paneVisibilityChanged()
+    }
+
+    @IBAction func toggleConsolePane(_ sender: Any?) {
+        let hiding = previewWorkspace.isConsoleVisible
+        if hiding && focusIsInside(previewWorkspace.sidebar.consolePane) {
+            window?.makeFirstResponder(sourceItem.isCollapsed ? previewWorkspace.viewport : editor)
+        }
+        previewWorkspace.setConsoleVisible(!hiding)
+        if !hiding { window?.makeFirstResponder(previewWorkspace.sidebar.consoleFocusView) }
+    }
+
+    private func focusIsInside(_ pane: NSView) -> Bool {
+        (window?.firstResponder as? NSView)?.isDescendant(of: pane) == true
+    }
+
+    private func paneVisibilityChanged() {
+        window?.invalidateRestorableState()
+        window?.toolbar?.validateVisibleItems()
+    }
+
+    @IBAction func findInSource(_ sender: NSMenuItem) {
+        reveal(nil)
+        editor.performTextFinderAction(sender)
+    }
+
+    func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        let shown: Bool
+        let name: String
+        switch item.action {
+        case #selector(toggleSourcePane(_:)):
+            shown = !sourceItem.isCollapsed
+            name = "Source"
+        case #selector(toggleInspectorPane(_:)):
+            shown = !inspectorItem.isCollapsed
+            name = "Inspector"
+        case #selector(toggleConsolePane(_:)):
+            shown = previewWorkspace.isConsoleVisible
+            name = "Evaluation Console"
+        case #selector(findInSource(_:)):
+            if let menu = item as? NSMenuItem, menu.tag == NSTextFinder.Action.setSearchString.rawValue {
+                return editor.selectedRange().length > 0
+            }
+            return true
+        default:
+            return true
+        }
+        let title = "\(shown ? "Hide" : "Show") \(name)"
+        if let menu = item as? NSMenuItem { menu.title = title }
+        if let toolbar = item as? NSToolbarItem {
+            toolbar.toolTip = title
+            toolbar.menuFormRepresentation?.title = title
+        }
+        return true
+    }
+
+    // MARK: - Toolbar
+
+    private static let sourceTool = NSToolbarItem.Identifier("Source")
+    private static let inspectorTool = NSToolbarItem.Identifier("Inspector")
+    private static let consoleTool = NSToolbarItem.Identifier("Console")
+    private static let frameTool = NSToolbarItem.Identifier("FrameModel")
+    private static let cameraTool = NSToolbarItem.Identifier("Camera")
+    private static let previewTool = NSToolbarItem.Identifier("EvaluatePreview")
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [Self.sourceTool, .flexibleSpace, Self.frameTool, Self.cameraTool, Self.previewTool,
+         .space, Self.consoleTool, Self.inspectorTool]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarDefaultItemIdentifiers(toolbar)
+    }
+
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        if identifier == Self.cameraTool {
+            let item = NSMenuToolbarItem(itemIdentifier: identifier)
+            item.label = "Camera"
+            item.toolTip = "Standard Views and Projection"
+            item.image = NSImage(systemSymbolName: "view.3d", accessibilityDescription: "Camera")
+            let menu = NSMenu()
+            ScadrettoApp.addStandardViews(to: menu)
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "Orthographic Projection", action: #selector(ScadrettoDocument.toggleOrthographic(_:)),
+                         keyEquivalent: "")
+            item.menu = menu
+            return item
+        }
+
+        let label: String
+        let symbol: String
+        let action: Selector
+        switch identifier {
+        case Self.sourceTool: (label, symbol, action) = ("Source", "sidebar.leading", #selector(toggleSourcePane(_:)))
+        case Self.inspectorTool: (label, symbol, action) = ("Inspector", "sidebar.trailing", #selector(toggleInspectorPane(_:)))
+        case Self.consoleTool: (label, symbol, action) = ("Evaluation Console", "terminal", #selector(toggleConsolePane(_:)))
+        case Self.frameTool: (label, symbol, action) = ("Frame Model", "viewfinder",
+                                                      #selector(ScadrettoDocument.frameModel(_:)))
+        case Self.previewTool: (label, symbol, action) = ("Evaluate Preview", "arrow.clockwise",
+                                                         #selector(ScadrettoDocument.retryPreview(_:)))
+        default: return nil
+        }
+        let item = NSToolbarItem(itemIdentifier: identifier)
+        item.label = label
+        item.paletteLabel = label
+        item.toolTip = label
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        item.action = action
+        item.menuFormRepresentation = NSMenuItem(title: label, action: action, keyEquivalent: "")
+        return item
+    }
+
+    // MARK: - Source editor
 
     private func configureEditor() {
         let font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
@@ -129,6 +342,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         editor.textContainer?.containerSize = editor.maxSize
         editor.setAccessibilityIdentifier("sourceEditor")
         editor.delegate = self
+        editor.sourceDocument = sourceDocument
         editor.onCompositionEnd = { [weak self] in
             self?.commitComposedText()
             self?.onCompositionFinished?()
@@ -155,6 +369,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         if firstView { resetSourceScroll() }
         mirroring = false
         ruler?.needsDisplay = true
+        updateSourcePosition()
         scheduleSyntax(snapshot)
     }
 
@@ -191,7 +406,13 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         return false
     }
 
+    private func updateSourcePosition() {
+        guard let snapshot else { return }
+        position.stringValue = "Line \(snapshot.buffer.lineNumber(atUTF16Offset: editor.selectedRange().location))"
+    }
+
     func textViewDidChangeSelection(_ notification: Notification) {
+        updateSourcePosition()
         if !mirroring && !editor.updatingComposition && !editor.hasMarkedText() {
             sourceDocument?.endTypingGroup()
         }
@@ -231,6 +452,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     }
 
     func reveal(_ range: NSRange?) {
+        if sourceItem.isCollapsed { toggleSourcePane(nil) }
         if let range {
             editor.setSelectedRange(range)
             editor.scrollRangeToVisible(range)
@@ -302,7 +524,29 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
 }
 
 private final class SourceTextView: NSTextView {
+    weak var sourceDocument: ScadrettoDocument?
     private(set) var updatingComposition = false
+
+    @objc private func undo(_ sender: Any?) { sourceDocument?.undo(sender) }
+    @objc private func redo(_ sender: Any?) { sourceDocument?.redo(sender) }
+
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(undo(_:)) || item.action == #selector(redo(_:)) {
+            return sourceDocument?.validateUserInterfaceItem(item) ?? false
+        }
+        return super.validateUserInterfaceItem(item)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection([.control, .shift, .command, .option])
+        if event.charactersIgnoringModifiers == "\t" && modifiers == .control {
+            window?.selectNextKeyView(self)
+        } else if event.charactersIgnoringModifiers == "\t" && modifiers == [.control, .shift] {
+            window?.selectPreviousKeyView(self)
+        } else {
+            super.keyDown(with: event)
+        }
+    }
     var onCompositionEnd: (() -> Void)?
 
     override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
@@ -364,7 +608,7 @@ private final class LineRuler: NSRulerView {
         self.lineNumber = lineNumber
         super.init(scrollView: scroll, orientation: .verticalRuler)
         clientView = editor
-        ruleThickness = 54
+        ruleThickness = 44
     }
 
     required init(coder: NSCoder) {

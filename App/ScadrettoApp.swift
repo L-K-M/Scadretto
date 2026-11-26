@@ -7,6 +7,7 @@ import ScadrettoViewport
 final class ScadrettoApp: NSObject, NSApplicationDelegate {
     private(set) var engineClient: EngineClient?
     private(set) var engineStartupError: String?
+    private let recentDocuments = RecentDocumentsMenu(title: "Open Recent")
     private var settingsWindow: PreviewSettingsWindowController?
 
     static func main() {
@@ -53,6 +54,18 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
         return .terminateLater
     }
 
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if hasVisibleWindows { return true }
+        if let minimized = sender.windows.first(where: { $0.isMiniaturized && $0.windowController?.document != nil }) {
+            minimized.deminiaturize(nil)
+            minimized.makeKeyAndOrderFront(nil)
+            return true
+        }
+        return applicationOpenUntitledFile(sender)
+    }
+
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
         do {
             try NSDocumentController.shared.openUntitledDocumentAndDisplay(true)
@@ -78,6 +91,14 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
         let settings = app.addItem(withTitle: "Settings…", action: #selector(showSettings(_:)), keyEquivalent: ",")
         settings.target = self
         app.addItem(.separator())
+        let services = addMenu("Services", to: app)
+        NSApp.servicesMenu = services
+        app.addItem(.separator())
+        app.addItem(withTitle: "Hide Scadretto", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        app.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)),
+                    keyEquivalent: "h").keyEquivalentModifierMask = [.command, .option]
+        app.addItem(withTitle: "Show All", action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        app.addItem(.separator())
         app.addItem(withTitle: "Quit Scadretto", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         let file = addMenu("File", to: menu)
@@ -88,6 +109,10 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
         let open = file.addItem(withTitle: "Open…", action: #selector(NSDocumentController.openDocument(_:)),
                                 keyEquivalent: "o")
         open.target = documents
+        let recent = NSMenuItem(title: recentDocuments.title, action: nil, keyEquivalent: "")
+        recent.submenu = recentDocuments
+        file.addItem(recent)
+        file.addItem(.separator())
         let window = file.addItem(withTitle: "New Window", action: #selector(ScadrettoDocument.newWindowForDocument(_:)),
                                   keyEquivalent: "n")
         window.keyEquivalentModifierMask = [.command, .option]
@@ -101,8 +126,8 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
                      keyEquivalent: "")
 
         let edit = addMenu("Edit", to: menu)
-        edit.addItem(withTitle: "Undo", action: #selector(ScadrettoDocument.undoSource(_:)), keyEquivalent: "z")
-        let redo = edit.addItem(withTitle: "Redo", action: #selector(ScadrettoDocument.redoSource(_:)),
+        edit.addItem(withTitle: "Undo", action: #selector(ScadrettoDocument.undo(_:)), keyEquivalent: "z")
+        let redo = edit.addItem(withTitle: "Redo", action: #selector(ScadrettoDocument.redo(_:)),
                                 keyEquivalent: "z")
         redo.keyEquivalentModifierMask = [.command, .shift]
         edit.addItem(.separator())
@@ -111,23 +136,32 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         edit.addItem(.separator())
-        let find = edit.addItem(withTitle: "Find…", action: #selector(NSTextView.performTextFinderAction(_:)),
-                                keyEquivalent: "f")
-        find.tag = NSTextFinder.Action.showFindInterface.rawValue
-        let replace = edit.addItem(withTitle: "Find and Replace…",
-                                   action: #selector(NSTextView.performTextFinderAction(_:)),
-                                   keyEquivalent: "f")
-        replace.keyEquivalentModifierMask = [.command, .option]
-        replace.tag = NSTextFinder.Action.showReplaceInterface.rawValue
+        let find = addMenu("Find", to: edit)
+        for (title, key, modifiers, action) in [
+            ("Find…", "f", NSEvent.ModifierFlags.command, NSTextFinder.Action.showFindInterface),
+            ("Find and Replace…", "f", [.command, .option], .showReplaceInterface),
+            ("Find Next", "g", [.command], .nextMatch),
+            ("Find Previous", "g", [.command, .shift], .previousMatch),
+            ("Use Selection for Find", "e", [.command], .setSearchString),
+        ] {
+            let item = find.addItem(withTitle: title, action: #selector(SourceWindowController.findInSource(_:)),
+                                    keyEquivalent: key)
+            item.keyEquivalentModifierMask = modifiers
+            item.tag = action.rawValue
+        }
 
         let view = addMenu("View", to: menu)
-        view.addItem(withTitle: "Frame Model", action: #selector(ScadrettoDocument.frameModel(_:)), keyEquivalent: "0")
-        let standard = addMenu("Standard Views", to: view)
-        for (index, direction) in ViewportStandardView.allCases.enumerated() {
-            standard.addItem(withTitle: direction.rawValue.capitalized,
-                             action: #selector(ScadrettoDocument.standardView(_:)),
-                             keyEquivalent: String(index + 1)).tag = index
+        for (title, key, action) in [
+            ("Hide Source", "1", #selector(SourceWindowController.toggleSourcePane(_:))),
+            ("Hide Inspector", "2", #selector(SourceWindowController.toggleInspectorPane(_:))),
+            ("Show Evaluation Console", "3", #selector(SourceWindowController.toggleConsolePane(_:))),
+        ] {
+            view.addItem(withTitle: title, action: action, keyEquivalent: key)
+                .keyEquivalentModifierMask = [.command, .option]
         }
+        view.addItem(.separator())
+        view.addItem(withTitle: "Frame Model", action: #selector(ScadrettoDocument.frameModel(_:)), keyEquivalent: "0")
+        Self.addStandardViews(to: addMenu("Standard Views", to: view))
         view.addItem(.separator())
         view.addItem(withTitle: "Orthographic Projection", action: #selector(ScadrettoDocument.toggleOrthographic(_:)),
                      keyEquivalent: "")
@@ -141,8 +175,17 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
                          keyEquivalent: "").representedObject = step
         }
 
+        view.addItem(.separator())
+        view.addItem(withTitle: "Show Toolbar", action: #selector(NSWindow.toggleToolbarShown(_:)), keyEquivalent: "t")
+            .keyEquivalentModifierMask = [.command, .option]
+        view.addItem(withTitle: "Customize Toolbar…", action: #selector(NSWindow.runToolbarCustomizationPalette(_:)),
+                     keyEquivalent: "")
+        view.addItem(.separator())
+        view.addItem(withTitle: "Enter Full Screen", action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
+            .keyEquivalentModifierMask = [.command, .control]
+
         let model = addMenu("Model", to: menu)
-        model.addItem(withTitle: "Retry Preview", action: #selector(ScadrettoDocument.retryPreview(_:)), keyEquivalent: "r")
+        model.addItem(withTitle: "Evaluate Preview", action: #selector(ScadrettoDocument.retryPreview(_:)), keyEquivalent: "r")
         model.addItem(withTitle: "Cancel Evaluation", action: #selector(ScadrettoDocument.cancelPreview(_:)), keyEquivalent: "")
         model.addItem(withTitle: "Reveal Selected Source", action: #selector(ScadrettoDocument.revealSelectedInstance(_:)),
                       keyEquivalent: "")
@@ -161,6 +204,14 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
         help.addItem(withTitle: "Open Example", action: #selector(openExample(_:)), keyEquivalent: "").target = self
         NSApp.helpMenu = help
         return menu
+    }
+
+    static func addStandardViews(to menu: NSMenu) {
+        for (index, direction) in ViewportStandardView.allCases.enumerated() {
+            menu.addItem(withTitle: direction.rawValue.capitalized,
+                         action: #selector(ScadrettoDocument.standardView(_:)),
+                         keyEquivalent: String(index + 1)).tag = index
+        }
     }
 
     /// Opens an editable untitled copy of the mounting-plate example. The build copies it from
@@ -192,5 +243,42 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
         item.submenu = submenu
         parent.addItem(item)
         return submenu
+    }
+}
+
+
+/// Populated on demand so AppKit remains the owner of the recent document list.
+@MainActor
+private final class RecentDocumentsMenu: NSMenu, NSMenuDelegate {
+    override init(title: String) {
+        super.init(title: title)
+        delegate = self
+    }
+
+    required init(coder: NSCoder) { super.init(coder: coder) }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        removeAllItems()
+        let documents = NSDocumentController.shared
+        let urls = documents.recentDocumentURLs
+        let counts = Dictionary(grouping: urls, by: \.lastPathComponent)
+        for url in urls {
+            let filename = url.lastPathComponent
+            let title = (counts[filename]?.count ?? 0) > 1 ? "\(filename) · \(url.deletingLastPathComponent().path)" : filename
+            let item = addItem(withTitle: title, action: #selector(openRecent(_:)), keyEquivalent: "")
+            item.representedObject = url
+            item.toolTip = url.path
+            item.target = self
+        }
+        if !urls.isEmpty { addItem(.separator()) }
+        addItem(withTitle: "Clear Menu", action: #selector(NSDocumentController.clearRecentDocuments(_:)),
+                keyEquivalent: "").target = documents
+    }
+
+    @objc private func openRecent(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, error in
+            if let error { NSApp.presentError(error) }
+        }
     }
 }

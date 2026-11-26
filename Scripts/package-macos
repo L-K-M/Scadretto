@@ -68,7 +68,6 @@ report="${output%.dmg}-report.txt"
 
 # shellcheck source=Engine/upstream.lock
 source Engine/upstream.lock
-deployment_target=$ENGINE_MACOS_TARGET
 upstream=".build/engine/upstream/$OPENSCAD_REVISION"
 
 if [[ $mode == distribution ]]; then
@@ -146,10 +145,13 @@ problem() { log "PROBLEM: $*"; problems=$((problems + 1)); }
 version_le() { [[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" == "$1" ]]; }
 # The signed entitlement keys, space separated. Plain `codesign -d --entitlements -` prints a
 # [Key] listing, and --xml prints the plist on one line, so read the keys from the XML.
+macho_minimum() { vtool -show-build "$1" 2>/dev/null | awk '/minos|version/ { print $2; exit }'; }
 entitlement_keys() {
   { codesign -d --entitlements - --xml "$1" 2> /dev/null || true; } \
     | { grep -o '<key>[^<]*</key>' || true; } | sed -e 's/<key>//' -e 's/<\/key>//' | paste -sd ' ' -
 }
+deployment_target=$(macho_minimum "$app/Contents/MacOS/Scadretto")
+[[ -n $deployment_target ]] || fail 'the app reports no minimum macOS.'
 machos=()
 while IFS= read -r -d '' file; do
   file -b "$file" | grep -q 'Mach-O' && machos+=("$file")
@@ -159,7 +161,7 @@ for file in "${machos[@]}"; do
   name=${file#"$work/stage/"}
   archs=$(lipo -archs "$file" 2>/dev/null || echo unknown)
   [[ $archs == arm64 ]] || problem "$name has architectures $archs"
-  minimum=$(vtool -show-build "$file" 2>/dev/null | awk '/minos|version/ { print $2; exit }')
+  minimum=$(macho_minimum "$file")
   if [[ -z $minimum ]]; then problem "$name reports no minimum macOS"
   elif ! version_le "$minimum" "$deployment_target"; then problem "$name requires macOS $minimum"; fi
   while read -r dependency; do

@@ -37,6 +37,12 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
     private let consoleHeading = NSTextField(labelWithString: "Evaluation Console")
     private let candidateList = NSPopUpButton()
     let inspector = DiameterInspector()
+    let consolePane = NSView()
+    var outlineFocusView: NSView { instanceOutline }
+    var consoleFocusView: NSView { console }
+    var hasConsoleDiagnostics: Bool {
+        result?.diagnostics.contains { [.error, .warning, .deprecated].contains($0.severity) } == true
+    }
     private var roots: [Item] = []
     private var byID: [UInt32: Item] = [:]
     private var candidates: [UInt32] = []
@@ -56,6 +62,8 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         instanceOutline.dataSource = self
         instanceOutline.delegate = self
         instanceOutline.headerView = nil
+        instanceOutline.style = .inset
+        instanceOutline.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("instance"))
         instanceOutline.addTableColumn(column)
         instanceOutline.outlineTableColumn = column
@@ -68,7 +76,9 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         consoleScroll.documentView = console
         console.isEditable = false
         console.isSelectable = true
-        console.textContainerInset = NSSize(width: 6, height: 5)
+        console.textContainerInset = NSSize(width: 10, height: 5)
+        console.textColor = .textColor
+        console.backgroundColor = .textBackgroundColor
         console.isRichText = false
         console.autoresizingMask = [.width]
         console.textContainer?.widthTracksTextView = true
@@ -91,36 +101,72 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         outlineScroll.documentView = instanceOutline
 
         let instancesHeading = NSTextField(labelWithString: "Instances")
-        instancesHeading.font = .boldSystemFont(ofSize: NSFont.smallSystemFontSize)
-        consoleHeading.font = instancesHeading.font
+        let propertiesHeading = NSTextField(labelWithString: "Properties")
+        for heading in [instancesHeading, propertiesHeading, consoleHeading] {
+            heading.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+        }
         candidateList.setAccessibilityIdentifier("candidateList")
         candidateList.setAccessibilityLabel("Matching surface instances")
         candidateList.target = self
         candidateList.action = #selector(chooseCandidate)
         candidateList.isHidden = true
-        let panel = NSStackView(views: [instancesHeading, outlineScroll, candidateList, inspector, consoleHeading,
-                                       diagnosticMenu, filter, consoleScroll])
+
+        let divider = NSBox()
+        divider.boxType = .separator
+        let panel = NSStackView(views: [instancesHeading, outlineScroll, candidateList, divider,
+                                       propertiesHeading, inspector])
         panel.orientation = .vertical
         panel.alignment = .leading
-        panel.spacing = 6
+        panel.spacing = 7
         panel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(panel)
+        let outlineHeight = outlineScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 82)
+        outlineHeight.priority = .defaultHigh
         NSLayoutConstraint.activate([
-            panel.topAnchor.constraint(equalTo: topAnchor, constant: 9),
-            panel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            panel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            panel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -8),
+            panel.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            panel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            panel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            panel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
             outlineScroll.widthAnchor.constraint(equalTo: panel.widthAnchor),
-            outlineScroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 90),
-            consoleScroll.widthAnchor.constraint(equalTo: panel.widthAnchor),
-            consoleScroll.heightAnchor.constraint(equalTo: outlineScroll.heightAnchor, multiplier: 0.65),
-            diagnosticMenu.widthAnchor.constraint(lessThanOrEqualTo: panel.widthAnchor),
+            outlineHeight,
+            divider.widthAnchor.constraint(equalTo: panel.widthAnchor),
             candidateList.widthAnchor.constraint(lessThanOrEqualTo: panel.widthAnchor),
-            inspector.widthAnchor.constraint(lessThanOrEqualTo: panel.widthAnchor),
-            filter.widthAnchor.constraint(lessThanOrEqualTo: panel.widthAnchor),
+            inspector.widthAnchor.constraint(equalTo: panel.widthAnchor),
         ])
+        inspector.onFinishEditing = { [weak self] in
+            guard let self else { return }
+            window?.makeFirstResponder(instanceOutline)
+        }
+        configureConsole(scroll: consoleScroll)
         setCurrent(false)
         rebuildDiagnostics()
+        rebuildConsole()
+    }
+
+    private func configureConsole(scroll: NSScrollView) {
+        for menu in [diagnosticMenu, filter] {
+            menu.controlSize = .small
+            menu.lineBreakMode = .byTruncatingTail
+            menu.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
+        consoleHeading.lineBreakMode = .byTruncatingTail
+        let header = NSStackView(views: [consoleHeading, NSView(), diagnosticMenu, filter])
+        header.orientation = .horizontal
+        header.alignment = .centerY
+        header.spacing = 6
+        for view in [header, scroll] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            consolePane.addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: consolePane.topAnchor, constant: 6),
+            header.leadingAnchor.constraint(equalTo: consolePane.leadingAnchor, constant: 10),
+            header.trailingAnchor.constraint(equalTo: consolePane.trailingAnchor, constant: -10),
+            scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 6),
+            scroll.leadingAnchor.constraint(equalTo: consolePane.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: consolePane.trailingAnchor),
+            scroll.bottomAnchor.constraint(equalTo: consolePane.bottomAnchor),
+        ])
     }
 
     required init?(coder: NSCoder) { nil }
@@ -261,6 +307,13 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
             if row.fileID != nil { attributes[.link] = NSNumber(value: index) }
             content.append(NSAttributedString(string: row.text + "\n", attributes: attributes))
         }
+        if content.length == 0 {
+            let text = result == nil ? "No evaluation messages yet." : "No messages for this filter."
+            content.append(NSAttributedString(string: text, attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                .foregroundColor: NSColor.secondaryLabelColor,
+            ]))
+        }
         console.textStorage?.setAttributedString(content)
     }
 
@@ -290,6 +343,7 @@ final class PreviewSidebar: NSView, NSOutlineViewDataSource, NSOutlineViewDelega
         let label = NSTextField(labelWithString: item.title)
         label.lineBreakMode = .byTruncatingTail
         label.setAccessibilityLabel(item.title)
+        label.toolTip = item.title
         return label
     }
 
@@ -327,6 +381,8 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
     private let choices = NSPopUpButton()
     private let dimension = NSTextField(labelWithString: "Diameter")
     private let field = NSTextField()
+    private let empty = NSTextField(wrappingLabelWithString: "Select an instance or click the model to inspect its properties.")
+    var onFinishEditing: (() -> Void)?
     private let fieldRow = NSStackView()
     private let detail = NSTextField(wrappingLabelWithString: "")
     private var inspection: DiameterInspection?
@@ -341,7 +397,7 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
         super.init(frame: .zero)
         orientation = .vertical
         alignment = .leading
-        spacing = 4
+        spacing = 6
         // A group keeps the labels and field inside reachable and carries the summary as its value.
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
@@ -351,6 +407,9 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
         title.lineBreakMode = .byTruncatingTail
         title.setAccessibilityIdentifier("inspectorSelection")
         binding.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        binding.textColor = .secondaryLabelColor
+        scope.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        empty.textColor = .secondaryLabelColor
         scope.setAccessibilityIdentifier("targetScope")
         detail.textColor = .secondaryLabelColor
         detail.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
@@ -366,6 +425,11 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
         dimension.lineBreakMode = .byTruncatingTail
         dimension.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         fieldRow.addArrangedSubview(dimension)
+        field.cell = PropertyFieldCell(textCell: "")
+        field.isEditable = true
+        field.isSelectable = true
+        field.isBezeled = true
+        field.drawsBackground = true
         field.target = self
         field.action = #selector(commit)
         field.delegate = self
@@ -373,7 +437,7 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
         field.setAccessibilityLabel("Diameter in model units")
         field.widthAnchor.constraint(equalToConstant: 72).isActive = true
         fieldRow.addArrangedSubview(field)
-        for view in [title, choices, binding, scope, fieldRow, detail] {
+        for view in [empty, title, choices, binding, scope, fieldRow, detail] {
             addArrangedSubview(view)
             view.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor).isActive = true
         }
@@ -383,9 +447,13 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
     required init?(coder: NSCoder) { nil }
 
     func show(_ inspection: DiameterInspection?) {
+        let sameProperty = self.inspection?.title == inspection?.title
+            && self.inspection?.property == inspection?.property && self.inspection?.value == inspection?.value
+        if !sameProperty { discardDraft() }
         self.inspection = inspection
-        isHidden = inspection == nil
+        empty.isHidden = inspection != nil
         guard let inspection else {
+            for view in [title, choices, binding, scope, fieldRow, detail] { view.isHidden = true }
             setAccessibilityValue(nil)
             announcedSelection = nil
             return
@@ -415,7 +483,9 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
         dimension.stringValue = inspection.property
         field.setAccessibilityIdentifier(inspection.fieldIdentifier)
         field.setAccessibilityLabel(inspection.property)
-        field.stringValue = inspection.value.map { PropertyEntry.text(of: $0) } ?? ""
+        if field.currentEditor() == nil {
+            field.stringValue = committedValue
+        }
         field.isEnabled = inspection.writable
     }
 
@@ -428,6 +498,7 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
     }
 
     func disableEditing() {
+        discardDraft()
         choices.isEnabled = false
         field.isEnabled = false
     }
@@ -446,12 +517,66 @@ final class DiameterInspector: NSStackView, NSTextFieldDelegate {
         detail.isHidden = text.isEmpty
     }
 
-    func controlTextDidBeginEditing(_ notification: Notification) {
-        (notification.userInfo?["NSFieldEditor"] as? NSTextView)?.allowsUndo = false
+    private var committedValue: String {
+        inspection?.value.map { PropertyEntry.text(of: $0) } ?? ""
+    }
+
+    private func discardDraft() {
+        if field.currentEditor() != nil {
+            field.abortEditing()
+            onFinishEditing?()
+        }
+        field.stringValue = committedValue
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        field.stringValue = committedValue
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy command: Selector) -> Bool {
+        switch command {
+        case #selector(NSResponder.cancelOperation(_:)):
+            discardDraft()
+            showMessage(inspection?.detail ?? "")
+        case #selector(NSResponder.insertNewline(_:)):
+            onCommit?(textView.string)
+        default:
+            return false
+        }
+        return true
     }
 
     @objc private func commit() { onCommit?(field.stringValue) }
     @objc private func changeProperty() {
         onChoice?(choices.indexOfSelectedItem)
+    }
+}
+
+private final class PropertyFieldCell: NSTextFieldCell {
+    private let editor = PropertyFieldEditor()
+
+    override func fieldEditor(for controlView: NSView) -> NSTextView? {
+        editor
+    }
+}
+
+/// A draft belongs to this field. Only the validated Return action enters document history.
+private final class PropertyFieldEditor: NSTextView {
+    private let draftHistory = UndoManager()
+
+    override var undoManager: UndoManager? { draftHistory }
+
+    init() {
+        super.init(frame: .zero, textContainer: nil)
+        isFieldEditor = true
+        allowsUndo = true
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func resignFirstResponder() -> Bool {
+        guard super.resignFirstResponder() else { return false }
+        draftHistory.removeAllActions()
+        return true
     }
 }

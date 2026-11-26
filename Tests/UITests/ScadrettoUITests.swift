@@ -31,6 +31,49 @@ final class ScadrettoUITests: XCTestCase {
         app.typeKey(.escape, modifierFlags: [])
     }
 
+    @MainActor
+    func testToolbarPaneShortcutsAndFullScreenKeepTheDocument() throws {
+        let app = launch()
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "NativeWorkspace.scad")
+        let original = Data("// Keep the original line endings\r\ncube(2);\r\n".utf8)
+        try original.write(to: url)
+        let editor = open(url, in: app)
+        let window = app.windows.matching(NSPredicate(format: "title BEGINSWITH %@", "NativeWorkspace")).firstMatch
+        let status = window.staticTexts["renderStatus"]
+        waitForText("Preview ready", in: status, timeout: 15)
+        let viewport = window.descendants(matching: .any)["viewport"].firstMatch
+        let toolbar = window.toolbars.firstMatch
+        XCTAssertTrue(toolbar.waitForExistence(timeout: 5))
+        let source = toolbar.buttons["Source"]
+        XCTAssertTrue(source.isHittable)
+        source.click()
+        XCTAssertFalse(editor.isHittable)
+        app.typeKey("f", modifierFlags: .command)
+        XCTAssertTrue(editor.isHittable, "Find must reveal the source when it is hidden")
+        app.typeKey(.escape, modifierFlags: [])
+
+        let outline = window.outlines["sceneOutline"]
+        XCTAssertTrue(outline.isHittable)
+        app.typeKey("2", modifierFlags: [.command, .option])
+        XCTAssertFalse(outline.isHittable)
+        app.typeKey("2", modifierFlags: [.command, .option])
+        XCTAssertTrue(outline.isHittable)
+        let console = window.textViews["console"]
+        app.typeKey("3", modifierFlags: [.command, .option])
+        XCTAssertTrue(console.isHittable)
+        app.typeKey("3", modifierFlags: [.command, .option])
+        XCTAssertFalse(console.isHittable)
+        XCTAssertTrue(viewport.isHittable)
+
+        choose("Enter Full Screen", from: "View", in: app)
+        choose("Exit Full Screen", from: "View", in: app)
+        XCTAssertTrue(editor.isHittable)
+        app.typeKey("s", modifierFlags: .command)
+        waitForFile(url, toEqual: original, timeout: 5)
+    }
+
     /// A simulated 3D mouse turns the model in the front window, keeps turning it while the
     /// Settings window is in front, and stops when its input is switched off.
     @MainActor
@@ -1328,6 +1371,17 @@ final class ScadrettoUITests: XCTestCase {
         let writableAfterUndo = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: field)
         XCTAssertEqual(XCTWaiter.wait(for: [writableAfterUndo], timeout: 8), .completed)
 
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("-")
+        XCTAssertEqual(field.value as? String, "-")
+        field.typeKey("z", modifierFlags: .command)
+        XCTAssertEqual(field.value as? String, "4", "Undo inside the field must only undo the draft")
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("6")
+        field.typeKey(.escape, modifierFlags: [])
+        XCTAssertEqual(field.value as? String, "4", "Escape must discard the draft")
+        XCTAssertEqual(editor.value as? String, originalText)
         field.click()
         field.typeKey("a", modifierFlags: .command)
         field.typeText("5")
