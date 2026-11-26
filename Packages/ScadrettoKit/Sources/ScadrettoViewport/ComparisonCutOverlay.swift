@@ -34,7 +34,8 @@ final class ComparisonCutOverlay: NSView {
     private var grabOffset: CGFloat?
     private var lineX: CGFloat { bounds.width * fraction }
     private var grip: CGRect {
-        CGRect(x: min(max(lineX - 22, 3), max(3, bounds.width - 47)), y: bounds.midY - 15,
+        // Leave the center of the model clear at the feature the cut opens on.
+        CGRect(x: min(max(lineX - 22, 3), max(3, bounds.width - 47)), y: min(56, max(3, bounds.height - 33)),
                width: 44, height: 30)
     }
 
