@@ -100,6 +100,32 @@ final class ViewportMathTests: XCTestCase {
         XCTAssertEqual(hit.z, wall.z, accuracy: 1e-6)
     }
 
+    func testComparisonKeepsTheSameWorldPointRegisteredAcrossMeshOrigins() throws {
+        let origin = SIMD3(100_000_005.0, 0, 0)
+        let original = ViewportMeshUpload(mesh: cube(at: origin, size: 10))
+        let revised = ViewportMeshUpload(mesh: cube(at: origin + SIMD3(2, 0, 0), size: 1))
+        var camera = ViewportCamera()
+        camera.frameAll(try XCTUnwrap(original.bounds), aspect: viewSize.width / viewSize.height)
+        for orthographic in [false, true] {
+            let pair = ViewportComparisonProjection(camera: camera, viewSize: viewSize, orthographic: orthographic,
+                                                    beforeOrigin: original.renderOrigin, beforeBounds: original.bounds,
+                                                    after: revised)
+            let before = try XCTUnwrap(pair.before.project(origin))
+            let after = try XCTUnwrap(pair.after.project(origin))
+            for index in 0..<3 { XCTAssertEqual(before[index], after[index], accuracy: 1e-6) }
+
+            let beforeCorner = try XCTUnwrap(pair.before.project(origin + SIMD3(5, 5, 5)))
+            XCTAssertTrue((0...1).contains(beforeCorner.z))
+        }
+    }
+
+    func testComparisonSplitStaysWithinTheDrawableAtBothEnds() {
+        let width = 1217
+        for (position, split) in [(-0.1, 0), (0, 0), (0.5, 609), (1, width), (1.1, width)] {
+            XCTAssertEqual(ViewportComparisonProjection.splitPixel(at: position, drawableWidth: width), split)
+        }
+    }
+
     // MARK: Framing
 
     func testFrameAllFitsEveryCorner() {

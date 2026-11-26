@@ -5,6 +5,20 @@ import ScadrettoViewport
 
 @MainActor
 final class PreviewWorkspace {
+    private struct PendingComparison {
+        let request: UUID
+        let key: EvaluationKey
+        let revision: UInt64
+        let change: ViewportView.Comparison
+
+        func matches(_ result: EvaluationResult) -> Bool {
+            result.requestID == request && result.key.documentID == key.documentID
+                && result.key.sourceRevision == revision && result.key.dependencyGeneration == key.dependencyGeneration
+                && result.key.resolutionDigest == key.resolutionDigest
+                && result.key.optionsDigest == key.optionsDigest && result.key.workerBuild == key.workerBuild
+        }
+    }
+
     let panel = NSView()
     let sidebar = PreviewSidebar(frame: .zero)
     private(set) var viewport: ViewportView?
@@ -13,10 +27,14 @@ final class PreviewWorkspace {
     private let status = NSTextField(labelWithString: "Evaluating…")
     private let snap = NSTextField(labelWithString: "")
     private let notice = NSTextField(labelWithString: "")
+    private let compare = NSButton(title: "Compare", target: nil, action: #selector(ScadrettoDocument.toggleComparison(_:)))
     private let viewportError: String?
     private var hasGeometry = false
     private var renderedStatus: String?
     private var ghostIDs: [UInt32] = []
+    private var selectionGhostIDs: [UInt32] = []
+    private var hoverGhostID: UInt32?
+    private var pendingComparison: PendingComparison?
     private(set) var ghostOmitted = 0
     private var candidateHit: SIMD3<Double>?
     private var announcedState: SceneState?
@@ -49,6 +67,11 @@ final class PreviewWorkspace {
                          keyEquivalent: "")
             menu.addItem(withTitle: "Show Edges", action: #selector(ScadrettoDocument.toggleEdges(_:)), keyEquivalent: "")
             menu.addItem(withTitle: "Show Axes", action: #selector(ScadrettoDocument.toggleAxes(_:)), keyEquivalent: "")
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "Shared-Source Constellation",
+                         action: #selector(ScadrettoDocument.toggleConstellation(_:)), keyEquivalent: "")
+            menu.addItem(withTitle: "Pin Comparison Cut",
+                         action: #selector(ScadrettoDocument.toggleComparison(_:)), keyEquivalent: "")
             viewport.menu = menu
             renderingView = viewport
             viewportError = nil
@@ -71,16 +94,23 @@ final class PreviewWorkspace {
         notice.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         notice.isHidden = true
         notice.setAccessibilityIdentifier("dependencyNotice")
-        for item in [renderingView, status, notice, snap] {
+        compare.controlSize = .small
+        compare.bezelStyle = .inline
+        compare.setAccessibilityIdentifier("comparePreview")
+        let indicators = NSStackView(views: [snap, compare])
+        indicators.spacing = 6
+        indicators.alignment = .firstBaseline
+        indicators.detachesHiddenViews = true
+        for item in [renderingView, status, notice, indicators] {
             item.translatesAutoresizingMaskIntoConstraints = false
             panel.addSubview(item)
         }
         NSLayoutConstraint.activate([
             status.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 10),
             status.trailingAnchor.constraint(lessThanOrEqualTo: notice.leadingAnchor, constant: -12),
-            notice.trailingAnchor.constraint(lessThanOrEqualTo: snap.leadingAnchor, constant: -8),
+            notice.trailingAnchor.constraint(lessThanOrEqualTo: indicators.leadingAnchor, constant: -8),
             notice.firstBaselineAnchor.constraint(equalTo: status.firstBaselineAnchor),
-            snap.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -10),
+            indicators.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -10),
             snap.firstBaselineAnchor.constraint(equalTo: status.firstBaselineAnchor),
             status.topAnchor.constraint(equalTo: panel.topAnchor, constant: 7),
             renderingView.topAnchor.constraint(equalTo: status.bottomAnchor, constant: 7),
@@ -94,10 +124,12 @@ final class PreviewWorkspace {
             self?.onPresentationChange?()
         }
         viewport?.onEditPreview = { [weak sidebar = self.sidebar] value in sidebar?.inspector.showPreview(value) }
+        viewport?.onComparisonChange = { [weak self] in self?.updateComparisonButton() }
         if TimingLog.isEnabled {
             viewport?.onFramePresented = { [weak self] scene, time in self?.logFrame(scene: scene, at: time) }
         }
         showSnap()
+        updateComparisonButton()
         sidebar.onOccurrence = { [weak self] id in self?.onSelection?(id, nil) }
         sidebar.onCandidate = { [weak self] id in
             guard let self else { return }
@@ -119,6 +151,14 @@ final class PreviewWorkspace {
     /// Seconds an evaluation runs before VoiceOver hears that it is still evaluating.
     private static let evaluatingAnnouncementDelay = 1.5
 
+    func expectComparison(_ change: ViewportView.Comparison, request: UUID, after key: EvaluationKey, revision: UInt64) {
+        pendingComparison = PendingComparison(request: request, key: key, revision: revision, change: change)
+    }
+
+    func discardPendingComparison() {
+        pendingComparison = nil
+    }
+
     func update(_ phase: DocumentPreview.Phase) {
         evaluatingAnnouncement?.cancel()
         evaluatingAnnouncement = nil
@@ -131,13 +171,17 @@ final class PreviewWorkspace {
                 self?.announce(.evaluating, "Evaluating", priority: .low)
             }
         case .cancelled:
+            discardPendingComparison()
             setPending("Preview canceled")
             announce(.canceled, "Preview canceled")
         case .failure(let reason):
+            discardPendingComparison()
             setPending(reason)
             announce(.failed(reason), status.stringValue, priority: .high)
         case .outcome(let outcome, let geometry):
             let result = outcome.result
+            let change = pendingComparison.flatMap { $0.matches(result) ? $0.change : nil }
+            discardPendingComparison()
             sidebar.show(result: result, instances: result.scene?.instances ?? [],
                          operations: result.scene?.operations ?? [])
             switch outcome {
@@ -151,10 +195,12 @@ final class PreviewWorkspace {
                 let label = viewportError ?? (warning.map { "\(message) · \($0.message)" } ?? message)
                 renderedStatus = label
                 ghostIDs = []
+                selectionGhostIDs = []
+                hoverGhostID = nil
                 ghostOmitted = 0
                 // The last scene's handle must not be drawn or presented over this one.
                 viewport?.showLinear(handle: nil, guides: [])
-                viewport?.setMesh(geometry?.upload, sceneID: result.requestID)
+                viewport?.setMesh(geometry?.upload, sceneID: result.requestID, comparison: change)
                 viewport?.setSceneStale(false)
                 updateFrameStatus()
                 viewport?.setAccessibilityHelp(mesh.map {
@@ -180,6 +226,7 @@ final class PreviewWorkspace {
         geometry = nil
         renderedStatus = nil
         candidateHit = nil
+        hoverGhostID = nil
         showGhost([])
         viewport?.showDiameter(handle: nil, guides: [])
         viewport?.setSceneStale(hasGeometry)
@@ -231,14 +278,27 @@ final class PreviewWorkspace {
         sidebar.selectOccurrence(nil)
         sidebar.inspector.show(nil)
         viewport?.showDiameter(handle: nil, guides: [])
+        hoverGhostID = nil
         showGhost([])
     }
 
     func showGhost(_ ids: [UInt32]) {
+        selectionGhostIDs = ids
+        updateGhost()
+    }
+
+    func previewRelatedOccurrence(_ id: UInt32?) {
+        guard hoverGhostID != id else { return }
+        hoverGhostID = id
+        updateGhost()
+    }
+
+    private func updateGhost() {
+        let ids = hoverGhostID.map { [$0] } ?? selectionGhostIDs
         guard ghostIDs != ids else { return }
         ghostIDs = ids
         let ghost = geometry?.ghost(for: ids)
-        ghostOmitted = ghost?.omitted ?? 0
+        if hoverGhostID == nil { ghostOmitted = ghost?.omitted ?? 0 }
         viewport?.showGhost(ghost?.mesh)
     }
 
@@ -250,6 +310,14 @@ final class PreviewWorkspace {
 
     func showSnap() {
         snap.stringValue = snapDescription ?? ""
+    }
+
+    private func updateComparisonButton() {
+        compare.isHidden = viewport?.canCompare != true
+        let pinned = viewport?.isComparisonPinned == true
+        compare.title = pinned ? "Close Compare" : "Compare"
+        compare.toolTip = pinned ? "Close Comparison Cut" : "Pin Comparison Cut. Hold Space in the model for a quick look."
+        compare.setAccessibilityHelp(compare.toolTip)
     }
 
     private func pick(frame: ViewportView.PresentedFrame, at point: CGPoint) {

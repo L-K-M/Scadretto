@@ -15,7 +15,7 @@ final class CaliperOverlay: NSView {
         var values: String { "\(Self.number(baseline)) → \(Self.number(proposal))" }
 
         static func number(_ value: Double) -> String {
-            value.formatted(.number.precision(.significantDigits(1...8)).grouping(.never))
+            value.formatted(.number.precision(.significantDigits(1...12)).grouping(.never))
         }
     }
 
@@ -60,12 +60,21 @@ final class CaliperOverlay: NSView {
             .foregroundColor: mint,
             .paragraphStyle: titleStyle,
         ])
-        let values = NSMutableAttributedString()
-        let digits = NSFont.monospacedDigitSystemFont(ofSize: 19, weight: .semibold)
-        for (segment, color) in [(Reading.number(reading.baseline), brass),
-                                 ("  →  ", NSColor.white), (Reading.number(reading.proposal), mint)] {
-            values.append(NSAttributedString(string: segment, attributes: [.font: digits, .foregroundColor: color]))
+        func readout(fontSize: CGFloat) -> NSAttributedString {
+            let values = NSMutableAttributedString()
+            let digits = NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .semibold)
+            for (segment, color) in [(Reading.number(reading.baseline), brass),
+                                     ("  →  ", NSColor.white), (Reading.number(reading.proposal), mint)] {
+                values.append(NSAttributedString(string: segment, attributes: [
+                    .font: digits, .foregroundColor: color, .paragraphStyle: titleStyle,
+                ]))
+            }
+            return values
         }
+        let fullReadout = readout(fontSize: 19)
+        let available = max(1, bounds.width - 40)
+        let values = fullReadout.size().width <= available ? fullReadout
+            : readout(fontSize: max(10, 19 * available / fullReadout.size().width))
         let width = min(max(title.size().width, values.size().width) + 24, max(1, bounds.width - 16))
         let height: CGFloat = 53
         let x = min(max(tip.x + 28, 8), max(8, bounds.width - width - 8))
@@ -79,11 +88,11 @@ final class CaliperOverlay: NSView {
         let outline = NSBezierPath(roundedRect: plate, xRadius: 8, yRadius: 8)
         ink.setFill()
         outline.fill()
-        mint.withAlphaComponent(0.65).setStroke()
+        mint.withAlphaComponent(NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast ? 1 : 0.65).setStroke()
         outline.lineWidth = 1
         outline.stroke()
         title.draw(in: CGRect(x: x + 12, y: y + 6, width: max(0, width - 24), height: 15))
-        values.draw(at: CGPoint(x: x + 12, y: y + 21))
+        values.draw(in: CGRect(x: x + 12, y: y + 21, width: max(0, width - 24), height: 29))
     }
 
     private func stroke(from a: CGPoint, to b: CGPoint, color: NSColor, width: CGFloat) {

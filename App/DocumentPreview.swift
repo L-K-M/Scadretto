@@ -12,6 +12,7 @@ struct PreviewGeometry: Sendable {
     let bounds: [UInt32: SceneSnapshot.BoundingBox]
     private let meshes: [UInt32: ViewportMesh]
     private let scene: SceneSnapshot
+    private let subtracted: Set<UInt32>
     /// Bounds of everything rendered at or below each instance, in world space.
     private let extents: [UInt32: ViewportBounds]
 
@@ -26,6 +27,7 @@ struct PreviewGeometry: Sendable {
         bounds = Dictionary(uniqueKeysWithValues: scene.operands.map { ($0.id, $0.mesh.bounds) })
         self.scene = scene
         let subtracted = scene.subtractedInstances
+        self.subtracted = subtracted
         var occurrences: [UInt32: ViewportOperand] = [:]
         for instance in scene.instances {
             if let meshID = instance.operand {
@@ -53,6 +55,42 @@ struct PreviewGeometry: Sendable {
     func localPoint(_ worldPoint: SIMD3<Double>, on instanceID: UInt32) -> SIMD3<Double>? {
         guard let operand = occurrences[instanceID], operand.world.isInvertibleFrame else { return nil }
         return Self.point(worldPoint, in: operand.world.inverse)
+    }
+
+    func center(of instanceID: UInt32) -> SIMD3<Double>? { extents[instanceID]?.center }
+
+    /// Marks the rendered executions of the checked source expression, following a
+    /// translation from its traced frame down to each operand that inherits it.
+    func constellation(affected: [UInt32], selectedID: UInt32, value: Double,
+                       rims: [UInt32], motions: [UInt32: ViewportLinearGuide]) -> (UInt32, [ConstellationMarker])? {
+        let visibleInstances = scene.renderedOperands(below: affected)
+        let representative = visibleInstances.contains(selectedID) ? selectedID
+            : scene.renderedOperands(below: [selectedID]).first
+        guard let representative else { return nil }
+        let rimIDs = Set(rims)
+        let requested = Set(visibleInstances).union([representative])
+        var inheritedMotions: [UInt32: SIMD3<Double>] = [:]
+        var markers: [ConstellationMarker] = []
+        for instance in scene.instances {
+            let inherited = instance.parent.flatMap { inheritedMotions[$0] } ?? .zero
+            let motion = inherited + (motions[instance.id]?.worldUnitsPerValue ?? .zero)
+            if motion != .zero { inheritedMotions[instance.id] = motion }
+            guard requested.contains(instance.id) else { continue }
+            let guide = rimIDs.contains(instance.id) ? guide(for: instance.id) : nil
+            let point = instance.opaqueFrame ? nil
+                : guide.map { $0.top + $0.radialX * (value / 2) } ?? extents[instance.id]?.center
+            let kind: ConstellationOverlay.Kind = if subtracted.contains(instance.id) {
+                .cutter
+            } else if instance.id != representative, let selected = occurrences[representative],
+                      let operand = occurrences[instance.id], operand.world.columns.3 != selected.world.columns.3 {
+                .translated
+            } else {
+                .original
+            }
+            markers.append(ConstellationMarker(id: instance.id, point: point,
+                                               travel: motion + (guide?.radialX ?? .zero) * 0.5, kind: kind))
+        }
+        return (representative, markers)
     }
 
     func handle(for instanceID: UInt32, localPoint: SIMD3<Double>?, diameter: Double) -> ViewportDiameterHandle? {
@@ -191,6 +229,7 @@ final class DocumentPreview {
     private let startupError: String?
     private var input: Input?
     private var currentID: UUID?
+    var scheduledRequestID: UUID? { currentID }
     private var task: Task<Void, Never>?
     private var dependencies: DependencyWatch?
     private var dependencyRequest: UUID?

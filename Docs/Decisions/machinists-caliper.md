@@ -38,10 +38,12 @@ Scadretto evaluates authored OpenSCAD, traces the resulting geometry back to its
 
 **Show someone.** Slide the divider through a plate and see each larger opening cut through exactly where the smaller one used to be. Ordinary edits settle directly to the new mesh. The comparator appears when invoked and uses only one previous mesh to keep memory predictable.
 
-## Commitment
+## Implementation
 
-**Machinist’s Caliper** makes Scadretto’s distinctive combination of tactile control, precise values, and shared authored geometry legible in a single gesture. It improves the moment when a user decides how far to move. It works with the existing real-time guides while the worker is busy and gives the source write its own brief acknowledgment. The mounting plate demonstrates the idea in ten seconds with a bore drag, a visible change to four rings, and a single Undo.
+The three instruments share the mounted part and the same checked edit. The caliper starts at the grip. The constellation starts at the exact token range the edit planner verified and uses the worker’s rendered instances. The comparison starts at the projected edited feature and accepts a pair only when the evaluation request started by that edit succeeds in the same evaluation context.
+
+The Model menu has **Shared-Source Constellation** (Shift-Command-L) and **Pin Comparison Cut** (Shift-Command-C). Arrow keys step through visible constellation endpoints when the model has focus. The comparison divider is an accessibility slider. Arrow keys move it by 2%, or by 10% with Shift. Home and End show one revision across the whole viewport. The reveal sweeps to the feature over 180 ms and appears stationary with Reduce Motion enabled.
 
 ## Deliberate boundaries
 
-The prototype leaves workspace organization, source, camera controls, and the worker pipeline intact. It avoids audio so repeated drags stay quiet, and uses the hardware’s alignment feedback only when snapping is enabled. The caliper carries no persistent measurement objects, physics, simulated machining particles, or new gestures. It appears immediately, follows the input directly, and disappears without an animated transition. The receipt confirms the source edit, while the existing preview status reports evaluation.
+The source document has no additional saved state. The comparison retains a single prior mesh in the editing window for the latest accepted property edit. A subsequent evaluation clears that pair, while Undo stays in the document’s history. The constellation caps the visible rays at twelve and reports the total and offscreen counts. It uses only relationships established by the evaluator. The caliper uses native alignment feedback when snapping is enabled, so a stream of unsnapped edits stays quiet. Its receipt confirms the source change while the preview status reports evaluation.

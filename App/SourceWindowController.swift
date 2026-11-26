@@ -1,6 +1,15 @@
 import AppKit
+import Carbon.HIToolbox
 import ScadrettoCore
 import ScadrettoSyntax
+import ScadrettoViewport
+
+struct ConstellationMarker {
+    let id: UInt32
+    let point: SIMD3<Double>?
+    let travel: SIMD3<Double>
+    let kind: ConstellationOverlay.Kind
+}
 
 final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     private weak var sourceDocument: ScadrettoDocument?
@@ -14,6 +23,25 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     private var mirroring = false
     private var ruler: LineRuler?
     private var placedDividers = false
+    private struct SourceRelationship {
+        let scene: UUID
+        let token: NSRange
+        let title: String
+        let selected: ConstellationMarker
+        let baseline: Double
+        let markers: [ConstellationMarker]
+    }
+
+    private let constellation = ConstellationOverlay(frame: .zero)
+    private var relationship: SourceRelationship?
+    private var constellationMonitor: Any?
+    private var constellationObservers: [any NSObjectProtocol] = []
+    private var optionExpanded = false
+    private var dragExpanded = false
+    private(set) var isConstellationPinned = false
+    var canShowConstellation: Bool {
+        relationship != nil && previewWorkspace.viewport?.isComparing == false
+    }
     let previewWorkspace = PreviewWorkspace()
 
     var selection: NSRange { editor.selectedRange() }
@@ -65,6 +93,9 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         status.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(split)
         content.addSubview(status)
+        constellation.translatesAutoresizingMaskIntoConstraints = false
+        constellation.isHidden = true
+        content.addSubview(constellation)
         NSLayoutConstraint.activate([
             split.topAnchor.constraint(equalTo: content.topAnchor),
             split.leadingAnchor.constraint(equalTo: content.leadingAnchor),
@@ -76,12 +107,23 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
             status.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
             status.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -12),
             status.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -5),
+            constellation.topAnchor.constraint(equalTo: split.topAnchor),
+            constellation.leadingAnchor.constraint(equalTo: split.leadingAnchor),
+            constellation.trailingAnchor.constraint(equalTo: previewWorkspace.panel.trailingAnchor),
+            constellation.bottomAnchor.constraint(equalTo: split.bottomAnchor),
         ])
         window.initialFirstResponder = editor
+        window.acceptsMouseMovedEvents = true
+        previewWorkspace.viewport?.onOverlayGeometryChange = { [weak self] in self?.updateConstellation() }
+        observeConstellation(in: window)
     }
 
     required init?(coder: NSCoder) {
         return nil
+    }
+
+    isolated deinit {
+        stopObservingConstellation()
     }
 
     override func windowTitle(forDocumentDisplayName displayName: String) -> String {
@@ -139,6 +181,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     /// the same document, the current selection follows the text around the change.
     func show(_ snapshot: SourceSnapshot, selecting requested: NSRange?) {
         let firstView = self.snapshot == nil
+        if self.snapshot?.revision != snapshot.revision { clearConstellation(keepingPin: true) }
         self.snapshot = snapshot
         mirroring = true
         var selection = requested ?? editor.selectedRange()
@@ -215,19 +258,228 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         // Text under the ruler's inset is not visible, even though it lies inside the bounds.
         let visibleMinX = originalX + clip.contentInsets.left
         let visibleMaxX = clip.bounds.maxX - clip.contentInsets.right
-        let tokenRect = editor.layoutManager.flatMap { layout in
-            editor.textContainer.map { container in
-                let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-                return layout.boundingRect(forGlyphRange: glyphs, in: container)
-                    .offsetBy(dx: editor.textContainerOrigin.x, dy: editor.textContainerOrigin.y)
-            }
-        }
+        let tokenRect = sourceRect(for: range)
         editor.setSelectedRange(range)
         editor.scrollRangeToVisible(range)
         if let tokenRect, tokenRect.minX >= visibleMinX, tokenRect.maxX <= visibleMaxX {
             clip.scroll(to: NSPoint(x: originalX, y: clip.bounds.minY))
             scroll.reflectScrolledClipView(clip)
         }
+        updateConstellation()
+    }
+
+    private func sourceRect(for range: NSRange, firstGlyphOnly: Bool = false) -> NSRect? {
+        guard NSMaxRange(range) <= editor.string.utf16.count,
+              let layout = editor.layoutManager, let container = editor.textContainer else { return nil }
+        let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+        // The connection leaves the first glyph; a multiline expression must not
+        // send the ray from whitespace in the middle of its bounding rectangle.
+        let anchor = firstGlyphOnly ? NSRange(location: glyphs.location, length: min(glyphs.length, 1)) : glyphs
+        return layout.boundingRect(forGlyphRange: anchor, in: container)
+            .offsetBy(dx: editor.textContainerOrigin.x, dy: editor.textContainerOrigin.y)
+    }
+
+    func showConstellation(scene: UUID, token: NSRange, title: String, selectedID: UInt32,
+                           baseline: Double, markers: [ConstellationMarker]) {
+        guard let selected = markers.first(where: { $0.id == selectedID }) else {
+            clearConstellation()
+            return
+        }
+        if relationship?.scene != scene || relationship?.token != token || relationship?.selected.id != selectedID {
+            optionExpanded = false
+            clearHover()
+        }
+        relationship = SourceRelationship(scene: scene, token: token, title: title, selected: selected,
+                                          baseline: baseline, markers: markers)
+        updateConstellation()
+    }
+
+    func clearConstellation(keepingPin: Bool = false) {
+        if !keepingPin { isConstellationPinned = false }
+        guard relationship != nil else { return }
+        relationship = nil
+        optionExpanded = false
+        dragExpanded = false
+        constellation.diagram = nil
+        constellation.isHidden = true
+        clearHover()
+    }
+
+    func toggleConstellation() {
+        guard canShowConstellation, let relationship, !isComposing else { return }
+        isConstellationPinned.toggle()
+        optionExpanded = false
+        if isConstellationPinned {
+            highlightSource(relationship.token)
+            if let viewport = previewWorkspace.viewport { window?.makeFirstResponder(viewport) }
+            let count = relationship.markers.count
+            Announcements.post("\(relationship.title), \(count) \(count == 1 ? "instance" : "instances"). Use the arrow keys to inspect an instance.")
+        }
+        updateConstellation()
+    }
+
+    private func updateConstellation() {
+        guard let relationship, let viewport = previewWorkspace.viewport,
+              viewport.presentedSceneID == relationship.scene, !viewport.isComparing, !isComposing,
+              let sourceRect = sourceRect(for: relationship.token, firstGlyphOnly: true) else {
+            constellation.diagram = nil
+            constellation.isHidden = true
+            clearHover()
+            return
+        }
+        let clip = scroll.contentView
+        let sourceEdge = constellation.convert(sourceRect, from: editor)
+        let insets = clip.contentInsets
+        let visibleText = clip.bounds.insetBy(dx: 10, dy: 10)
+        let sourcePane = constellation.convert(CGRect(
+            x: visibleText.minX + insets.left, y: visibleText.minY + insets.top,
+            width: max(0, visibleText.width - insets.left - insets.right),
+            height: max(0, visibleText.height - insets.top - insets.bottom)
+        ), from: clip)
+        let sourcePoint = CGPoint(x: min(max(sourceEdge.minX - 9, sourcePane.minX), sourcePane.maxX),
+                                  y: min(max(sourceEdge.midY, sourcePane.minY), sourcePane.maxY))
+        let rect = constellation.convert(viewport.bounds, from: viewport)
+        let transform = viewport.viewportTransform()
+        let delta = (viewport.handleDragValue ?? relationship.baseline) - relationship.baseline
+        if viewport.isDraggingHandle {
+            dragExpanded = dragExpanded || constellation.isExpanded
+            clearHover()
+        } else {
+            dragExpanded = false
+        }
+        let expanded = isConstellationPinned || optionExpanded || dragExpanded
+        let markers = expanded ? relationship.markers : [relationship.selected]
+        let nodes: [ConstellationOverlay.Node] = markers.compactMap { marker in
+            guard let anchor = marker.point else { return nil }
+            let point = transform.project(anchor + marker.travel * delta)
+            let visible = point.flatMap { value in
+                (0...1).contains(value.z) && value.x.isFinite && value.y.isFinite
+                    ? CGPoint(x: rect.minX + value.x, y: rect.minY + value.y) : nil
+            }
+            return ConstellationOverlay.Node(id: marker.id, point: visible ?? CGPoint(x: CGFloat.infinity, y: CGFloat.infinity),
+                                             kind: marker.kind)
+        }
+        let tokenEnd = expanded ? self.sourceRect(for: relationship.token).map {
+            constellation.convert($0, from: editor).maxX
+        } : nil
+        constellation.diagram = .init(source: sourcePoint, viewport: rect, nodes: nodes,
+                                      instanceCount: relationship.markers.count,
+                                      selectedID: relationship.selected.id, title: relationship.title,
+                                      badgeMinX: min(tokenEnd ?? sourcePoint.x, sourcePane.maxX) + 16)
+        constellation.isExpanded = expanded
+        constellation.isHidden = false
+        if !expanded { clearHover() }
+    }
+
+    private func syncConstellationExpansion() {
+        let expanded = isConstellationPinned || optionExpanded || dragExpanded
+        if constellation.isExpanded != expanded { updateConstellation() }
+    }
+
+    private func clearHover() {
+        highlightConstellationNode(nil)
+    }
+
+    private func highlightConstellationNode(_ id: UInt32?) {
+        guard constellation.highlightedID != id else { return }
+        constellation.highlightedID = id
+        previewWorkspace.previewRelatedOccurrence(id)
+    }
+
+    private func observeConstellation(in window: NSWindow) {
+        let center = NotificationCenter.default
+        let clip = scroll.contentView
+        clip.postsBoundsChangedNotifications = true
+        constellation.postsFrameChangedNotifications = true
+        let geometryNotifications: [(Notification.Name, NSView)] = [
+            (NSView.boundsDidChangeNotification, clip), (NSView.frameDidChangeNotification, constellation),
+        ]
+        for (name, object) in geometryNotifications {
+            constellationObservers.append(center.addObserver(forName: name, object: object, queue: .main) {
+                [weak self] _ in MainActor.assumeIsolated { self?.updateConstellation() }
+            })
+        }
+        constellationObservers.append(center.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.optionExpanded = false
+                self?.syncConstellationExpansion()
+                self?.clearHover()
+                self?.previewWorkspace.viewport?.endTemporaryComparison()
+            }
+        })
+        constellationObservers.append(center.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.stopObservingConstellation() } })
+        constellationMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .mouseMoved, .mouseExited, .keyDown]) {
+            [weak self] event in self?.trackConstellation(event) == true ? nil : event
+        }
+    }
+
+    private func stopObservingConstellation() {
+        if let constellationMonitor { NSEvent.removeMonitor(constellationMonitor) }
+        constellationMonitor = nil
+        constellationObservers.forEach(NotificationCenter.default.removeObserver)
+        constellationObservers.removeAll()
+        previewWorkspace.viewport?.endTemporaryComparison()
+    }
+
+    private func trackConstellation(_ event: NSEvent) -> Bool {
+        guard let window, window.isKeyWindow, !constellation.isHidden,
+              let viewport = previewWorkspace.viewport else { return false }
+        if event.type == .keyDown {
+            guard window.firstResponder === viewport, !viewport.isDraggingHandle, constellation.isExpanded,
+                  event.modifierFlags.intersection([.command, .control, .option]).isEmpty else {
+                return false
+            }
+            switch Int(event.keyCode) {
+            case kVK_Escape:
+                isConstellationPinned = false
+                optionExpanded = false
+                syncConstellationExpansion()
+                return true
+            case kVK_LeftArrow, kVK_UpArrow:
+                return isConstellationPinned && stepThroughConstellation(by: -1)
+            case kVK_RightArrow, kVK_DownArrow:
+                return isConstellationPinned && stepThroughConstellation(by: 1)
+            default:
+                return false
+            }
+        }
+        if event.type == .mouseExited {
+            clearHover()
+            return false
+        }
+        let point = constellation.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        if !event.modifierFlags.contains(.option) {
+            optionExpanded = false
+        } else if !optionExpanded && constellation.isSocket(at: point) {
+            optionExpanded = true
+        }
+        syncConstellationExpansion()
+        if constellation.isExpanded && !viewport.isDraggingHandle {
+            highlightConstellationNode(constellation.target(at: point))
+        }
+        return false
+    }
+
+    private func stepThroughConstellation(by step: Int) -> Bool {
+        let targets = constellation.keyboardTargets
+        guard !targets.isEmpty, let relationship else { return false }
+        let currentIndex = constellation.highlightedID.flatMap { targets.firstIndex(of: $0) }
+        let next = currentIndex.map { ($0 + step + targets.count) % targets.count } ?? 0
+        let id = targets[next]
+        highlightConstellationNode(id)
+        if let index = relationship.markers.firstIndex(where: { $0.id == id }) {
+            let kind = switch relationship.markers[index].kind {
+            case .original: "Instance"
+            case .translated: "Translated instance"
+            case .cutter: "Cutter"
+            }
+            Announcements.post("\(kind) \(index + 1) of \(relationship.markers.count)")
+        }
+        return true
     }
 
     func reveal(_ range: NSRange?) {
