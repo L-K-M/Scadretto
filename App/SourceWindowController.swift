@@ -66,6 +66,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSTo
         window.contentViewController = layout
 
         let toolbar = NSToolbar(identifier: "Scadretto.Document")
+        toolbar.displayMode = .iconOnly
         toolbar.delegate = self
         toolbar.allowsUserCustomization = true
         toolbar.autosavesConfiguration = true
@@ -277,12 +278,12 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSTo
     private static let previewTool = NSToolbarItem.Identifier("EvaluatePreview")
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [Self.sourceTool, .flexibleSpace, Self.frameTool, Self.cameraTool, Self.previewTool,
-         .space, Self.consoleTool, Self.inspectorTool]
+        [.flexibleSpace, Self.cameraTool, .space, Self.previewTool,
+         .space, Self.sourceTool, Self.consoleTool, Self.inspectorTool]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar)
+        toolbarDefaultItemIdentifiers(toolbar) + [Self.frameTool]
     }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
@@ -290,9 +291,13 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSTo
         if identifier == Self.cameraTool {
             let item = NSMenuToolbarItem(itemIdentifier: identifier)
             item.label = "Camera"
-            item.toolTip = "Standard Views and Projection"
-            item.image = NSImage(systemSymbolName: "view.3d", accessibilityDescription: "Camera")
+            item.toolTip = "Frame Model and Camera Views"
+            item.image = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "Camera")
+            item.action = #selector(ScadrettoDocument.frameModel(_:))
             let menu = NSMenu()
+            menu.addItem(withTitle: "Frame Model", action: #selector(ScadrettoDocument.frameModel(_:)),
+                         keyEquivalent: "")
+            menu.addItem(.separator())
             ScadrettoApp.addStandardViews(to: menu)
             menu.addItem(.separator())
             menu.addItem(withTitle: "Orthographic Projection", action: #selector(ScadrettoDocument.toggleOrthographic(_:)),
