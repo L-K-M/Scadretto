@@ -123,6 +123,9 @@ public final class ViewportView: MTKView {
     private var diameterGuides: [ViewportDiameterGuide] = []
     private var linearGuides: [ViewportLinearGuide] = []
     private var handleDragState: HandleDrag?
+    private let caliper = CaliperOverlay(frame: .zero)
+    private var receiptTask: Task<Void, Never>?
+    public var caliperCaption = "Dimension"
     private var navigationMotion = ViewportMotion.zero
     private var navigationLink: CADisplayLink?
     private var lastNavigationTime: CFTimeInterval?
@@ -133,7 +136,7 @@ public final class ViewportView: MTKView {
     /// presented frame. Measurements set it; drawing does not depend on it.
     public var onFramePresented: ((UUID?, CFTimeInterval) -> Void)?
     public var onEditPreview: ((Double?) -> Void)?
-    public var onEditCommit: ((UUID, UUID, Double) -> Void)?
+    public var onEditCommit: ((UUID, UUID, Double) -> Bool)?
     public var dragSnapIncrement: Double = 0 {
         didSet {
             if dragSnapIncrement != oldValue { cancelHandleDrag() }
@@ -178,6 +181,14 @@ public final class ViewportView: MTKView {
         isPaused = true
         enableSetNeedsDisplay = true
         delegate = self
+        caliper.frame = bounds
+        caliper.autoresizingMask = [.width, .height]
+        caliper.isHidden = true
+        caliper.setAccessibilityElement(true)
+        caliper.setAccessibilityRole(.staticText)
+        caliper.setAccessibilityLabel("Caliper")
+        caliper.setAccessibilityIdentifier("caliperReading")
+        addSubview(caliper)
     }
 
     @available(*, unavailable, message: "Create ViewportView with init(device:library:frame:)")
@@ -266,6 +277,7 @@ public final class ViewportView: MTKView {
     }
 
     private func projectionDidChange() {
+        clearCaliper()
         pressedFrame = nil
         cancelHandleDrag()
         resetPresentationRetry()
@@ -374,6 +386,7 @@ public final class ViewportView: MTKView {
 
     public override func mouseDown(with event: NSEvent) {
         // A drag still held here lost its release, and only a release commits.
+        clearCaliper()
         cancelHandleDrag()
         pressedFrame = presentedFrame
         mouseDownPoint = viewPoint(for: event)
@@ -383,6 +396,7 @@ public final class ViewportView: MTKView {
               let point = mouseDownPoint, handle.contains(point, in: frame.transform),
               let start = handle.coordinate(at: point, in: frame.transform) else { return }
         handleDragState = HandleDrag(frame: frame, handle: handle, startCoordinate: start)
+        updateCaliper(for: handle, in: frame.transform, value: nil)
         window?.makeFirstResponder(self)
     }
 
@@ -422,8 +436,17 @@ public final class ViewportView: MTKView {
             if let drag = handleDragState, let value = drag.value,
                let current = presentedFrame, current.sceneID == drag.frame.sceneID,
                current.mapping == drag.frame.mapping, editHandle?.id == drag.handle.id {
+                let reading = caliper.reading
                 cancelHandleDrag()
-                onEditCommit?(current.sceneID, drag.handle.id, value)
+                if onEditCommit?(current.sceneID, drag.handle.id, value) == true, var reading {
+                    reading.recorded = true
+                    caliper.reading = reading
+                    receiptTask = Task { [weak self] in
+                        try? await Task.sleep(for: .milliseconds(750))
+                        guard !Task.isCancelled else { return }
+                        self?.clearCaliper()
+                    }
+                }
             } else {
                 cancelHandleDrag()
             }
@@ -465,10 +488,15 @@ public final class ViewportView: MTKView {
 
     private func updateHandleDrag(at point: CGPoint) {
         guard var drag = handleDragState else { return }
+        let previousValue = drag.value
         drag.value = drag.handle.coordinate(at: point, in: drag.frame.transform).flatMap { end in
             drag.handle.value(from: drag.startCoordinate, to: end, snap: dragSnapIncrement)
         }
         handleDragState = drag
+        if dragSnapIncrement > 0, let value = drag.value, value != previousValue {
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
+        updateCaliper(for: drag.handle, in: drag.frame.transform, value: drag.value)
         onEditPreview?(drag.value)
         needsDisplay = true
     }
@@ -476,12 +504,45 @@ public final class ViewportView: MTKView {
     private func cancelHandleDrag() {
         guard handleDragState != nil else { return }
         handleDragState = nil
+        clearCaliper()
         pressedFrame = nil
         mouseDownPoint = nil
         lastDragPoint = nil
         activeButton = false
         onEditPreview?(nil)
         needsDisplay = true
+    }
+
+    private func clearCaliper() {
+        receiptTask?.cancel()
+        receiptTask = nil
+        caliper.reading = nil
+    }
+
+    private func updateCaliper(for handle: ViewportEditHandle, in transform: ViewportTransform, value: Double?) {
+        let baseline: Double
+        let before: SIMD3<Double>
+        let after: SIMD3<Double>
+        switch handle {
+        case .diameter(let radial):
+            baseline = radial.diameter
+            before = radial.rim(at: baseline)
+            after = radial.rim(at: value ?? baseline)
+        case .linear(let linear):
+            baseline = linear.value
+            before = linear.anchor
+            after = linear.point(for: value ?? baseline)
+        }
+        guard let origin = transform.project(before), let tip = transform.project(after),
+              (0...1).contains(origin.z), (0...1).contains(tip.z),
+              CGRect(origin: .zero, size: transform.viewSize).contains(CGPoint(x: tip.x, y: tip.y)) else {
+            caliper.reading = nil
+            return
+        }
+        caliper.reading = CaliperOverlay.Reading(origin: CGPoint(x: origin.x, y: origin.y),
+                                                 tip: CGPoint(x: tip.x, y: tip.y),
+                                                 baseline: baseline, proposal: value ?? baseline,
+                                                 caption: caliperCaption)
     }
 
     /// Scroll mapping per the contract: imprecise deltas (mouse wheel) zoom
@@ -599,6 +660,7 @@ public final class ViewportView: MTKView {
 
 extension ViewportView: MTKViewDelegate {
     public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        clearCaliper()
         invalidatePresentation()
         view.needsDisplay = true
     }

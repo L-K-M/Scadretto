@@ -236,7 +236,8 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             if let self, controller === editor { chooseProperty(index) }
         }
         workspace.viewport?.onEditCommit = { [weak self, weak controller] sceneID, handleID, value in
-            if let self, controller === editor { commitProperty(value, sceneID: sceneID, handleID: handleID) }
+            guard let self, controller === editor else { return false }
+            return commitProperty(value, sceneID: sceneID, handleID: handleID)
         }
     }
 
@@ -763,6 +764,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             } else {
                 handle = workspace.geometry.flatMap { makeHandle(for: choice, selection: selection, geometry: $0) }
             }
+            workspace.viewport?.caliperCaption = "\(choice.title) · \(plan.scope)"
             activeEdit = ActiveEdit(requestID: result.requestID, key: result.key, instanceID: selection.instanceID,
                                     choiceID: choice.id, label: choice.label, property: choice.title, scope: plan.scope,
                                     operation: plan.operation, handle: handle)
@@ -882,13 +884,14 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         commitProperty(value, sceneID: active.requestID, handleID: nil)
     }
 
-    private func commitProperty(_ value: Double, sceneID: UUID, handleID: UUID?) {
-        guard let controller = editor else { return }
+    @discardableResult
+    private func commitProperty(_ value: Double, sceneID: UUID, handleID: UUID?) -> Bool {
+        guard let controller = editor else { return false }
         let workspace = controller.previewWorkspace
         let inspector = workspace.sidebar.inspector
         guard !isComposing else {
             inspector.showMessage("Finish composing text before editing this property.")
-            return
+            return false
         }
         guard let active = activeEdit, active.requestID == sceneID,
               let result = workspace.result, result.requestID == sceneID, result.key == active.key,
@@ -898,12 +901,12 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
               active.choiceID == propertyChoiceID,
               handleID == nil || handleID == active.handle?.id else {
             inspector.showMessage(ExplicitEditError.staleSource.localizedDescription)
-            return
+            return false
         }
         do {
             guard let edit = try active.operation.edit(setting: value, in: source.snapshot) else {
                 refreshInspector()
-                return
+                return false
             }
             let editedRange = try source.buffer.textRange(for: edit.range)
             let oldToken = String(decoding: edit.expected, as: UTF8.self)
@@ -913,8 +916,10 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             sourceChange = "Source change · \(oldToken) → \(newToken)"
             inspector.showMessage(sourceChange ?? "")
             Announcements.post("\(active.property) changed from \(oldToken) to \(newToken), \(active.scope)")
+            return true
         } catch {
             inspector.showMessage(propertyMessage(for: error))
+            return false
         }
     }
 

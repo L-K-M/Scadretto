@@ -1495,8 +1495,11 @@ final class ScadrettoUITests: XCTestCase {
 
         // Step 7: Escape while the button is held leaves bytes and undo depth alone.
         waitForText("Snap 0.5", in: detail)
+        let caliper = app.descendants(matching: .any)["caliperReading"].firstMatch
         try cancelDrag(from: grip.screenPoint, to: plusFour.screenPoint) {
             waitForText("Preview · 20 → 22", in: detail)
+            waitForText("20 → 22", in: caliper)
+            XCTAssertEqual(editor.value as? String, originalText)
             let guides = XCTAttachment(screenshot: viewport.screenshot())
             guides.name = "Held Pitch Drag Guides"
             guides.lifetime = .keepAlways
@@ -1504,6 +1507,7 @@ final class ScadrettoUITests: XCTestCase {
         }
         XCTAssertEqual(editor.value as? String, originalText)
         XCTAssertEqual(field.value as? String, "20")
+        XCTAssertTrue(caliper.waitForNonExistence(timeout: 2))
         app.menuBarItems["Edit"].click()
         XCTAssertFalse(app.menuItems.matching(NSPredicate(format: "title BEGINSWITH %@", "Undo")).firstMatch.isEnabled)
         XCTAssertTrue(app.menuItems["Redo Change Pitch"].firstMatch.isEnabled)
