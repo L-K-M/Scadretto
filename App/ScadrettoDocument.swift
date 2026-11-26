@@ -788,8 +788,8 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
                                     choiceID: choice.id, label: choice.label, property: choice.title, scope: plan.scope,
                                     operation: plan.operation, handle: handle)
             var guidesTruncated = false
-            let cutters = choice.previewRims(affected: plan.affected, instances: instances)
-            let motions = choice.previewMotions(affected: plan.affected, instances: instances)
+            let cutters = handle == nil ? [] : choice.previewRims(affected: plan.affected, instances: instances)
+            let motions = handle == nil ? [] : choice.previewMotions(affected: plan.affected, instances: instances)
             let moveGuides = Dictionary(uniqueKeysWithValues: motions.compactMap { motion in
                 instances[motion.instance].flatMap {
                     workspace.geometry?.moveGuide(for: $0, localUnitsPerValue: motion.localUnitsPerValue)
@@ -810,7 +810,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             if let baseline = choice.value, let token = try? snapshot.buffer.textRange(for: plan.span.bytes),
                let (selectedID, markers) = workspace.geometry?.constellation(
                    affected: plan.affected, selectedID: selection.instanceID, value: baseline,
-                   rims: handle == nil ? [] : cutters, motions: handle == nil ? [:] : moveGuides
+                   rims: cutters, motions: moveGuides
                ), markers.count > 1 {
                 let title = choice.bindingPath ?? choice.title
                 controller.showConstellation(scene: result.requestID, token: token, title: title,

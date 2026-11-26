@@ -117,15 +117,10 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         window.initialFirstResponder = editor
         window.acceptsMouseMovedEvents = true
         previewWorkspace.viewport?.onOverlayGeometryChange = { [weak self] in self?.updateConstellation() }
-        observeConstellation(in: window)
     }
 
     required init?(coder: NSCoder) {
         return nil
-    }
-
-    isolated deinit {
-        stopObservingConstellation()
     }
 
     override func windowTitle(forDocumentDisplayName displayName: String) -> String {
@@ -134,6 +129,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
 
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
+        if constellationMonitor == nil, let window { observeConstellation(in: window) }
         guard !placedDividers else { return }
         window?.contentView?.layoutSubtreeIfNeeded()
         let width = split.bounds.width

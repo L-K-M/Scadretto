@@ -298,6 +298,7 @@ final class PreviewWorkspace {
         guard ghostIDs != ids else { return }
         ghostIDs = ids
         let ghost = geometry?.ghost(for: ids)
+        // The inspector's count describes the whole edit scope, even during a hover.
         if hoverGhostID == nil { ghostOmitted = ghost?.omitted ?? 0 }
         viewport?.showGhost(ghost?.mesh)
     }
