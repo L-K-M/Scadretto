@@ -386,12 +386,17 @@ public final class ViewportView: MTKView {
     }
 
     private func updateComparisonVisibility(wasComparing: Bool) {
+        // Hiding the view lets AppKit reassign its focus immediately.
+        let responder = window?.firstResponder as? NSView
+        let dividerHadFocus = responder.map {
+            $0 === comparisonOverlay || $0.isDescendant(of: comparisonOverlay)
+        } ?? false
         comparisonOverlay.isPinned = isComparisonPinned
         comparisonOverlay.isHidden = !isComparing
         onComparisonChange?()
         guard wasComparing != isComparing else { return }
         if isComparing, let comparison {
-            comparisonReturnFocus = window?.firstResponder
+            comparisonReturnFocus = responder
             clearCaliper()
             cancelHandleDrag()
             pressedFrame = nil
@@ -405,8 +410,7 @@ public final class ViewportView: MTKView {
             revealComparison(at: target)
         } else {
             stopComparisonSweep()
-            if let responder = window?.firstResponder as? NSView,
-               responder === comparisonOverlay || responder.isDescendant(of: comparisonOverlay) {
+            if dividerHadFocus {
                 let previous = comparisonReturnFocus as? NSView
                 if let previous, previous.window === window, !previous.isHiddenOrHasHiddenAncestor {
                     if window?.makeFirstResponder(previous) != true { window?.makeFirstResponder(self) }

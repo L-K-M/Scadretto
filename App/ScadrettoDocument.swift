@@ -834,7 +834,11 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             if handle != nil, let snap = workspace.snapDescription { notes.append(snap) }
             inspection.detail = notes.joined(separator: "\n")
         } catch {
-            controller.clearConstellation()
+            if case PropertyPlanningError.verifyingSyntax = error {
+                controller.clearConstellation(keepingPin: true)
+            } else {
+                controller.clearConstellation()
+            }
             activeEdit = nil
             workspace.viewport?.showLinear(handle: nil, guides: [])
             workspace.showGhost([selection.instanceID])

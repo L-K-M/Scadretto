@@ -26,6 +26,8 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     private struct SourceRelationship {
         let scene: UUID
         let token: NSRange
+        let socketRect: CGRect
+        let tokenRect: CGRect
         let title: String
         let selected: ConstellationMarker
         let baseline: Double
@@ -269,7 +271,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     }
 
     private func sourceRect(for range: NSRange, firstGlyphOnly: Bool = false) -> NSRect? {
-        guard NSMaxRange(range) <= editor.string.utf16.count,
+        guard NSMaxRange(range) <= (editor.textStorage?.length ?? 0),
               let layout = editor.layoutManager, let container = editor.textContainer else { return nil }
         let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
         // The connection leaves the first glyph; a multiline expression must not
@@ -281,7 +283,9 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
 
     func showConstellation(scene: UUID, token: NSRange, title: String, selectedID: UInt32,
                            baseline: Double, markers: [ConstellationMarker]) {
-        guard let selected = markers.first(where: { $0.id == selectedID }) else {
+        guard let selected = markers.first(where: { $0.id == selectedID }),
+              let socketRect = sourceRect(for: token, firstGlyphOnly: true),
+              let tokenRect = sourceRect(for: token) else {
             clearConstellation()
             return
         }
@@ -289,7 +293,8 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
             optionExpanded = false
             clearHover()
         }
-        relationship = SourceRelationship(scene: scene, token: token, title: title, selected: selected,
+        relationship = SourceRelationship(scene: scene, token: token, socketRect: socketRect, tokenRect: tokenRect,
+                                          title: title, selected: selected,
                                           baseline: baseline, markers: markers)
         updateConstellation()
     }
@@ -319,16 +324,16 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     }
 
     private func updateConstellation() {
-        guard let relationship, let viewport = previewWorkspace.viewport,
-              viewport.presentedSceneID == relationship.scene, !viewport.isComparing, !isComposing,
-              let sourceRect = sourceRect(for: relationship.token, firstGlyphOnly: true) else {
+        guard let relationship else { return }
+        guard let viewport = previewWorkspace.viewport,
+              viewport.presentedSceneID == relationship.scene, !viewport.isComparing, !isComposing else {
             constellation.diagram = nil
             constellation.isHidden = true
             clearHover()
             return
         }
         let clip = scroll.contentView
-        let sourceEdge = constellation.convert(sourceRect, from: editor)
+        let sourceEdge = constellation.convert(relationship.socketRect, from: editor)
         let insets = clip.contentInsets
         let visibleText = clip.bounds.insetBy(dx: 10, dy: 10)
         let sourcePane = constellation.convert(CGRect(
@@ -359,13 +364,11 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
             return ConstellationOverlay.Node(id: marker.id, point: visible ?? CGPoint(x: CGFloat.infinity, y: CGFloat.infinity),
                                              kind: marker.kind)
         }
-        let tokenEnd = expanded ? self.sourceRect(for: relationship.token).map {
-            constellation.convert($0, from: editor).maxX
-        } : nil
+        let tokenEnd = constellation.convert(relationship.tokenRect, from: editor).maxX
         constellation.diagram = .init(source: sourcePoint, viewport: rect, nodes: nodes,
                                       instanceCount: relationship.markers.count,
                                       selectedID: relationship.selected.id, title: relationship.title,
-                                      badgeMinX: min(tokenEnd ?? sourcePoint.x, sourcePane.maxX) + 16)
+                                      badgeMinX: min(tokenEnd, sourcePane.maxX) + 16)
         constellation.isExpanded = expanded
         constellation.isHidden = false
         if !expanded { clearHover() }

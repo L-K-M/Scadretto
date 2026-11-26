@@ -1493,6 +1493,14 @@ final class ScadrettoUITests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: url), original)
         choose("Shared-Source Constellation", from: "Model", in: app)
         waitForText("Collapsed", in: constellation)
+
+        // Pinning survives the handoff from the draft guides to the accepted
+        // revision of this same property.
+        choose("Shared-Source Constellation", from: "Model", in: app)
+        grip.click(forDuration: 0.2, thenDragTo: end)
+        waitForText("pitch = 22;", in: editor)
+        waitForText("Preview ready", in: status, timeout: 15)
+        waitForText("Expanded", in: constellation)
     }
 
     @MainActor
