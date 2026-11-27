@@ -26,8 +26,9 @@ jobs:
       - name: Check repository scripts
         run: |
           set -euo pipefail
-          shellcheck -x Scripts/*.sh Scripts/bootstrap-macos Scripts/build-engine Scripts/verify-engine Scripts/stage-worker Scripts/verify Scripts/package-macos Scripts/benchmark-macos Engine/build-dependencies
+          shellcheck -x Scripts/*.sh Scripts/bootstrap-macos Scripts/build-engine Scripts/verify-engine Scripts/stage-worker Scripts/verify Scripts/package-macos Scripts/benchmark-macos Engine/build-dependencies Tests/Engine/verify-build-wrapper.sh
           Scripts/build.sh --help
+          bash Tests/Engine/verify-build-wrapper.sh
           Scripts/release.sh --help
           Scripts/verify --help
           Scripts/package-macos --help
@@ -86,6 +87,13 @@ jobs:
           key: engine-downloads-${{ hashFiles('Engine/dependencies.lock') }}
       - name: Build pinned reference and worker
         run: Scripts/build-engine
+      - name: Confirm the app build can reuse the worker
+        run: |
+          ready=".build/engine/worker/../.ready"
+          before=$(stat -f '%i:%m' "$ready")
+          worker=$(Scripts/build-engine --worker-only)
+          test "$worker" = "$(cd .build/engine/worker && pwd -P)"
+          test "$before" = "$(stat -f '%i:%m' "$ready")"
       - name: Verify trace and geometry
         run: Scripts/verify-engine
       - name: Retain engine verification evidence

@@ -1,10 +1,28 @@
 #!/bin/bash
 set -euo pipefail
 
+variants=(reference worker)
+worker_only=false
+if [[ $# != 0 ]]; then
+    case "$#:$1" in
+        1:--worker-only) variants=(worker); worker_only=true ;;
+        1:--help|1:-h) echo 'Usage: Scripts/build-engine [--worker-only]'; exit 0 ;;
+        *) echo 'Usage: Scripts/build-engine [--worker-only]' >&2; exit 2 ;;
+    esac
+fi
+
+# In worker-only mode stdout returns the selected product path to build.sh.
+if $worker_only; then exec 3>&1 1>&2; fi
+
 # shellcheck source=Engine/build-common.sh
 source "$(dirname "$0")/../Engine/build-common.sh"
 engine_tools
-"$ENGINE_ROOT/Scripts/bootstrap-macos"
+
+# Make the shared cache safe when two app or verification builds overlap.
+# macOS holds this lock on the open file description until the last close.
+mkdir -p "$ENGINE_BUILD"
+exec 9>>"$ENGINE_BUILD/build.lock"
+python3 -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX)'
 
 jobs=${SCADRETTO_ENGINE_JOBS:-$(sysctl -n hw.ncpu)}
 [[ $jobs =~ ^[1-9][0-9]*$ ]] || engine_fail "SCADRETTO_ENGINE_JOBS must be a positive integer."
@@ -35,19 +53,36 @@ fingerprint_key() {
     fingerprint "$1" | shasum -a 256 | cut -d ' ' -f 1
 }
 
-deps_key="$(fingerprint_key dependencies)"
-deps="$ENGINE_BUILD/products/dependencies-$deps_key"
-if [[ ! -f "$deps/.ready" ]]; then
-    mkdir -p "$deps"
-    Engine/build-dependencies "$ENGINE_UPSTREAM" "$deps" "$ENGINE_BUILD/dependencies-work/$deps_key" "$jobs"
-    touch "$deps/.ready"
-fi
-ln -sfn "$deps" "$ENGINE_BUILD/dependencies"
+prepare_dependencies() {
+    "$ENGINE_ROOT/Scripts/bootstrap-macos"
+    local deps_key
+    deps_key="$(fingerprint_key dependencies)"
+    deps="$ENGINE_BUILD/products/dependencies-$deps_key"
+    if [[ ! -f "$deps/.ready" ]]; then
+        mkdir -p "$deps"
+        Engine/build-dependencies "$ENGINE_UPSTREAM" "$deps" "$ENGINE_BUILD/dependencies-work/$deps_key" "$jobs"
+        touch "$deps/.ready"
+    fi
+    ln -sfn "$deps" "$ENGINE_BUILD/dependencies"
+}
 
-for variant in reference worker; do
+deps=''
+if ! $worker_only; then prepare_dependencies; fi
+
+for variant in "${variants[@]}"; do
+    name=openscad
+    [[ $variant != worker ]] || name=scadretto-engine
     folder="$ENGINE_BUILD/products/$variant-$(fingerprint_key "$variant")"
-    if [[ ! -f "$folder/.ready" ]]; then
+    product="$folder/product"
+    link="$ENGINE_BUILD/$variant"
+    [[ -L "$link" || ! -e "$link" ]] ||
+        engine_fail "Cannot publish $variant over $link. Move the prebuilt runtime or pass its path as SCADRETTO_WORKER_PRODUCT to Scripts/build.sh."
+    if [[ ! -f "$folder/.ready" || ! -x "$product/bin/$name" || ! -d "$product/Frameworks" ||
+          ! -f "$product/Resources/fonts/fonts.conf" ]]; then
+        printf 'Building the pinned %s engine. A first build can take several minutes.\n' "$variant"
+        if [[ -z $deps ]]; then prepare_dependencies; fi
         mkdir -p "$folder"
+        rm -f "$folder/.ready"
         source_tree="$ENGINE_UPSTREAM"
         if [[ $variant == worker ]]; then
             source_tree="$folder/source"
@@ -85,8 +120,6 @@ for variant in reference worker; do
             -DCMAKE_REQUIRE_FIND_PACKAGE_Lib3MF=OFF -DCMAKE_DISABLE_FIND_PACKAGE_Lib3MF=ON
         cmake --build "$folder/build" --target OpenSCADExe --parallel "$jobs"
 
-        name=openscad
-        [[ $variant != worker ]] || name=scadretto-engine
         install -d "$folder/product/bin" "$folder/product/Resources" "$folder/product/Frameworks"
         cp "$folder/build/openscad" "$folder/product/bin/$name"
         cp -R "$source_tree/color-schemes" "$folder/product/Resources/"
@@ -108,7 +141,10 @@ for variant in reference worker; do
             "$folder/product/Frameworks" "$ENGINE_MACOS_TARGET"
         fingerprint "$variant" > "$folder/toolchain.txt"
         touch "$folder/.ready"
+    elif $worker_only; then
+        printf 'Using the cached OpenSCAD worker.\n'
     fi
-    ln -sfn "$folder/product" "$ENGINE_BUILD/$variant"
-    printf '%s engine: %s\n' "$variant" "$folder/product"
+    ln -sfn "$product" "$link"
+    printf '%s engine: %s\n' "$variant" "$product"
+    if $worker_only; then printf '%s\n' "$product" >&3; fi
 done
