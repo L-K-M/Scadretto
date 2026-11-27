@@ -16,7 +16,7 @@ display string.
 
 OpenSCAD's pinned macOS bundle declares the `.scad` extension and gives
 no exported type identifier. Scadretto imports
-`com.lkm.scadretto.scad`, conforming to `public.source-code`, with the
+`ch.lkmc.scadretto.scad`, conforming to `public.source-code`, with the
 Editor role and Alternate handler rank. The native document controller
 owns opening, safe save, Save As and Revert. The M1 shell saved only on
 request; M5 turns on autosave in place once the disk checks below exist.

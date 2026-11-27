@@ -17,7 +17,7 @@
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.lkm.scadretto.scad</string>
+				<string>ch.lkmc.scadretto.scad</string>
 			</array>
 			<key>NSDocumentClass</key>
 			<string>ScadrettoDocument</string>
@@ -49,7 +49,7 @@
 			<key>UTTypeDescription</key>
 			<string>OpenSCAD Source</string>
 			<key>UTTypeIdentifier</key>
-			<string>com.lkm.scadretto.scad</string>
+			<string>ch.lkmc.scadretto.scad</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>

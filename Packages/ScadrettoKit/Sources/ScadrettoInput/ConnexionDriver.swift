@@ -104,7 +104,7 @@ final class ConnexionDriverBackend: ThreeDMouseBackend {
     private static let allControls: UInt32 = 0x3FFF
     private static let allButtons: UInt32 = 0xFFFF_FFFF
     private static let clientName = "Scadretto"
-    private static let log = Logger(subsystem: "com.lkm.Scadretto", category: "3DMouse")
+    private static let log = Logger(subsystem: "ch.lkmc.Scadretto", category: "3DMouse")
 
     /// The backend that receives the driver's callbacks, which carry no context.
     private static weak var current: ConnexionDriverBackend?

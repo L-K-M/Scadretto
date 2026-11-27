@@ -138,4 +138,10 @@ jobs:
         run: |
           xcodebuild -project Scadretto.xcodeproj -scheme Scadretto \
             -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO \
-            build-for-testing
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" build-for-testing
+          app="$RUNNER_TEMP/DerivedData/Build/Products/Debug/Scadretto.app"
+          test -d "$app" || { echo "expected app bundle not found at $app" >&2; exit 1; }
+          /usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Contents/Info.plist" |
+            grep -qx 'ch.lkmc.Scadretto'
+          /usr/libexec/PlistBuddy -c 'Print UTImportedTypeDeclarations' "$app/Contents/Info.plist" |
+            grep -q 'UTTypeIdentifier = ch.lkmc.scadretto.scad'
