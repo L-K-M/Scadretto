@@ -1,5 +1,10 @@
 # Scadretto
 
+> [!IMPORTANT]
+> LLM disclosure: This codebase was written with substantial help from large language models: AI coding agents working from the [`AGENTS.md`](AGENTS.md) brief in this repo.
+
+**Latest release:** v<!-- version -->0.1.0<!-- /version --> · [Download](https://github.com/L-K-M/Scadretto/releases/latest)
+
 A native macOS editor for handwritten OpenSCAD: a code editor and a visual
 CAD editor driven by one source document. Click a feature in the model,
 edit its controlling expression, and review the minimal diff in the
@@ -23,3 +28,7 @@ editor, milestones and verification.
 
 Targets: macOS 14+, arm64, Swift/AppKit + MetalKit, with an
 out-of-process pinned OpenSCAD build as the geometry engine.
+
+## License
+
+Scadretto's own code and documentation are released into the public domain under the [Unlicense](LICENSE). The pinned OpenSCAD engine, its dependencies, and Swift Package Manager dependencies keep their own licenses and notices; distribution builds must carry the attribution and corresponding-source materials required by `plan/06-Verification-and-Release.md`.
