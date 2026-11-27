@@ -52,6 +52,12 @@ SCADRETTO_WORKER_PRODUCT="$cwd/supplied worker" Scripts/build.sh --clean
 printf 'app --no-reveal --clean (%s/supplied worker)\n' "$cwd" | diff - "$TRACE"
 
 : > "$TRACE"
+mkdir -p .build/engine/worker
+Scripts/build.sh --debug
+printf 'app --no-reveal --debug (%s/.build/engine/worker)\n' "$cwd" | diff - "$TRACE"
+rmdir .build/engine/worker
+
+: > "$TRACE"
 status=0
 FAIL_ENGINE=1 Scripts/build.sh --debug || status=$?
 test "$status" -eq 42

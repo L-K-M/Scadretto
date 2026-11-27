@@ -18,10 +18,12 @@ Scripts/build.sh --debug
 
 The wrapper fetches and builds the pinned OpenSCAD worker on demand, then
 bundles it using the shared `Scadretto` Xcode scheme. It reuses the runtime
-in `.build/engine/` when the pinned inputs and toolchain match. `--check`
+in `.build/engine/` when the pinned inputs and toolchain match. The first
+build can take several minutes. `--check`
 prints the app build configuration without preparing the engine. `--clean`
 resets the default app build directory and keeps the engine cache.
-Set `SCADRETTO_WORKER_PRODUCT` to the path of a prebuilt runtime to use it.
+The wrapper also accepts a CI runtime restored to `.build/engine/worker`
+or a prebuilt runtime selected with `SCADRETTO_WORKER_PRODUCT`.
 If Xcode reports that its Metal toolchain is missing, install it with
 `xcodebuild -downloadComponent MetalToolchain`.
 

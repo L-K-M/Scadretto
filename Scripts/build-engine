@@ -11,18 +11,9 @@ if [[ $# != 0 ]]; then
     esac
 fi
 
-# In worker-only mode stdout returns the selected product path to build.sh.
-if $worker_only; then exec 3>&1 1>&2; fi
-
 # shellcheck source=Engine/build-common.sh
 source "$(dirname "$0")/../Engine/build-common.sh"
 engine_tools
-
-# Make the shared cache safe when two app or verification builds overlap.
-# macOS holds this lock on the open file description until the last close.
-mkdir -p "$ENGINE_BUILD"
-exec 9>>"$ENGINE_BUILD/build.lock"
-python3 -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX)'
 
 jobs=${SCADRETTO_ENGINE_JOBS:-$(sysctl -n hw.ncpu)}
 [[ $jobs =~ ^[1-9][0-9]*$ ]] || engine_fail "SCADRETTO_ENGINE_JOBS must be a positive integer."
@@ -43,11 +34,12 @@ fingerprint() {
         "$tool" --version
     done
     printf '%s\n' "$SDKROOT" "$(uname -m)" "$MACOSX_DEPLOYMENT_TARGET" "$variant"
-    shasum -a 256 Tests/Engine/solid-difference.cc Engine/upstream.lock Engine/build-common.sh Engine/build-dependencies \
-        Engine/dependencies.lock Engine/package-runtime.py Engine/fonts.conf Scripts/build-engine
-    if [[ $variant == worker ]]; then
-        shasum -a 256 Engine/patches/*.patch
-    fi
+    shasum -a 256 Engine/upstream.lock Engine/build-common.sh Engine/build-dependencies Engine/dependencies.lock
+    case $variant in
+        dependencies) ;;
+        reference) shasum -a 256 Scripts/build-engine Engine/package-runtime.py Engine/fonts.conf Tests/Engine/solid-difference.cc ;;
+        worker) shasum -a 256 Scripts/build-engine Engine/package-runtime.py Engine/fonts.conf Engine/patches/*.patch ;;
+    esac
 }
 fingerprint_key() {
     fingerprint "$1" | shasum -a 256 | cut -d ' ' -f 1
@@ -66,85 +58,113 @@ prepare_dependencies() {
     ln -sfn "$deps" "$ENGINE_BUILD/dependencies"
 }
 
-deps=''
-if ! $worker_only; then prepare_dependencies; fi
+build_variants() (
+    # Child tools can leave background processes (for example Git's fsmonitor).
+    # Keep the lock and worker-only result pipe in the parent shell.
+    exec 9>&-
+    if $worker_only; then exec 1>&2; fi
 
-for variant in "${variants[@]}"; do
-    name=openscad
-    [[ $variant != worker ]] || name=scadretto-engine
-    folder="$ENGINE_BUILD/products/$variant-$(fingerprint_key "$variant")"
-    product="$folder/product"
-    link="$ENGINE_BUILD/$variant"
-    [[ -L "$link" || ! -e "$link" ]] ||
-        engine_fail "Cannot publish $variant over $link. Move the prebuilt runtime or pass its path as SCADRETTO_WORKER_PRODUCT to Scripts/build.sh."
-    if [[ ! -f "$folder/.ready" || ! -x "$product/bin/$name" || ! -d "$product/Frameworks" ||
-          ! -f "$product/Resources/fonts/fonts.conf" ]]; then
-        printf 'Building the pinned %s engine. A first build can take several minutes.\n' "$variant"
-        if [[ -z $deps ]]; then prepare_dependencies; fi
-        mkdir -p "$folder"
-        rm -f "$folder/.ready"
-        source_tree="$ENGINE_UPSTREAM"
-        if [[ $variant == worker ]]; then
-            source_tree="$folder/source"
-            if [[ ! -d "$source_tree/.git" ]]; then
-                # Publish the patched checkout only after cloning and replay
-                # succeed. A stopped git am cannot poison a later build.
-                (
-                    pending="$(mktemp -d "$folder/.source.XXXXXXXX")"
-                    trap 'rm -rf "$pending"' EXIT
-                    git clone --quiet "$ENGINE_UPSTREAM" "$pending"
-                    git -C "$pending" submodule update --init --depth=1 -- \
-                        submodules/Clipper2 submodules/manifold submodules/sanitizers-cmake
-                    engine_validate_source "$pending"
-                    git -C "$pending" -c user.name=Scadretto \
-                        -c user.email=scadretto@users.noreply.github.com am "$ENGINE_ROOT"/Engine/patches/*.patch
-                    mv "$pending" "$source_tree"
-                )
+    deps=''
+    if ! $worker_only; then prepare_dependencies; fi
+
+    for variant in "${variants[@]}"; do
+        name=openscad
+        [[ $variant != worker ]] || name=scadretto-engine
+        folder="$ENGINE_BUILD/products/$variant-$(fingerprint_key "$variant")"
+        product="$folder/product"
+        link="$ENGINE_BUILD/$variant"
+        [[ -L "$link" || ! -e "$link" ]] ||
+            engine_fail "Cannot publish $variant over $link. Move the prebuilt runtime or pass its path as SCADRETTO_WORKER_PRODUCT to Scripts/build.sh."
+        if [[ ! -f "$folder/.ready" || ! -x "$product/bin/$name" || ! -d "$product/Frameworks" ||
+              ! -f "$product/Resources/fonts/fonts.conf" ]]; then
+            printf 'Building the pinned %s engine. A first build can take several minutes.\n' "$variant"
+            if [[ -z $deps ]]; then prepare_dependencies; fi
+            mkdir -p "$folder"
+            rm -f "$folder/.ready"
+            source_tree="$ENGINE_UPSTREAM"
+            if [[ $variant == worker ]]; then
+                source_tree="$folder/source"
+                if [[ ! -d "$source_tree/.git" ]]; then
+                    # Publish the patched checkout only after cloning and replay
+                    # succeed. A stopped git am cannot poison a later build.
+                    (
+                        pending="$(mktemp -d "$folder/.source.XXXXXXXX")"
+                        trap 'rm -rf "$pending"' EXIT
+                        git clone --quiet "$ENGINE_UPSTREAM" "$pending"
+                        git -C "$pending" submodule update --init --depth=1 -- \
+                            submodules/Clipper2 submodules/manifold submodules/sanitizers-cmake
+                        engine_validate_source "$pending"
+                        git -C "$pending" -c user.name=Scadretto \
+                            -c user.email=scadretto@users.noreply.github.com am "$ENGINE_ROOT"/Engine/patches/*.patch
+                        mv "$pending" "$source_tree"
+                    )
+                fi
+                engine_validate_submodules "$source_tree"
             fi
-            engine_validate_submodules "$source_tree"
-        fi
-        export PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig:$deps/share/pkgconfig"
-        export OPENSCAD_LIBRARIES="$deps"
-        unset PKG_CONFIG_PATH CMAKE_PREFIX_PATH CMAKE_LIBRARY_PATH CMAKE_INCLUDE_PATH
-        cmake -G Ninja -S "$source_tree" -B "$folder/build" \
-            -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_CXX_FLAGS="-I$deps/include" \
-            -DCMAKE_EXE_LINKER_FLAGS="-L$deps/lib -Wl,-headerpad_max_install_names" \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET="$ENGINE_MACOS_TARGET" -DCMAKE_OSX_SYSROOT="$SDKROOT" \
-            -DCMAKE_PREFIX_PATH="$deps" -DBOOST_ROOT="$deps" -DBoost_USE_STATIC_LIBS=ON \
-            -DOPENSSL_ROOT_DIR="$deps" -DOPENSSL_USE_STATIC_LIBS=ON \
-            -DBISON_EXECUTABLE="$(command -v bison)" -DFLEX_EXECUTABLE="$(command -v flex)" \
-            -DNULLGL=ON -DAPPLE_UNIX=ON -DENABLE_TESTS=OFF -DENABLE_CGAL=ON \
-            -DENABLE_MANIFOLD=ON -DMANIFOLD_PAR=OFF -DUSE_MIMALLOC=OFF -DUSE_CCACHE=OFF \
-            -DUSE_MANIFOLD_MINKOWSKI=ON -DENABLE_CAIRO=OFF \
-            -DCMAKE_REQUIRE_FIND_PACKAGE_Lib3MF=OFF -DCMAKE_DISABLE_FIND_PACKAGE_Lib3MF=ON
-        cmake --build "$folder/build" --target OpenSCADExe --parallel "$jobs"
+            export PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig:$deps/share/pkgconfig"
+            export OPENSCAD_LIBRARIES="$deps"
+            unset PKG_CONFIG_PATH CMAKE_PREFIX_PATH CMAKE_LIBRARY_PATH CMAKE_INCLUDE_PATH
+            cmake -G Ninja -S "$source_tree" -B "$folder/build" \
+                -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 \
+                -DCMAKE_CXX_FLAGS="-I$deps/include" \
+                -DCMAKE_EXE_LINKER_FLAGS="-L$deps/lib -Wl,-headerpad_max_install_names" \
+                -DCMAKE_OSX_DEPLOYMENT_TARGET="$ENGINE_MACOS_TARGET" -DCMAKE_OSX_SYSROOT="$SDKROOT" \
+                -DCMAKE_PREFIX_PATH="$deps" -DBOOST_ROOT="$deps" -DBoost_USE_STATIC_LIBS=ON \
+                -DOPENSSL_ROOT_DIR="$deps" -DOPENSSL_USE_STATIC_LIBS=ON \
+                -DBISON_EXECUTABLE="$(command -v bison)" -DFLEX_EXECUTABLE="$(command -v flex)" \
+                -DNULLGL=ON -DAPPLE_UNIX=ON -DENABLE_TESTS=OFF -DENABLE_CGAL=ON \
+                -DENABLE_MANIFOLD=ON -DMANIFOLD_PAR=OFF -DUSE_MIMALLOC=OFF -DUSE_CCACHE=OFF \
+                -DUSE_MANIFOLD_MINKOWSKI=ON -DENABLE_CAIRO=OFF \
+                -DCMAKE_REQUIRE_FIND_PACKAGE_Lib3MF=OFF -DCMAKE_DISABLE_FIND_PACKAGE_Lib3MF=ON
+            cmake --build "$folder/build" --target OpenSCADExe --parallel "$jobs"
 
-        install -d "$folder/product/bin" "$folder/product/Resources" "$folder/product/Frameworks"
-        cp "$folder/build/openscad" "$folder/product/bin/$name"
-        cp -R "$source_tree/color-schemes" "$folder/product/Resources/"
-        install -d "$folder/product/Resources/fonts" "$folder/product/Resources/libraries"
-        cp -R "$source_tree/fonts/Liberation-2.00.1" "$folder/product/Resources/fonts/"
-        cp Engine/fonts.conf "$folder/product/Resources/fonts/"
-        if [[ $variant == reference ]]; then
-            "$CXX" -std=c++17 -O2 -arch arm64 -mmacosx-version-min="$ENGINE_MACOS_TARGET" \
-                -I"$source_tree/submodules/manifold/include" \
-                -I"$folder/build/submodules/manifold/include" Tests/Engine/solid-difference.cc \
-                "$folder/build/submodules/manifold/src/libmanifold.a" \
-                "$folder/build/submodules/Clipper2/CPP/libClipper2.a" \
-                -o "$folder/product/bin/solid-difference"
-            cp "$deps/bin/fc-cache" "$folder/product/bin/fc-cache"
-            python3 Engine/package-runtime.py "$folder/product/bin/fc-cache" "$deps" \
+            install -d "$folder/product/bin" "$folder/product/Resources" "$folder/product/Frameworks"
+            cp "$folder/build/openscad" "$folder/product/bin/$name"
+            cp -R "$source_tree/color-schemes" "$folder/product/Resources/"
+            install -d "$folder/product/Resources/fonts" "$folder/product/Resources/libraries"
+            cp -R "$source_tree/fonts/Liberation-2.00.1" "$folder/product/Resources/fonts/"
+            cp Engine/fonts.conf "$folder/product/Resources/fonts/"
+            if [[ $variant == reference ]]; then
+                "$CXX" -std=c++17 -O2 -arch arm64 -mmacosx-version-min="$ENGINE_MACOS_TARGET" \
+                    -I"$source_tree/submodules/manifold/include" \
+                    -I"$folder/build/submodules/manifold/include" Tests/Engine/solid-difference.cc \
+                    "$folder/build/submodules/manifold/src/libmanifold.a" \
+                    "$folder/build/submodules/Clipper2/CPP/libClipper2.a" \
+                    -o "$folder/product/bin/solid-difference"
+                cp "$deps/bin/fc-cache" "$folder/product/bin/fc-cache"
+                python3 Engine/package-runtime.py "$folder/product/bin/fc-cache" "$deps" \
+                    "$folder/product/Frameworks" "$ENGINE_MACOS_TARGET"
+            fi
+            python3 Engine/package-runtime.py "$folder/product/bin/$name" "$deps" \
                 "$folder/product/Frameworks" "$ENGINE_MACOS_TARGET"
+            fingerprint "$variant" > "$folder/toolchain.txt"
+            touch "$folder/.ready"
+        elif $worker_only; then
+            printf 'Using the cached OpenSCAD worker.\n'
         fi
-        python3 Engine/package-runtime.py "$folder/product/bin/$name" "$deps" \
-            "$folder/product/Frameworks" "$ENGINE_MACOS_TARGET"
-        fingerprint "$variant" > "$folder/toolchain.txt"
-        touch "$folder/.ready"
-    elif $worker_only; then
-        printf 'Using the cached OpenSCAD worker.\n'
-    fi
-    ln -sfn "$product" "$link"
-    printf '%s engine: %s\n' "$variant" "$product"
-    if $worker_only; then printf '%s\n' "$product" >&3; fi
-done
+        if [[ ! -L "$link" || $(readlink "$link") != "$product" ]]; then
+            ln -sfn "$product" "$link"
+        fi
+        printf '%s engine: %s\n' "$variant" "$product"
+    done
+)
+
+# macOS holds the lock on the open file description until the last close.
+mkdir -p "$ENGINE_BUILD"
+exec 9>>"$ENGINE_BUILD/build.lock"
+python3 - <<'LOCK_PY'
+import fcntl
+import sys
+
+try:
+    fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    print("Waiting for another OpenSCAD engine build in this checkout.", file=sys.stderr)
+    fcntl.flock(9, fcntl.LOCK_EX)
+LOCK_PY
+
+build_variants
+if $worker_only; then
+    cd "$ENGINE_BUILD/worker"
+    pwd -P
+fi
