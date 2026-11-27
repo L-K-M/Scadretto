@@ -146,9 +146,9 @@ problem() { log "PROBLEM: $*"; problems=$((problems + 1)); }
 version_le() { [[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" == "$1" ]]; }
 bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Contents/Info.plist" 2>/dev/null || true)
 [[ $bundle_id == ch.lkmc.Scadretto ]] || problem "the app bundle identifier is ${bundle_id:-missing}"
-type_id=$(/usr/libexec/PlistBuddy -c 'Print UTImportedTypeDeclarations:0:UTTypeIdentifier' \
-  "$app/Contents/Info.plist" 2>/dev/null || true)
-[[ $type_id == ch.lkmc.scadretto.scad ]] || problem "the OpenSCAD type identifier is ${type_id:-missing}"
+type_id=$(/usr/libexec/PlistBuddy -c 'Print UTImportedTypeDeclarations' \
+  "$app/Contents/Info.plist" 2>/dev/null | awk -F' = ' '/UTTypeIdentifier/ { print $2 }' | grep -x 'ch.lkmc.scadretto.scad' || true)
+[[ $type_id == ch.lkmc.scadretto.scad ]] || problem 'the OpenSCAD type identifier is missing from UTImportedTypeDeclarations'
 # The signed entitlement keys, space separated. Plain `codesign -d --entitlements -` prints a
 # [Key] listing, and --xml prints the plist on one line, so read the keys from the XML.
 entitlement_keys() {
