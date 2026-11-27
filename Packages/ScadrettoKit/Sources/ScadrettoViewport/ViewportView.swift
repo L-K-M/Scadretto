@@ -1,5 +1,7 @@
 import AppKit
+import Carbon.HIToolbox
 import MetalKit
+import QuartzCore
 import simd
 
 /// Errors thrown when `ViewportView` cannot build its render state.
@@ -58,6 +60,20 @@ public enum ViewportShader {
 /// camera across reevaluations"; only the first non-empty mesh auto-frames.
 @MainActor
 public final class ViewportView: MTKView {
+    public struct Comparison {
+        public let property: String
+        public let before: String
+        public let after: String
+        public let anchor: SIMD3<Double>?
+
+        public init(property: String, before: String, after: String, anchor: SIMD3<Double>?) {
+            self.property = property
+            self.before = before
+            self.after = after
+            self.anchor = anchor
+        }
+    }
+
     public struct PresentedFrame: Sendable {
         public let sceneID: UUID
         public let transform: ViewportTransform
@@ -123,6 +139,22 @@ public final class ViewportView: MTKView {
     private var diameterGuides: [ViewportDiameterGuide] = []
     private var linearGuides: [ViewportLinearGuide] = []
     private var handleDragState: HandleDrag?
+    private let caliper = CaliperOverlay(frame: .zero)
+    private var receiptTask: Task<Void, Never>?
+    private let comparisonOverlay = ComparisonCutOverlay(frame: .zero)
+    private var comparison: Comparison?
+    private var comparisonBounds: ViewportBounds?
+    private var comparisonOrigin = SIMD3<Double>.zero
+    private var comparisonSweep: Task<Void, Never>?
+    private weak var comparisonReturnFocus: NSResponder?
+    private var spaceMonitor: Any?
+    private var spaceHeld = false
+    public var canCompare: Bool { comparison != nil && !isSceneStale }
+    public private(set) var isComparisonPinned = false
+    public var isComparing: Bool { canCompare && (isComparisonPinned || spaceHeld) }
+    public var onComparisonChange: (() -> Void)?
+    public var onOverlayGeometryChange: (() -> Void)?
+    public var caliperCaption = "Dimension"
     private var navigationMotion = ViewportMotion.zero
     private var navigationLink: CADisplayLink?
     private var lastNavigationTime: CFTimeInterval?
@@ -133,7 +165,7 @@ public final class ViewportView: MTKView {
     /// presented frame. Measurements set it; drawing does not depend on it.
     public var onFramePresented: ((UUID?, CFTimeInterval) -> Void)?
     public var onEditPreview: ((Double?) -> Void)?
-    public var onEditCommit: ((UUID, UUID, Double) -> Void)?
+    public var onEditCommit: ((UUID, UUID, Double) -> Bool)?
     public var dragSnapIncrement: Double = 0 {
         didSet {
             if dragSnapIncrement != oldValue { cancelHandleDrag() }
@@ -178,6 +210,24 @@ public final class ViewportView: MTKView {
         isPaused = true
         enableSetNeedsDisplay = true
         delegate = self
+        caliper.frame = bounds
+        caliper.autoresizingMask = [.width, .height]
+        caliper.isHidden = true
+        caliper.setAccessibilityElement(true)
+        caliper.setAccessibilityRole(.staticText)
+        caliper.setAccessibilityLabel("Caliper")
+        caliper.setAccessibilityIdentifier("caliperReading")
+        addSubview(caliper)
+        comparisonOverlay.frame = bounds
+        comparisonOverlay.autoresizingMask = [.width, .height]
+        comparisonOverlay.isHidden = true
+        comparisonOverlay.onPosition = { [weak self] _ in
+            self?.stopComparisonSweep()
+            self?.needsDisplay = true
+        }
+        comparisonOverlay.onTogglePin = { [weak self] in self?.toggleComparisonPin() }
+        comparisonOverlay.onDismiss = { [weak self] in self?.dismissComparison() }
+        addSubview(comparisonOverlay)
     }
 
     @available(*, unavailable, message: "Create ViewportView with init(device:library:frame:)")
@@ -196,6 +246,8 @@ public final class ViewportView: MTKView {
 
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        removeSpaceMonitor()
+        if spaceHeld { endTemporaryComparison() }
         if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
         occlusionObserver = nil
         // A display link follows one window's screen; the motion carries over to the new window.
@@ -222,15 +274,21 @@ public final class ViewportView: MTKView {
     /// camera and axes so navigation still works on a failed evaluation.
     /// The camera is preserved across revisions; the first non-empty mesh
     /// frames itself so a model is visible without a `frameAll` call.
-    public func setMesh(_ prepared: ViewportMeshUpload?, sceneID: UUID? = nil) {
+    public func setMesh(_ prepared: ViewportMeshUpload?, sceneID: UUID? = nil, comparison: Comparison? = nil) {
+        dismissComparison()
+        self.comparison = comparison
+        comparisonBounds = comparison == nil ? nil : upload.bounds
+        comparisonOrigin = upload.renderOrigin
         upload = prepared ?? ViewportMeshUpload(mesh: ViewportMesh(positions: [], indices: []))
         self.sceneID = sceneID
         invalidatePresentation()
-        renderer.upload(upload)
+        renderer.upload(upload, retainPrevious: comparison != nil)
         renderer.uploadGhost(nil)
         if !hasAutoFramed { frameAll() }
         isSceneStale = false
         needsDisplay = true
+        onComparisonChange?()
+        onOverlayGeometryChange?()
     }
 
     /// Frames the whole scene in the current view, keeping the camera's
@@ -251,9 +309,17 @@ public final class ViewportView: MTKView {
     /// Marks or clears the stale-scene styling.
     public func setSceneStale(_ stale: Bool) {
         guard stale != isSceneStale else { return }
+        if stale { dismissComparison() }
         isSceneStale = stale
-        if stale { invalidatePresentation() }
+        if stale {
+            comparison = nil
+            comparisonBounds = nil
+            renderer.clearComparison()
+            invalidatePresentation()
+        }
         needsDisplay = true
+        onComparisonChange?()
+        onOverlayGeometryChange?()
     }
 
     private func invalidatePresentation() {
@@ -266,10 +332,121 @@ public final class ViewportView: MTKView {
     }
 
     private func projectionDidChange() {
+        clearCaliper()
         pressedFrame = nil
         cancelHandleDrag()
         resetPresentationRetry()
         needsDisplay = true
+        onOverlayGeometryChange?()
+    }
+
+    @discardableResult
+    public func toggleComparisonPin() -> Bool {
+        guard canCompare, handleDragState == nil else { return false }
+        let wasComparing = isComparing
+        isComparisonPinned.toggle()
+        updateComparisonVisibility(wasComparing: wasComparing)
+        if isComparing { window?.makeFirstResponder(comparisonOverlay) }
+        return true
+    }
+
+    public func endTemporaryComparison() {
+        guard spaceHeld else { return }
+        let wasComparing = isComparing
+        spaceHeld = false
+        removeSpaceMonitor()
+        updateComparisonVisibility(wasComparing: wasComparing)
+    }
+
+    private func beginTemporaryComparison() {
+        guard canCompare, !spaceHeld, handleDragState == nil, !activeButton else { return }
+        let wasComparing = isComparing
+        spaceHeld = true
+        // The divider can take focus while Space is held. Track its release even then.
+        spaceMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyUp) { [weak self] event in
+            guard let self, event.keyCode == kVK_Space else { return event }
+            endTemporaryComparison()
+            return nil
+        }
+        updateComparisonVisibility(wasComparing: wasComparing)
+        window?.makeFirstResponder(comparisonOverlay)
+    }
+
+    private func removeSpaceMonitor() {
+        if let spaceMonitor { NSEvent.removeMonitor(spaceMonitor) }
+        spaceMonitor = nil
+    }
+
+    private func dismissComparison() {
+        let wasComparing = isComparing
+        isComparisonPinned = false
+        spaceHeld = false
+        removeSpaceMonitor()
+        updateComparisonVisibility(wasComparing: wasComparing)
+    }
+
+    private func updateComparisonVisibility(wasComparing: Bool) {
+        // Hiding the view lets AppKit reassign its focus immediately.
+        let responder = window?.firstResponder as? NSView
+        let dividerHadFocus = responder.map {
+            $0 === comparisonOverlay || $0.isDescendant(of: comparisonOverlay)
+        } ?? false
+        comparisonOverlay.isPinned = isComparisonPinned
+        comparisonOverlay.isHidden = !isComparing
+        onComparisonChange?()
+        guard wasComparing != isComparing else { return }
+        if isComparing, let comparison {
+            comparisonReturnFocus = responder
+            clearCaliper()
+            cancelHandleDrag()
+            pressedFrame = nil
+            comparisonOverlay.propertyName = comparison.property
+            comparisonOverlay.beforeLabel = comparison.before
+            comparisonOverlay.afterLabel = comparison.after
+            comparisonOverlay.toolTip = "Compare \(comparison.property). Drag the divider or use the arrow keys."
+            let projected = comparison.anchor.flatMap { viewportTransform().project($0) }
+            let position = projected.flatMap { (0...1).contains($0.z) ? $0.x : nil }
+            let target = min(max((position ?? bounds.midX) / max(bounds.width, 1), 0.10), 0.90)
+            revealComparison(at: target)
+        } else {
+            stopComparisonSweep()
+            if dividerHadFocus {
+                let previous = comparisonReturnFocus as? NSView
+                if let previous, previous.window === window, !previous.isHiddenOrHasHiddenAncestor {
+                    if window?.makeFirstResponder(previous) != true { window?.makeFirstResponder(self) }
+                } else {
+                    window?.makeFirstResponder(self)
+                }
+            }
+            comparisonReturnFocus = nil
+        }
+        needsDisplay = true
+        onOverlayGeometryChange?()
+    }
+
+    private func revealComparison(at target: CGFloat) {
+        stopComparisonSweep()
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            comparisonOverlay.fraction = target
+            return
+        }
+        comparisonOverlay.fraction = 0
+        let start = CACurrentMediaTime()
+        comparisonSweep = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let elapsed = min((CACurrentMediaTime() - start) / 0.18, 1)
+                comparisonOverlay.fraction = target * (1 - pow(1 - elapsed, 3))
+                needsDisplay = true
+                if elapsed == 1 { return }
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+        }
+    }
+
+    private func stopComparisonSweep() {
+        comparisonSweep?.cancel()
+        comparisonSweep = nil
     }
 
     public func showDiameter(handle: ViewportDiameterHandle?, guides: [ViewportDiameterGuide]) {
@@ -374,16 +551,23 @@ public final class ViewportView: MTKView {
 
     public override func mouseDown(with event: NSEvent) {
         // A drag still held here lost its release, and only a release commits.
+        clearCaliper()
         cancelHandleDrag()
-        pressedFrame = presentedFrame
+        pressedFrame = isComparing ? nil : presentedFrame
         mouseDownPoint = viewPoint(for: event)
         lastDragPoint = mouseDownPoint
         activeButton = true
+        if isComparing {
+            window?.makeFirstResponder(comparisonOverlay)
+            return
+        }
+        window?.makeFirstResponder(self)
         guard presentationIsCurrent, let frame = pressedFrame, let handle = frame.editHandle,
               let point = mouseDownPoint, handle.contains(point, in: frame.transform),
               let start = handle.coordinate(at: point, in: frame.transform) else { return }
         handleDragState = HandleDrag(frame: frame, handle: handle, startCoordinate: start)
-        window?.makeFirstResponder(self)
+        updateCaliper(for: handle, in: frame.transform, value: nil)
+        onOverlayGeometryChange?()
     }
 
     public override func rightMouseDown(with event: NSEvent) {
@@ -422,8 +606,17 @@ public final class ViewportView: MTKView {
             if let drag = handleDragState, let value = drag.value,
                let current = presentedFrame, current.sceneID == drag.frame.sceneID,
                current.mapping == drag.frame.mapping, editHandle?.id == drag.handle.id {
+                let reading = caliper.reading
                 cancelHandleDrag()
-                onEditCommit?(current.sceneID, drag.handle.id, value)
+                if onEditCommit?(current.sceneID, drag.handle.id, value) == true, var reading {
+                    reading.recorded = true
+                    caliper.reading = reading
+                    receiptTask = Task { [weak self] in
+                        try? await Task.sleep(for: .milliseconds(750))
+                        guard !Task.isCancelled else { return }
+                        self?.clearCaliper()
+                    }
+                }
             } else {
                 cancelHandleDrag()
             }
@@ -456,32 +649,88 @@ public final class ViewportView: MTKView {
     public override var acceptsFirstResponder: Bool { true }
 
     public override func keyDown(with event: NSEvent) {
-        guard handleDragState != nil, event.charactersIgnoringModifiers == "\u{1b}" else {
-            super.keyDown(with: event)
+        if event.charactersIgnoringModifiers == "\u{1b}" {
+            if handleDragState != nil {
+                cancelHandleDrag()
+                return
+            }
+            if isComparing {
+                dismissComparison()
+                return
+            }
+        }
+        if event.keyCode == kVK_Space, canCompare, event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
+            if !event.isARepeat { beginTemporaryComparison() }
             return
         }
-        cancelHandleDrag()
+        super.keyDown(with: event)
     }
 
     private func updateHandleDrag(at point: CGPoint) {
         guard var drag = handleDragState else { return }
+        let previousValue = drag.value
         drag.value = drag.handle.coordinate(at: point, in: drag.frame.transform).flatMap { end in
             drag.handle.value(from: drag.startCoordinate, to: end, snap: dragSnapIncrement)
         }
         handleDragState = drag
+        if dragSnapIncrement > 0, let value = drag.value, value != previousValue {
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
+        updateCaliper(for: drag.handle, in: drag.frame.transform, value: drag.value)
         onEditPreview?(drag.value)
         needsDisplay = true
+        onOverlayGeometryChange?()
     }
 
     private func cancelHandleDrag() {
         guard handleDragState != nil else { return }
         handleDragState = nil
+        clearCaliper()
         pressedFrame = nil
         mouseDownPoint = nil
         lastDragPoint = nil
         activeButton = false
         onEditPreview?(nil)
         needsDisplay = true
+        onOverlayGeometryChange?()
+    }
+
+    public var handleDragValue: Double? { handleDragState?.value }
+    public var isDraggingHandle: Bool { handleDragState != nil }
+
+    private func clearCaliper() {
+        receiptTask?.cancel()
+        receiptTask = nil
+        caliper.reading = nil
+    }
+
+    private func updateCaliper(for handle: ViewportEditHandle, in transform: ViewportTransform, value: Double?) {
+        let baseline: Double
+        let before: SIMD3<Double>
+        let after: SIMD3<Double>
+        switch handle {
+        case .diameter(let radial):
+            baseline = radial.diameter
+            before = radial.rim(at: baseline)
+            after = radial.rim(at: value ?? baseline)
+        case .linear(let linear):
+            baseline = linear.value
+            before = linear.anchor
+            after = linear.point(for: value ?? baseline)
+        }
+        guard let origin = transform.project(before), let tip = transform.project(after),
+              (0...1).contains(origin.z), (0...1).contains(tip.z),
+              origin.x.isFinite, origin.y.isFinite, tip.x.isFinite, tip.y.isFinite else {
+            caliper.reading = nil
+            return
+        }
+        let inset = bounds.insetBy(dx: 5, dy: 5)
+        let visibleTip = CGPoint(x: min(max(tip.x, inset.minX), inset.maxX),
+                                 y: min(max(tip.y, inset.minY), inset.maxY))
+        caliper.reading = CaliperOverlay.Reading(origin: CGPoint(x: origin.x, y: origin.y),
+                                                 tip: visibleTip,
+                                                 baseline: baseline, proposal: value ?? baseline,
+                                                 caption: caliperCaption)
     }
 
     /// Scroll mapping per the contract: imprecise deltas (mouse wheel) zoom
@@ -599,8 +848,10 @@ public final class ViewportView: MTKView {
 
 extension ViewportView: MTKViewDelegate {
     public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        clearCaliper()
         invalidatePresentation()
         view.needsDisplay = true
+        onOverlayGeometryChange?()
     }
 
     public func draw(in view: MTKView) {
@@ -609,9 +860,18 @@ extension ViewportView: MTKViewDelegate {
               let descriptor = currentRenderPassDescriptor,
               bounds.width > 0, bounds.height > 0 else { return }
         let transform = viewportTransform()
+        let cut: ViewportRenderer.Cut?
+        if isComparing {
+            let projection = ViewportComparisonProjection(camera: camera, viewSize: bounds.size,
+                                                          orthographic: orthographic, beforeOrigin: comparisonOrigin,
+                                                          beforeBounds: comparisonBounds, after: upload)
+            cut = ViewportRenderer.Cut(fraction: comparisonOverlay.fraction, projection: projection)
+        } else {
+            cut = nil
+        }
         let handle = isSceneStale ? nil : editHandle
         let overlay: [ViewportVertex]
-        switch handle {
+        switch isComparing ? nil : handle {
         case .diameter(let radial):
             overlay = diameterOverlay(handle: radial, guides: diameterGuides,
                                       diameter: handleDragState?.value ?? radial.diameter, transform: transform)
@@ -646,7 +906,8 @@ extension ViewportView: MTKViewDelegate {
             showsEdges: showsEdges,
             showsAxes: showsAxes,
             stale: isSceneStale,
-            overlay: overlay
+            overlay: overlay,
+            cut: cut
         )
     }
 }
@@ -666,6 +927,17 @@ struct ViewportUniforms {
 /// every call site is on the main actor.
 @MainActor
 final class ViewportRenderer {
+    struct Cut {
+        let fraction: CGFloat
+        let projection: ViewportComparisonProjection
+    }
+
+    private struct MeshBuffers {
+        let vertices: MTLBuffer
+        let indices: MTLBuffer
+        let count: Int
+    }
+
     private let device: MTLDevice
     private let queue: MTLCommandQueue
     private let shadedPipeline: MTLRenderPipelineState
@@ -674,12 +946,10 @@ final class ViewportRenderer {
     private let linePipeline: MTLRenderPipelineState
     private let depthState: MTLDepthStencilState
     private let overlayDepthState: MTLDepthStencilState
-    private var vertexBuffer: MTLBuffer?
-    private var indexBuffer: MTLBuffer?
-    private var indexCount = 0
-    private var ghost: (vertices: MTLBuffer, indices: MTLBuffer, count: Int)?
+    private var mesh: MeshBuffers?
+    private var previousMesh: MeshBuffers?
+    private var ghost: MeshBuffers?
     private var axesBuffer: MTLBuffer?
-    private var axesLength = 0.0
 
     init(device: MTLDevice, library: MTLLibrary) throws {
         self.device = device
@@ -744,44 +1014,40 @@ final class ViewportRenderer {
 
     /// Rebuilds GPU buffers for an accepted mesh revision. An empty upload
     /// clears the scene. Also sizes the axis overlay to the scene.
-    func upload(_ upload: ViewportMeshUpload) {
-        indexCount = upload.indices.count
-        if upload.vertexData.isEmpty || upload.indices.isEmpty {
-            vertexBuffer = nil
-            indexBuffer = nil
-            indexCount = 0
-        } else {
-            vertexBuffer = upload.vertexData.withUnsafeBytes { bytes in
-                device.makeBuffer(bytes: bytes.baseAddress!, length: bytes.count, options: .storageModeShared)
-            }
-            indexBuffer = upload.indices.withUnsafeBytes { bytes in
-                device.makeBuffer(bytes: bytes.baseAddress!, length: bytes.count, options: .storageModeShared)
-            }
-        }
+    func upload(_ upload: ViewportMeshUpload, retainPrevious: Bool) {
+        previousMesh = retainPrevious ? mesh : nil
+        mesh = makeBuffers(upload)
 
-        axesLength = max(upload.sceneRadius * 1.25, 1)
+        let axesLength = max(upload.sceneRadius * 1.25, 1)
         axesBuffer = ViewportMeshUpload.axesVertexData(length: axesLength, renderOrigin: upload.renderOrigin).withUnsafeBytes { bytes in
             device.makeBuffer(bytes: bytes.baseAddress!, length: bytes.count, options: .storageModeShared)
         }
     }
 
     func uploadGhost(_ upload: ViewportMeshUpload?) {
-        guard let upload, !upload.vertexData.isEmpty, !upload.indices.isEmpty,
+        ghost = upload.flatMap(makeBuffers)
+    }
+
+    func clearComparison() {
+        previousMesh = nil
+    }
+
+    private func makeBuffers(_ upload: ViewportMeshUpload) -> MeshBuffers? {
+        guard !upload.vertexData.isEmpty, !upload.indices.isEmpty,
               let vertices = upload.vertexData.withUnsafeBytes({ bytes in
                   bytes.baseAddress.flatMap { device.makeBuffer(bytes: $0, length: bytes.count, options: .storageModeShared) }
               }),
               let indices = upload.indices.withUnsafeBytes({ bytes in
                   bytes.baseAddress.flatMap { device.makeBuffer(bytes: $0, length: bytes.count, options: .storageModeShared) }
               }) else {
-            ghost = nil
-            return
+            return nil
         }
-        ghost = (vertices, indices, upload.indices.count)
+        return MeshBuffers(vertices: vertices, indices: indices, count: upload.indices.count)
     }
 
     func draw(in descriptor: MTLRenderPassDescriptor, drawable: CAMetalDrawable,
               transform: ViewportTransform, showsEdges: Bool, showsAxes: Bool, stale: Bool,
-              overlay: [ViewportVertex]) {
+              overlay: [ViewportVertex], cut: Cut?) {
         guard let commands = queue.makeCommandBuffer(),
               let encoder = commands.makeRenderCommandEncoder(descriptor: descriptor) else { return }
 
@@ -794,30 +1060,53 @@ final class ViewportRenderer {
             staleDim: dim
         )
 
-        encoder.setDepthStencilState(depthState)
-        if let vertexBuffer, let indexBuffer, indexCount > 0 {
+        func drawMesh(_ buffers: MeshBuffers?, using transform: ViewportTransform) {
+            guard let buffers else { return }
+            var uniforms = uniforms
+            uniforms.viewProjection = transform.gpuViewProjection
+            encoder.setDepthStencilState(depthState)
             // Push the fill slightly back so the edge pass wins equal depth.
             encoder.setDepthBias(showsEdges ? 1 : 0, slopeScale: showsEdges ? 1 : 0, clamp: 0)
             encoder.setRenderPipelineState(shadedPipeline)
-            encoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
+            encoder.setVertexBuffer(buffers.vertices, offset: 0, index: 0)
             encoder.setVertexBytes(&uniforms, length: MemoryLayout<ViewportUniforms>.stride, index: 1)
             encoder.setFragmentBytes(&uniforms, length: MemoryLayout<ViewportUniforms>.stride, index: 1)
             encoder.drawIndexedPrimitives(
-                type: .triangle, indexCount: indexCount, indexType: .uint32,
-                indexBuffer: indexBuffer, indexBufferOffset: 0)
+                type: .triangle, indexCount: buffers.count, indexType: .uint32,
+                indexBuffer: buffers.indices, indexBufferOffset: 0)
 
             if showsEdges {
                 encoder.setDepthBias(0, slopeScale: 0, clamp: 0)
                 encoder.setTriangleFillMode(.lines)
                 encoder.setRenderPipelineState(edgePipeline)
                 encoder.drawIndexedPrimitives(
-                    type: .triangle, indexCount: indexCount, indexType: .uint32,
-                    indexBuffer: indexBuffer, indexBufferOffset: 0)
+                    type: .triangle, indexCount: buffers.count, indexType: .uint32,
+                    indexBuffer: buffers.indices, indexBufferOffset: 0)
                 encoder.setTriangleFillMode(.fill)
             }
         }
 
+        if let cut {
+            let width = drawable.texture.width
+            let height = drawable.texture.height
+            let split = ViewportComparisonProjection.splitPixel(at: cut.fraction, drawableWidth: width)
+            if split > 0 {
+                encoder.setScissorRect(MTLScissorRect(x: 0, y: 0, width: split, height: height))
+                drawMesh(previousMesh, using: cut.projection.before)
+            }
+            if split < width {
+                encoder.setScissorRect(MTLScissorRect(x: split, y: 0, width: width - split, height: height))
+                drawMesh(mesh, using: cut.projection.after)
+            }
+            encoder.setScissorRect(MTLScissorRect(x: 0, y: 0, width: width, height: height))
+            uniforms.viewProjection = cut.projection.after.gpuViewProjection
+        } else {
+            drawMesh(mesh, using: transform)
+        }
+
         if showsAxes, let axesBuffer {
+            encoder.setDepthStencilState(depthState)
+            encoder.setDepthBias(0, slopeScale: 0, clamp: 0)
             encoder.setRenderPipelineState(linePipeline)
             encoder.setVertexBuffer(axesBuffer, offset: 0, index: 0)
             encoder.setVertexBytes(&uniforms, length: MemoryLayout<ViewportUniforms>.stride, index: 1)
@@ -825,7 +1114,7 @@ final class ViewportRenderer {
             encoder.drawPrimitives(type: .line, vertexStart: 0, vertexCount: 6)
         }
 
-        if !stale, let ghost {
+        if !stale, cut == nil, let ghost {
             var translucent = uniforms
             translucent.baseColor = SIMD4(0.31, 0.79, 0.94, 0.21)
             encoder.setDepthBias(0, slopeScale: 0, clamp: 0)

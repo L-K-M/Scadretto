@@ -116,6 +116,28 @@ public struct ViewportTransform: Sendable {
     }
 }
 
+/// Both sides of the cut share the camera and depth range. Their vertex
+/// buffers are rebased independently, so each side needs its own view matrix.
+struct ViewportComparisonProjection {
+    let before: ViewportTransform
+    let after: ViewportTransform
+
+    init(camera: ViewportCamera, viewSize: CGSize, orthographic: Bool,
+         beforeOrigin: SIMD3<Double>, beforeBounds: ViewportBounds?, after: ViewportMeshUpload) {
+        let radius = [after.bounds, beforeBounds].compactMap { $0 }.reduce(after.sceneRadius) {
+            max($0, simd_length($1.center - camera.center) + $1.radius)
+        }
+        before = camera.transform(viewSize: viewSize, orthographic: orthographic,
+                                  renderOrigin: beforeOrigin, sceneRadius: radius)
+        self.after = camera.transform(viewSize: viewSize, orthographic: orthographic,
+                                     renderOrigin: after.renderOrigin, sceneRadius: radius)
+    }
+
+    static func splitPixel(at fraction: CGFloat, drawableWidth: Int) -> Int {
+        Int((CGFloat(drawableWidth) * min(max(fraction, 0), 1)).rounded())
+    }
+}
+
 extension ViewportCamera {
     /// Builds the frame transform for a view of `viewSize` points.
     ///

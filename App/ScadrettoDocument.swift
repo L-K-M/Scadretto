@@ -161,7 +161,14 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         preview.onUpdate = { [weak self] phase in
             guard let self else { return }
             lastPhase = phase
-            for window in windows { window.previewWorkspace.update(phase) }
+            let keepConstellationPin: Bool = switch phase {
+            case .evaluating, .outcome(.rendered, _), .outcome(.empty, _): true
+            default: false
+            }
+            for window in windows {
+                window.clearConstellation(keepingPin: keepConstellationPin)
+                window.previewWorkspace.update(phase)
+            }
             refreshInspector()
             if case .outcome(let outcome, _) = phase { noteDependencies(of: outcome.result) }
         }
@@ -236,7 +243,8 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             if let self, controller === editor { chooseProperty(index) }
         }
         workspace.viewport?.onEditCommit = { [weak self, weak controller] sceneID, handleID, value in
-            if let self, controller === editor { commitProperty(value, sceneID: sceneID, handleID: handleID) }
+            guard let self, controller === editor else { return false }
+            return commitProperty(value, sceneID: sceneID, handleID: handleID)
         }
     }
 
@@ -522,7 +530,11 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         sourceChange = nil
         propertyChoices = []
         propertyChoiceID = nil
-        for window in windows { window.previewWorkspace.sidebar.inspector.show(nil) }
+        for window in windows {
+            window.clearConstellation()
+            window.previewWorkspace.discardPendingComparison()
+            window.previewWorkspace.sidebar.inspector.show(nil)
+        }
         io.withLock { $0.committed = buffer.bytes }
         history.removeAllActions()
     }
@@ -609,7 +621,10 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             }
         }
 
-        for other in windows { other.show(snapshot, selecting: other === acting ? selection : nil) }
+        for other in windows {
+            other.previewWorkspace.discardPendingComparison()
+            other.show(snapshot, selecting: other === acting ? selection : nil)
+        }
         showEdited()
         preview?.schedule(snapshot, fileURL: fileURL, immediate: location == nil)
         TimingLog.record("commit", at: mutated, [
@@ -629,13 +644,16 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     }
 
     private func selectFeature(_ id: UInt32?, at point: SIMD3<Double>?) {
-        guard let workspace = editor?.previewWorkspace else { return }
+        guard let editor else { return }
+        let workspace = editor.previewWorkspace
+        if id != featureSelection?.instanceID { editor.clearConstellation() }
         sourceChange = nil
         activeEdit = nil
         propertyChoices = []
         propertyChoiceID = nil
         guard let id, let result = workspace.result, preview?.acceptsNavigation(from: result) == true,
               let scene = result.scene else {
+            editor.clearConstellation()
             featureSelection = nil
             workspace.sidebar.inspector.show(nil)
             workspace.viewport?.showDiameter(handle: nil, guides: [])
@@ -650,6 +668,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
 
     private func chooseProperty(_ index: Int) {
         guard propertyChoices.indices.contains(index) else { return }
+        if propertyChoiceID != propertyChoices[index].id { editor?.clearConstellation() }
         propertyChoiceID = propertyChoices[index].id
         activeEdit = nil
         sourceChange = nil
@@ -703,6 +722,7 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         var inspection = DiameterInspection(title: breadcrumb, choices: propertyChoices.map(\.title),
                                             selectedChoice: selectedIndex)
         guard let selectedIndex else {
+            controller.clearConstellation()
             activeEdit = nil
             workspace.viewport?.showLinear(handle: nil, guides: [])
             workspace.showGhost([instance.id])
@@ -763,27 +783,40 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             } else {
                 handle = workspace.geometry.flatMap { makeHandle(for: choice, selection: selection, geometry: $0) }
             }
+            workspace.viewport?.caliperCaption = "\(choice.title) · \(plan.scope)"
             activeEdit = ActiveEdit(requestID: result.requestID, key: result.key, instanceID: selection.instanceID,
                                     choiceID: choice.id, label: choice.label, property: choice.title, scope: plan.scope,
                                     operation: plan.operation, handle: handle)
             var guidesTruncated = false
+            let cutters = handle == nil ? [] : choice.previewRims(affected: plan.affected, instances: instances)
+            let motions = handle == nil ? [] : choice.previewMotions(affected: plan.affected, instances: instances)
+            let moveGuides = Dictionary(uniqueKeysWithValues: motions.compactMap { motion in
+                instances[motion.instance].flatMap {
+                    workspace.geometry?.moveGuide(for: $0, localUnitsPerValue: motion.localUnitsPerValue)
+                }.map { (motion.instance, $0) }
+            })
             switch handle {
             case .diameter(let radial):
-                let cutters = choice.previewRims(affected: plan.affected, instances: instances)
                 guidesTruncated = cutters.count > Self.guideLimit
                 let guides = cutters.prefix(Self.guideLimit).compactMap { workspace.geometry?.guide(for: $0) }
                 workspace.viewport?.showDiameter(handle: radial, guides: guides)
             case .linear(let linear):
-                let motions = choice.previewMotions(affected: plan.affected, instances: instances)
                 guidesTruncated = motions.count > Self.guideLimit
-                let guides = motions.prefix(Self.guideLimit).compactMap { motion in
-                    instances[motion.instance].flatMap {
-                        workspace.geometry?.moveGuide(for: $0, localUnitsPerValue: motion.localUnitsPerValue)
-                    }
-                }
+                let guides = motions.prefix(Self.guideLimit).compactMap { moveGuides[$0.instance] }
                 workspace.viewport?.showLinear(handle: linear, guides: guides)
             case nil:
                 workspace.viewport?.showLinear(handle: nil, guides: [])
+            }
+            if let baseline = choice.value, let token = try? snapshot.buffer.textRange(for: plan.span.bytes),
+               let (selectedID, markers) = workspace.geometry?.constellation(
+                   affected: plan.affected, selectedID: selection.instanceID, value: baseline,
+                   rims: cutters, motions: moveGuides
+               ), markers.count > 1 {
+                let title = choice.bindingPath ?? choice.title
+                controller.showConstellation(scene: result.requestID, token: token, title: title,
+                                             selectedID: selectedID, baseline: baseline, markers: markers)
+            } else {
+                controller.clearConstellation()
             }
             workspace.showGhost(plan.affected)
             inspection.writable = !isComposing
@@ -801,6 +834,11 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             if handle != nil, let snap = workspace.snapDescription { notes.append(snap) }
             inspection.detail = notes.joined(separator: "\n")
         } catch {
+            if case PropertyPlanningError.verifyingSyntax = error {
+                controller.clearConstellation(keepingPin: true)
+            } else {
+                controller.clearConstellation()
+            }
             activeEdit = nil
             workspace.viewport?.showLinear(handle: nil, guides: [])
             workspace.showGhost([selection.instanceID])
@@ -882,13 +920,14 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
         commitProperty(value, sceneID: active.requestID, handleID: nil)
     }
 
-    private func commitProperty(_ value: Double, sceneID: UUID, handleID: UUID?) {
-        guard let controller = editor else { return }
+    @discardableResult
+    private func commitProperty(_ value: Double, sceneID: UUID, handleID: UUID?) -> Bool {
+        guard let controller = editor else { return false }
         let workspace = controller.previewWorkspace
         let inspector = workspace.sidebar.inspector
         guard !isComposing else {
             inspector.showMessage("Finish composing text before editing this property.")
-            return
+            return false
         }
         guard let active = activeEdit, active.requestID == sceneID,
               let result = workspace.result, result.requestID == sceneID, result.key == active.key,
@@ -898,23 +937,37 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
               active.choiceID == propertyChoiceID,
               handleID == nil || handleID == active.handle?.id else {
             inspector.showMessage(ExplicitEditError.staleSource.localizedDescription)
-            return
+            return false
         }
         do {
             guard let edit = try active.operation.edit(setting: value, in: source.snapshot) else {
                 refreshInspector()
-                return
+                return false
             }
             let editedRange = try source.buffer.textRange(for: edit.range)
             let oldToken = String(decoding: edit.expected, as: UTF8.self)
             let newToken = String(decoding: edit.replacement, as: UTF8.self)
+            let shown = propertyChoices.first(where: { $0.id == active.choiceID })?.value
+            let anchor: SIMD3<Double>? = switch active.handle {
+            case .diameter(let grip): grip.rim(at: value)
+            case .linear(let grip): grip.point(for: value)
+            case nil: workspace.geometry?.center(of: active.instanceID)
+            }
             try commit([edit], label: active.label,
                        selection: NSRange(location: editedRange.location, length: newToken.utf16.count), in: controller)
+            if let shown, let request = preview?.scheduledRequestID {
+                let before = shown.formatted(.number.precision(.significantDigits(1...12)).grouping(.never))
+                let after = value.formatted(.number.precision(.significantDigits(1...12)).grouping(.never))
+                let change = ViewportView.Comparison(property: active.property, before: before, after: after, anchor: anchor)
+                workspace.expectComparison(change, request: request, after: result.key, revision: source.snapshot.revision)
+            }
             sourceChange = "Source change · \(oldToken) → \(newToken)"
             inspector.showMessage(sourceChange ?? "")
             Announcements.post("\(active.property) changed from \(oldToken) to \(newToken), \(active.scope)")
+            return true
         } catch {
             inspector.showMessage(propertyMessage(for: error))
+            return false
         }
     }
 
@@ -942,11 +995,22 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
             case #selector(toggleAxes(_:)): menu.state = viewport.showsAxes ? .on : .off
             case #selector(toggleOrbitPan(_:)): menu.state = viewport.swapsOrbitAndPan ? .on : .off
             case #selector(setDragSnap(_:)): menu.state = (menu.representedObject as? Double) == viewport.dragSnapIncrement ? .on : .off
+            case #selector(toggleConstellation(_:)): menu.state = keyEditor?.isConstellationPinned == true ? .on : .off
+            case #selector(toggleComparison(_:)):
+                menu.title = viewport.isComparisonPinned ? "Close Comparison Cut" : "Pin Comparison Cut"
             default: break
             }
         }
         if item.action == #selector(revealSelectedInstance(_:)) {
             return keyEditor?.previewWorkspace.sidebar.canRevealOccurrence == true
+        }
+        if item.action == #selector(toggleConstellation(_:)) {
+            guard let editor = keyEditor else { return false }
+            return editor.canShowConstellation && !editor.isComposing
+        }
+        if item.action == #selector(toggleComparison(_:)) {
+            guard let viewport = keyEditor?.previewWorkspace.viewport else { return false }
+            return viewport.canCompare && !viewport.isDraggingHandle
         }
         if item.action == #selector(undoSource(_:)) {
             let typing = typingEnd != nil
@@ -1258,6 +1322,14 @@ final class ScadrettoDocument: ScadrettoDocumentBase {
     @IBAction func cancelPreview(_ sender: Any?) { preview?.cancel() }
     @IBAction func revealSelectedInstance(_ sender: Any?) {
         keyEditor?.previewWorkspace.sidebar.revealOccurrence()
+    }
+
+    @IBAction func toggleConstellation(_ sender: Any?) {
+        keyEditor?.toggleConstellation()
+    }
+
+    @IBAction func toggleComparison(_ sender: Any?) {
+        keyEditor?.previewWorkspace.viewport?.toggleComparisonPin()
     }
 
     @IBAction func frameModel(_ sender: Any?) { keyEditor?.previewWorkspace.viewport?.frameAll() }

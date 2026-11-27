@@ -146,6 +146,12 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
         model.addItem(withTitle: "Cancel Evaluation", action: #selector(ScadrettoDocument.cancelPreview(_:)), keyEquivalent: "")
         model.addItem(withTitle: "Reveal Selected Source", action: #selector(ScadrettoDocument.revealSelectedInstance(_:)),
                       keyEquivalent: "")
+        model.addItem(withTitle: "Shared-Source Constellation",
+                      action: #selector(ScadrettoDocument.toggleConstellation(_:)),
+                      keyEquivalent: "l").keyEquivalentModifierMask = [.command, .shift]
+        model.addItem(withTitle: "Pin Comparison Cut", action: #selector(ScadrettoDocument.toggleComparison(_:)),
+                      keyEquivalent: "c").keyEquivalentModifierMask = [.command, .shift]
+        model.addItem(.separator())
         model.addItem(withTitle: "Show Worker Log…", action: #selector(ScadrettoDocument.showWorkerLog(_:)), keyEquivalent: "")
 
         // AppKit lists the open windows below these items.
