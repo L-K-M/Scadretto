@@ -79,7 +79,7 @@ public final class ThreeDMouseInput {
     private var active = false
     private var buttons: UInt32 = 0
     private var lastMotion = ThreeDMouseMotion.zero
-    private static let log = Logger(subsystem: "com.lkm.Scadretto", category: "3DMouse")
+    private static let log = Logger(subsystem: "ch.lkmc.Scadretto", category: "3DMouse")
 
     public init(source: Source = .automatic) {
         self.source = source

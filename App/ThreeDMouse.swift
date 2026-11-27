@@ -24,7 +24,7 @@ final class ThreeDMouseController {
         static let simulatedMotion = "ScadrettoSimulated3DMouse"
     }
 
-    private static let log = Logger(subsystem: "com.lkm.Scadretto", category: "3DMouse")
+    private static let log = Logger(subsystem: "ch.lkmc.Scadretto", category: "3DMouse")
     private let defaults = UserDefaults.standard
     private let input: ThreeDMouseInput
     private weak var target: ViewportView?

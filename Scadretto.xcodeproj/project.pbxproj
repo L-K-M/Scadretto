@@ -342,7 +342,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.lkm.Scadretto.UITests;
+				PRODUCT_BUNDLE_IDENTIFIER = ch.lkmc.Scadretto.UITests;
 				SDKROOT = macosx;
 				TEST_TARGET_NAME = Scadretto;
 			};
@@ -359,7 +359,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.lkm.Scadretto.UITests;
+				PRODUCT_BUNDLE_IDENTIFIER = ch.lkmc.Scadretto.UITests;
 				SDKROOT = macosx;
 				TEST_TARGET_NAME = Scadretto;
 			};
@@ -379,7 +379,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lkm.Scadretto;
+				PRODUCT_BUNDLE_IDENTIFIER = ch.lkmc.Scadretto;
 				SDKROOT = macosx;
 				SWIFT_OBJC_BRIDGING_HEADER = App/ScadrettoDocumentBase.h;
 			};
@@ -526,7 +526,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.lkm.Scadretto;
+				PRODUCT_BUNDLE_IDENTIFIER = ch.lkmc.Scadretto;
 				SDKROOT = macosx;
 				SWIFT_OBJC_BRIDGING_HEADER = App/ScadrettoDocumentBase.h;
 			};

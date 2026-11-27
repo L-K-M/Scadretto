@@ -26,7 +26,7 @@ public struct WorkerRuntime: Sendable {
             executable: bundle.bundleURL.appending(path: "Contents/Helpers/scadretto-engine"),
             resourceRoots: [runtime],
             bundleLibraries: runtime.appending(path: "libraries", directoryHint: .isDirectory),
-            storageRoot: root.appending(path: "com.lkm.Scadretto", directoryHint: .isDirectory)
+            storageRoot: root.appending(path: "ch.lkmc.Scadretto", directoryHint: .isDirectory)
         )
     }
 

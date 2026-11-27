@@ -60,7 +60,7 @@ TEST_RUNNER_SCADRETTO_BENCHMARK_DIR="$out" "${xcode[@]}" -parallel-testing-enabl
 # Cancellation and cleanup: end the app three ways during a long evaluation, then look for
 # worker processes and job directories left behind, before and after the next launch. Window
 # restoration is off so a relaunch does not reopen the long evaluation.
-storage="$HOME/Library/Caches/com.lkm.Scadretto/sessions"
+storage="$HOME/Library/Caches/ch.lkmc.Scadretto/sessions"
 worker="$app/Contents/Helpers/scadretto-engine"
 slow="$out/long-evaluation.scad"
 printf 'function fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2);\necho(fib(40));\ncube(1);\n' > "$slow"

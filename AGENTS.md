@@ -11,6 +11,8 @@ for repository checks and entry points.
 - Target Apple silicon and macOS 14 or later. M0 records the Xcode, SDK, CMake
   and engine pins. Use the shared `Scadretto` scheme and the local
   `Packages/ScadrettoKit` package described in the plan.
+- Bundle and type identifiers live under `ch.lkmc`: the app is
+  `ch.lkmc.Scadretto` and the OpenSCAD type is `ch.lkmc.scadretto.scad`.
 - Keep the document application in Swift and AppKit, the renderer in MetalKit,
   and upstream-dependent C++ in the separate OpenSCAD worker. Tree-sitter
   supplies editor syntax feedback. Worker results supply geometry and bindings.
