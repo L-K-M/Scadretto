@@ -6,36 +6,40 @@ Xcode, SDK, CMake and engine revisions in M0.
 
 ## Development
 
-On an Apple silicon development Mac, build and verify the pinned headless
-engine first:
+On an Apple silicon development Mac, select a full Xcode installation and
+install the [shared release tool](https://github.com/L-K-M/release-tool)
+for `lkm-build` and `lkm-release`. With Homebrew, install the worker's build
+tools and build the app:
 
 ```sh
-Scripts/bootstrap-macos
-Scripts/build-engine
-Scripts/verify-engine
+brew install cmake ninja python pkgconf bison flex meson gettext
+Scripts/build.sh --debug
 ```
 
-Bootstrap checks the native build tools and fetches the pinned source.
-The build stages the two executables and their runtime libraries under
-`.build/engine/`. Verification records its evidence there. See
-[the engine decision record](Docs/Decisions/engine-spike.md) for the
-build flags, observed runtime trace and geometry checks.
+The wrapper fetches and builds the pinned OpenSCAD worker on demand, then
+bundles it using the shared `Scadretto` Xcode scheme. It reuses the runtime
+in `.build/engine/` when the pinned inputs and toolchain match. The first
+build can take several minutes. `--check`
+prints the app build configuration without preparing the engine. `--clean`
+resets the default app build directory and keeps the engine cache.
+To use a prebuilt runtime, set `SCADRETTO_WORKER_PRODUCT` to its path.
+This also works for a CI runtime restored to `.build/engine/worker`.
+If Xcode reports that its Metal toolchain is missing, install it with
+`xcodebuild -downloadComponent MetalToolchain`.
 
-Install the [shared release tool](https://github.com/L-K-M/release-tool) for
-`lkm-build` and `lkm-release`. Use the shared `Scadretto` scheme in
-`Scadretto.xcodeproj` from the repository:
+To build both the worker and the reference CLI for geometry verification:
 
 ```sh
-Scripts/build.sh --debug
+Scripts/build-engine
+Scripts/verify-engine
 swift test --package-path Packages/ScadrettoKit
 ```
 
-The build wrapper uses the standard Xcode build engine and leaves the app in
-the build directory. Xcode stages the pinned worker, runtime libraries and
-resources from `.build/engine/worker` and compiles the Metal shaders into the
-app. Build the engine before using the app scheme. If Xcode reports that its
-Metal toolchain is missing, install that component with
-`xcodebuild -downloadComponent MetalToolchain`.
+To run the shared scheme directly in Xcode, prepare the worker first with
+`Scripts/build-engine --worker-only`. It publishes the local worker at
+`.build/engine/worker` when that path is available. See the
+[engine decision record](Docs/Decisions/engine-spike.md) for build flags,
+trace examples, and geometry checks.
 
 The [verification guide](plan/06-Verification-and-Release.md#build-and-verification-entry-points)
 lists the test and release entry points.

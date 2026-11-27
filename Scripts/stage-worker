@@ -7,7 +7,11 @@ contents="${1:?Usage: Scripts/stage-worker /path/to/Scadretto.app/Contents}"
 
 if [[ ! -x "$worker/bin/scadretto-engine" || ! -d "$worker/Frameworks" ||
       ! -f "$worker/Resources/fonts/fonts.conf" ]]; then
-    echo 'error: the pinned worker runtime is missing. Run Scripts/build-engine first.' >&2
+    if [[ -n ${SCADRETTO_WORKER_PRODUCT:-} ]]; then
+        printf 'error: incomplete OpenSCAD runtime at %s. Check SCADRETTO_WORKER_PRODUCT.\n' "$worker" >&2
+    else
+        echo 'error: the pinned worker runtime is missing. Run Scripts/build-engine --worker-only first.' >&2
+    fi
     exit 1
 fi
 
