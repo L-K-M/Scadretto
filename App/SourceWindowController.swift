@@ -11,7 +11,9 @@ struct ConstellationMarker {
     let kind: ConstellationOverlay.Kind
 }
 
-final class SourceWindowController: NSWindowController, NSTextViewDelegate {
+final class SourceWindowController: NSWindowController, NSTextViewDelegate, NSSplitViewDelegate {
+    private static let minimumPaneWidths: [CGFloat] = [310, 240, 200]
+
     private weak var sourceDocument: ScadrettoDocument?
     private let editor = SourceTextView(usingTextLayoutManager: false)
     private let scroll = NSScrollView()
@@ -22,7 +24,7 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     private var snapshot: SourceSnapshot?
     private var mirroring = false
     private var ruler: LineRuler?
-    private var placedDividers = false
+    private var didResetInitialScroll = false
     private struct SourceRelationship {
         let scene: UUID
         let token: NSRange
@@ -86,12 +88,11 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
         window.contentView = content
         split.isVertical = true
         split.dividerStyle = .thin
+        split.delegate = self
         split.translatesAutoresizingMaskIntoConstraints = false
         for pane in [scroll, previewWorkspace.panel, previewWorkspace.sidebar] {
             split.addArrangedSubview(pane)
         }
-        split.setHoldingPriority(.defaultHigh, forSubviewAt: 0)
-        split.setHoldingPriority(.defaultHigh, forSubviewAt: 2)
         status.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(split)
         content.addSubview(status)
@@ -102,9 +103,6 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
             split.topAnchor.constraint(equalTo: content.topAnchor),
             split.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             split.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            scroll.widthAnchor.constraint(greaterThanOrEqualToConstant: 310),
-            previewWorkspace.panel.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
-            previewWorkspace.sidebar.widthAnchor.constraint(greaterThanOrEqualToConstant: 200),
             status.topAnchor.constraint(equalTo: split.bottomAnchor, constant: 5),
             status.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
             status.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -12),
@@ -130,14 +128,53 @@ final class SourceWindowController: NSWindowController, NSTextViewDelegate {
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
         if constellationMonitor == nil, let window { observeConstellation(in: window) }
-        guard !placedDividers else { return }
+        guard !didResetInitialScroll else { return }
         window?.contentView?.layoutSubtreeIfNeeded()
-        let width = split.bounds.width
-        guard width >= 780 else { return }
-        split.setPosition(width * 0.31, ofDividerAt: 0)
-        split.setPosition(width - 240, ofDividerAt: 1)
-        placedDividers = true
+        didResetInitialScroll = true
         resetSourceScroll()
+    }
+
+    // Keep pane width limits in the split view delegate so Auto Layout cannot undo divider drags.
+    func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat,
+                   ofSubviewAt dividerIndex: Int) -> CGFloat {
+        proposedMinimumPosition + Self.minimumPaneWidths[dividerIndex]
+    }
+
+    func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat,
+                   ofSubviewAt dividerIndex: Int) -> CGFloat {
+        proposedMaximumPosition - Self.minimumPaneWidths[dividerIndex + 1]
+    }
+
+    func splitView(_ splitView: NSSplitView, effectiveRect proposedEffectiveRect: NSRect,
+                   forDrawnRect drawnRect: NSRect, ofDividerAt dividerIndex: Int) -> NSRect {
+        proposedEffectiveRect.union(drawnRect.insetBy(dx: -3, dy: 0))
+    }
+
+    func splitView(_ splitView: NSSplitView, resizeSubviewsWithOldSize oldSize: NSSize) {
+        let bounds = splitView.bounds
+        let divider = splitView.dividerThickness
+        let availableWidth = bounds.width - 2 * divider
+        let minimumTotal = Self.minimumPaneWidths.reduce(0, +)
+        guard availableWidth >= minimumTotal else { return }
+
+        let source = scroll
+        let inspector = previewWorkspace.sidebar
+        let minimumSource = Self.minimumPaneWidths[0]
+        let minimumInspector = Self.minimumPaneWidths[2]
+        let sourceExtra = max(0, source.frame.width - minimumSource)
+        let inspectorExtra = max(0, inspector.frame.width - minimumInspector)
+        // Give the viewport the remaining space. At its minimum, shrink the side panes
+        // in proportion to how much the user widened each one.
+        let extra = sourceExtra + inspectorExtra
+        let retainedFraction = extra > 0 ? min(1, (availableWidth - minimumTotal) / extra) : 1
+        let sourceWidth = (minimumSource + sourceExtra * retainedFraction).rounded(.down)
+        let inspectorWidth = (minimumInspector + inspectorExtra * retainedFraction).rounded(.down)
+        let modelWidth = availableWidth - sourceWidth - inspectorWidth
+        source.frame = NSRect(x: bounds.minX, y: bounds.minY, width: sourceWidth, height: bounds.height)
+        previewWorkspace.panel.frame = NSRect(x: bounds.minX + sourceWidth + divider, y: bounds.minY,
+                                             width: modelWidth, height: bounds.height)
+        inspector.frame = NSRect(x: bounds.maxX - inspectorWidth, y: bounds.minY,
+                                 width: inspectorWidth, height: bounds.height)
     }
 
     private func configureEditor() {
