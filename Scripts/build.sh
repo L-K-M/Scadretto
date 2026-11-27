@@ -43,13 +43,7 @@ builds_app() {
 }
 
 if [[ -z ${SCADRETTO_WORKER_PRODUCT:-} ]] && builds_app "$@"; then
-  worker=.build/engine/worker
-  # A restored CI runtime is a real directory; the local builder publishes a symlink.
-  if [[ -d "$worker" && ! -L "$worker" ]]; then
-    SCADRETTO_WORKER_PRODUCT="$(pwd -P)/$worker"
-  else
-    SCADRETTO_WORKER_PRODUCT="$(Scripts/build-engine --worker-only)"
-  fi
+  SCADRETTO_WORKER_PRODUCT="$(Scripts/build-engine --worker-only)"
   export SCADRETTO_WORKER_PRODUCT
 fi
 exec "$bin" --no-reveal "$@"

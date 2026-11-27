@@ -22,8 +22,8 @@ in `.build/engine/` when the pinned inputs and toolchain match. The first
 build can take several minutes. `--check`
 prints the app build configuration without preparing the engine. `--clean`
 resets the default app build directory and keeps the engine cache.
-The wrapper also accepts a CI runtime restored to `.build/engine/worker`
-or a prebuilt runtime selected with `SCADRETTO_WORKER_PRODUCT`.
+To use a prebuilt runtime, set `SCADRETTO_WORKER_PRODUCT` to its path.
+This also works for a CI runtime restored to `.build/engine/worker`.
 If Xcode reports that its Metal toolchain is missing, install it with
 `xcodebuild -downloadComponent MetalToolchain`.
 
@@ -36,8 +36,10 @@ swift test --package-path Packages/ScadrettoKit
 ```
 
 To run the shared scheme directly in Xcode, prepare the worker first with
-`Scripts/build-engine --worker-only`. See the [engine decision record](Docs/Decisions/engine-spike.md)
-for build flags, trace examples, and geometry checks.
+`Scripts/build-engine --worker-only`. It publishes the local worker at
+`.build/engine/worker` when that path is available. See the
+[engine decision record](Docs/Decisions/engine-spike.md) for build flags,
+trace examples, and geometry checks.
 
 The [verification guide](plan/06-Verification-and-Release.md#build-and-verification-entry-points)
 lists the test and release entry points.

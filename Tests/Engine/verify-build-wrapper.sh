@@ -54,8 +54,17 @@ printf 'app --no-reveal --clean (%s/supplied worker)\n' "$cwd" | diff - "$TRACE"
 : > "$TRACE"
 mkdir -p .build/engine/worker
 Scripts/build.sh --debug
-printf 'app --no-reveal --debug (%s/.build/engine/worker)\n' "$cwd" | diff - "$TRACE"
+printf 'engine --worker-only\napp --no-reveal --debug (%s/worker product)\n' "$cwd" | diff - "$TRACE"
+test -d .build/engine/worker
 rmdir .build/engine/worker
+
+: > "$TRACE"
+Scripts/build.sh --debug --app-version 1.2.3 --build 10
+printf 'engine --worker-only\napp --no-reveal --debug --app-version 1.2.3 --build 10 (%s/worker product)\n' "$cwd" | diff - "$TRACE"
+
+: > "$TRACE"
+Scripts/build.sh --debug --app-version
+printf 'app --no-reveal --debug --app-version (unset)\n' | diff - "$TRACE"
 
 : > "$TRACE"
 status=0

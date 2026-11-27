@@ -68,13 +68,22 @@ build_variants() (
     if ! $worker_only; then prepare_dependencies; fi
 
     for variant in "${variants[@]}"; do
-        name=openscad
-        [[ $variant != worker ]] || name=scadretto-engine
-        folder="$ENGINE_BUILD/products/$variant-$(fingerprint_key "$variant")"
+        if [[ $variant == worker ]]; then
+            name=scadretto-engine
+            folder="$worker_folder"
+        else
+            name=openscad
+            folder="$ENGINE_BUILD/products/reference-$(fingerprint_key reference)"
+        fi
         product="$folder/product"
         link="$ENGINE_BUILD/$variant"
-        [[ -L "$link" || ! -e "$link" ]] ||
-            engine_fail "Cannot publish $variant over $link. Move the prebuilt runtime or pass its path as SCADRETTO_WORKER_PRODUCT to Scripts/build.sh."
+        if [[ -e "$link" && ! -L "$link" ]]; then
+            if ! $worker_only; then
+                engine_fail "Cannot publish $variant over $link. Move the existing file or directory away from that path."
+            fi
+            # build.sh can use the fingerprinted product beside a manually restored runtime.
+            link=''
+        fi
         if [[ ! -f "$folder/.ready" || ! -x "$product/bin/$name" || ! -d "$product/Frameworks" ||
               ! -f "$product/Resources/fonts/fonts.conf" ]]; then
             printf 'Building the pinned %s engine. A first build can take several minutes.\n' "$variant"
@@ -142,7 +151,7 @@ build_variants() (
         elif $worker_only; then
             printf 'Using the cached OpenSCAD worker.\n'
         fi
-        if [[ ! -L "$link" || $(readlink "$link") != "$product" ]]; then
+        if [[ -n "$link" ]] && [[ ! -L "$link" || $(readlink "$link") != "$product" ]]; then
             ln -sfn "$product" "$link"
         fi
         printf '%s engine: %s\n' "$variant" "$product"
@@ -163,8 +172,8 @@ except BlockingIOError:
     fcntl.flock(9, fcntl.LOCK_EX)
 LOCK_PY
 
+worker_folder="$ENGINE_BUILD/products/worker-$(fingerprint_key worker)"
 build_variants
 if $worker_only; then
-    cd "$ENGINE_BUILD/worker"
-    pwd -P
+    printf '%s\n' "$worker_folder/product"
 fi
