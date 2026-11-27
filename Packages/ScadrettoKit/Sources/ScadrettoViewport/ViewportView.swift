@@ -106,8 +106,8 @@ public final class ViewportView: MTKView {
         didSet { needsDisplay = true }
     }
 
-    /// Draws the world XYZ axes (red/green/blue) through the scene's render
-    /// origin, scaled to the scene.
+    /// Draws the world XYZ axes (red/green/blue) at the model-space origin,
+    /// scaled to the scene.
     public var showsAxes = false {
         didSet { needsDisplay = true }
     }
@@ -210,6 +210,7 @@ public final class ViewportView: MTKView {
         isPaused = true
         enableSetNeedsDisplay = true
         delegate = self
+        renderer.upload(upload, retainPrevious: false)
         caliper.frame = bounds
         caliper.autoresizingMask = [.width, .height]
         caliper.isHidden = true
@@ -1105,7 +1106,7 @@ final class ViewportRenderer {
         }
 
         if showsAxes, let axesBuffer {
-            encoder.setDepthStencilState(depthState)
+            encoder.setDepthStencilState(overlayDepthState)
             encoder.setDepthBias(0, slopeScale: 0, clamp: 0)
             encoder.setRenderPipelineState(linePipeline)
             encoder.setVertexBuffer(axesBuffer, offset: 0, index: 0)

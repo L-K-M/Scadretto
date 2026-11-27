@@ -19,6 +19,7 @@ final class ScadrettoApp: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        UserDefaults.standard.register(defaults: ["showsAxes": true])
         // UI tests start from the default library folders, time limit and 3D mouse settings.
         if UserDefaults.standard.bool(forKey: "ScadrettoResetPreviewSettings") {
             PreviewSettings.shared.reset()

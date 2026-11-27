@@ -3,6 +3,30 @@ import XCTest
 
 final class ScadrettoUITests: XCTestCase {
     @MainActor
+    func testBothWorkspaceDividersResize() throws {
+        let app = launch()
+        defer { app.terminate() }
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Resizable Panes.scad")
+        try Data("cube(2);\n".utf8).write(to: url)
+        _ = open(url, in: app)
+        waitForText("Preview ready", in: app.staticTexts["renderStatus"].firstMatch, timeout: 15)
+
+        let viewport = app.descendants(matching: .any)["viewport"].firstMatch
+        let initial = viewport.frame
+        let left = viewport.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.4))
+            .withOffset(CGVector(dx: -1, dy: 0))
+        left.click(forDuration: 0.1, thenDragTo: left.withOffset(CGVector(dx: 70, dy: 0)))
+        let afterLeftDrag = viewport.frame
+        XCTAssertGreaterThan(afterLeftDrag.minX, initial.minX + 50, "Dragging right must widen the source pane")
+
+        let right = viewport.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 0.4))
+        right.click(forDuration: 0.1, thenDragTo: right.withOffset(CGVector(dx: -70, dy: 0)))
+        XCTAssertLessThan(viewport.frame.maxX, afterLeftDrag.maxX - 50, "Dragging left must widen the inspector")
+    }
+
+    @MainActor
     func testViewportNavigationFromMenuAndMouse() throws {
         let app = launch()
         defer { app.terminate() }
